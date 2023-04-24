@@ -6,19 +6,27 @@ class SimEnv:
     periods
     # 节点间网速图
     node2node_graph
-    
+    # 所有请求的记录
+    requests_record
+
 class SimPeriod:
     # 用于记录整体的负载情况，成本情况
 
     # 某个单位时间段所有node的快照
     node_snapshots
 
+    # 某个单位时间段对应请求
+    request_snapshots
+
 class Request: 
     # 请求
     # 按照一定的概率+基础函数生成
     
-    # 会触发的第一个函数
-    trigger_function
+    # 调用链路
+    fn_dag
+
+class FnDAG:
+    # 函数dag关系
 
 class Function:
     # 函数
@@ -39,7 +47,9 @@ class FunctionInstance:
     node
     # 函数
     fn
+    # 是否使用缓存
 
+# 一开始位置是给定的
 class DataBase:
     # 数据库
     # 数据集合
