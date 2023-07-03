@@ -1,7 +1,8 @@
 
 
-import numpy as np        
-
+       
+import random
+import sim_simenv
 
 # # 用于记录整体的负载情况，成本情况
 # class SimPeriod:
@@ -16,23 +17,61 @@ import numpy as np
 #     # 调用链路
 #     fn_dag
 
-# # 函数dag关系
-# # class FnDAG:
+# 函数
+class Function:
+    unique_i:int=-1
+    #  #运算量/s 一个普通请求处理函数请求的运算量为1，
+    cpu = 1
+    # 平均时间占用内存资源 mb
+    mem = 300
+    # 依赖的数据库-整个过程中数据传输量
+    databases_2_throughput={}
+    # 输出数据量 mb
+    out_put_size=100
+    # 输出到的函数, 如果为None，则为终止节点
+    next_fns=[]
+
+    def rand_fn(unique_i:int):
+        fn=Function()
+        fn.cpu=random.uniform(0.3,10)
+        fn.mem=random.uniform(100,1000)
+        fn.out_put_size=random.uniform(0.1,20)
+        fn.unique_i=unique_i
+        return fn
+
+
+# 函数dag关系
+class FnDAG:
+    entry_fn:Function
+
+    def instance_single_fn(env:sim_simenv.SimEnv):
+        dag=FnDAG()
+        dag.entry_fn=Function.rand_fn(env.alloc_fn_id())
     
-# # 函数
-# class Function:
-#     # 单位时间cpu资源
-#     cpu
-#     # 单位内存资源
-#     mem
-#     # 依赖的数据单元集合
-#     datacells
-#     # 访问次数
-#     datacells_visit_time
+    def instance_map_reduce(env:sim_simenv.SimEnv,map_cnt:int):
+        dag=FnDAG()
+        dag.entry_fn=Function.rand_fn() 
+        end_fn=Function.rand_fn()
+        end_fn.next_fns=None
+        for i in range(map_cnt):
+            next=Function.rand_fn(env.alloc_fn_id())
+            next.next_fns.append(end_fn)
+            dag.entry_fn.next_fns.append(next)
+
+        return dag
+    
+    # def fn_cnt():
+    #     map=dict()
+    #     def _fn_cnt(fn:Function):
+    #         for next_fn_ in fn.next_fns:
+    #             next_fn:Function=next_fn_
+    #             map[next_fn.]
+    #             cnt+=_fn_cnt(next_fn)
+    #         return cnt
+    #     return _fn_cnt(self.entry_fn)
     
 
 # class FunctionInstance:
-
 #     # 运行在的node
 #     node
 #     # 函数
@@ -42,9 +81,19 @@ import numpy as np
 # # 一开始位置是给定的
 # # 数据库
 # # 数据集合
-# class DataBase:
-#     # 运行在的node
-#     node
+class DataBase:
+    # 运行在的node
+    node=None
+    
+    # cpu
+    cpu=1
+
+    # 占用内存
+    mem=1000
+    
+class RequestInstance:
+    fn_dag_i=-1
+    request_timedf=0
 
 # # 函数依赖的数据最小单元
 # class DataCell:
@@ -57,71 +106,7 @@ import numpy as np
 # class ServerlessController:
 #     sss
 
-# 计算节点
-# 节点一加入，生成与现有节点的通信速率，
-class Node:
-    #数据库容器
-    # databases
-    # #函数容器
-    # functions
-    # #serverless总控节点
-    # serverless_controller
-    #资源限制：cpu, mem
-    rsc_limit={
-        "cpu":10, #单位时间运算量
-        "mem":10 #内存容量
-    }
-
-# # class Node2NodeGraph:
-# #     # 节点到节点的网速
-
-
-
-class SimEnv:
-    # node集合，node与node间的关系图
-    nodes=[]
-    # # 单位时间段
-    # periods
-    # 节点间网速图
-    node2node_graph=np.zeros((0,0),float)
-    # # 所有请求的记录
-    # requests_record
-
-
-    def set_speed_btwn(self,n1:int,n2:int,speed:float):
-        assert(n1!=n2)
-        def _set_speed_btwn(self:SimEnv,nbig:int,nsmall:int,speed:float):
-            self.node2node_graph[nbig][nsmall]=speed
-        if n1>n2:
-            _set_speed_btwn(self,n1,n2,speed)
-        else:
-            _set_speed_btwn(self,n2,n1,speed)
-    
-    def get_speed_btwn(self,n1:int,n2:int):
-        def _get_speed_btwn(nbig:int,nsmall:int):
-            return self.node2node_graph[nbig][nsmall]
-        if n1>n2:
-            return _get_speed_btwn(n1,n2)
-        else:
-            return _get_speed_btwn(n2,n1)
-
-    def init(self):
-        def _init_one_node(self:SimEnv):
-            node=Node()
-
-            self.nodes.append(node)
-            nodecnt=len(self.nodes)
-            # self.node2node_graph.resize((nodecnt,nodecnt)) 
-            # print(self.node2node_graph)
-            for i in range(nodecnt-1):
-                self.set_speed_btwn(i, nodecnt-1, 1)
-            print(self.node2node_graph)
-
-        dim=10
-        self.node2node_graph=np.zeros((dim,dim),float)
-        for i in range(dim):
-            _init_one_node(self)
-
-simenv=SimEnv()
+simenv=sim_simenv.SimEnv()
 simenv.init()
-print(simenv.node2node_graph)
+# simenv.start_one_simu()
+simenv.step(0)
