@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 rand = "0.8.5"
 daggy = "0.8.0"
+serde = "1.0.178"
+lazy_static = "1.4.0"
