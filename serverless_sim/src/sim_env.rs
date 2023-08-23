@@ -1,65 +1,84 @@
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap, HashSet},
+};
 
 use crate::{
-    fn_dag::{FnContainer, FnDAG, FnId, Func, SimEnvFnOps},
-    node::{Node, NodeId, SimEnvNodeOps},
-    request::{ReqId, Request, SimEnvRequestOps},
-    SPEED_SIMILAR_THRESHOLD,
+    actions::Action,
+    fn_dag::{FnDAG, FnId, Func},
+    node::{Node, NodeId},
+    parse_arg,
+    request::{ReqId, Request},
+    sim_scale_executor::DefaultScaleExecutor,
+    sim_scale_from_zero::{
+        DirectlyScaleFromZero, LazyScaleFromZero, ScaleFromZero, ScaleFromZeroImpl,
+        ScaleFromZeroType,
+    },
+    sim_scaler::{ScaleArg, Scaler, ScalerImpl, ScalerType},
+    sim_scaler_ai::AIScaler,
+    sim_scaler_hpa::HpaScaler,
 };
 
 pub struct SimEnv {
-    pub nodes: Vec<Node>,
+    pub nodes: RefCell<Vec<Node>>,
 
     // 节点间网速图
-    pub node2node_graph: Vec<Vec<f32>>,
+    pub node2node_graph: RefCell<Vec<Vec<f32>>>,
 
     // databases=[]
 
     // # dag应用
-    pub dags: Vec<FnDAG>,
+    pub dags: RefCell<Vec<FnDAG>>,
 
-    pub fn_next_id: FnId,
+    pub fn_next_id: RefCell<FnId>,
 
-    pub fn_2_nodes: HashMap<FnId, HashSet<NodeId>>,
+    pub fn_2_nodes: RefCell<HashMap<FnId, HashSet<NodeId>>>,
 
-    pub fns: Vec<Func>,
+    pub fns: RefCell<Vec<Func>>,
 
-    pub current_frame: usize,
+    pub current_frame: RefCell<usize>,
 
-    pub requests: BTreeMap<ReqId, Request>,
+    pub requests: RefCell<BTreeMap<ReqId, Request>>,
 
-    pub req_next_id: ReqId,
+    pub done_requests: RefCell<Vec<Request>>,
+
+    pub req_next_id: RefCell<ReqId>,
+
+    pub cost: RefCell<f32>,
+
+    pub scale_executor: RefCell<DefaultScaleExecutor>,
+
+    pub scaler: RefCell<ScalerImpl>,
 }
 
 impl SimEnv {
     pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            node2node_graph: Vec::new(),
-            dags: Vec::new(),
-            fn_next_id: 0,
-            current_frame: 0,
-            fn_2_nodes: HashMap::new(),
-            fns: Vec::new(),
-            req_next_id: 0,
-            requests: BTreeMap::new(),
-        }
+        let args = parse_arg::get_arg();
+        let newenv = Self {
+            nodes: RefCell::new(Vec::new()),
+            node2node_graph: RefCell::new(Vec::new()),
+            dags: RefCell::new(Vec::new()),
+            fn_next_id: RefCell::new(0),
+            current_frame: RefCell::new(0),
+            fn_2_nodes: RefCell::new(HashMap::new()),
+            fns: RefCell::new(Vec::new()),
+            req_next_id: RefCell::new(0),
+            requests: RefCell::new(BTreeMap::new()),
+            done_requests: RefCell::new(Vec::new()),
+            cost: RefCell::new(0.00000001),
+            scale_executor: RefCell::new(DefaultScaleExecutor),
+            scaler: RefCell::new(match args.scaler {
+                ScalerType::AiScaler => AIScaler.into(),
+                ScalerType::HpaScaler => HpaScaler::new().into(),
+            }),
+        };
+
+        newenv.init();
+        newenv
     }
 
-    pub fn node_ops(&mut self) -> SimEnvNodeOps {
-        SimEnvNodeOps { env: self }
-    }
-
-    pub fn fn_ops(&mut self) -> SimEnvFnOps {
-        SimEnvFnOps { env: self }
-    }
-
-    pub fn request_ops(&mut self) -> SimEnvRequestOps {
-        SimEnvRequestOps { env: self }
-    }
-
-    pub fn init(&mut self) {
-        self.node_ops().init_node_graph();
+    fn init(&self) {
+        self.node_init_node_graph();
         // # # init databases
         // # databases_cnt=5
         // # for i in range(databases_cnt):
@@ -74,7 +93,11 @@ impl SimEnv {
         // #     self.databases.append(db)
 
         // # init dags
-        self.fn_ops().gen_fn_dags();
+        self.fn_gen_fn_dags();
+    }
+
+    pub fn current_frame(&self) -> usize {
+        *self.current_frame.borrow()
     }
 
     // pub fn find_the_most_idle_node(&self) -> NodeId {
@@ -86,7 +109,7 @@ impl SimEnv {
     // }
 
     // pub fn schedule_req_plan_after_expand(
-    //     &mut self,
+    //     &self,
     //     cur_fn: FnId,
     //     expand_node: NodeId,
     //     mut req_plan: RequestPlan,
@@ -95,7 +118,7 @@ impl SimEnv {
     //     req_plan.fn_node.insert(cur_fn, expand_node);
     // }
     /// 继续确定当前请求应该放到哪些节点上
-    // pub fn scale_and_schedule(&mut self, action: Action, mut req_plan: RequestPlan) {
+    // pub fn scale_and_schedule(&self, action: Action, mut req_plan: RequestPlan) {
     //     if let Some(next) = req_plan.fn_dag_walker.next(&self.dags[req_plan.dag_i].dag) {
     //         let fn_to_plan: FnId = self.dags[req_plan.dag_i].dag[next];
     //         match action {
@@ -122,7 +145,7 @@ impl SimEnv {
     //     }
     // }
 
-    // fn exe_fn_one_step(&mut self, fn_node_id: NodeId, fn_id: FnId) {
+    // fn exe_fn_one_step(&self, fn_node_id: NodeId, fn_id: FnId) {
     //     let fn_node = &self.nodes[fn_node_id];
 
     //     for c in &fn_node.fn_containers {
@@ -183,7 +206,7 @@ impl SimEnv {
     //         );
     // }
 
-    // pub fn exe_sim(&mut self) {
+    // pub fn exe_sim(&self) {
     //     // 遍历每一个请求，将每个请求，当前可以执行，但是未分配到fn container执行的fn分配到fn container
     //     for running in &self.executing_requsts {
     //         let mut walker = Topo::new(&self.dags[running.dag_i].dag);
@@ -209,12 +232,72 @@ impl SimEnv {
     //     }
     // }
 
-    pub fn step(&mut self, action: Action) {
-        //没有正在调度的请求了，分配一个正在调度的请求
-        self.request_ops().sim_gen_requests();
+    pub fn step(&self, action: Action) -> (f32, String) {
+        self.on_frame_begin();
 
-        self.scale();
+        //没有正在调度的请求了，分配一个正在调度的请求
+        self.req_sim_gen_requests();
+
+        match parse_arg::get_arg().scale_from_zero {
+            ScaleFromZeroType::LazyScaleFromZero => LazyScaleFromZero.scale_some(self),
+            ScaleFromZeroType::DirectlyScaleFromZero => LazyScaleFromZero.scale_some(self),
+        }
 
         self.schedule_fn();
+
+        match parse_arg::get_arg().scaler {
+            ScalerType::AiScaler => self
+                .scaler
+                .borrow_mut()
+                .scale(self, ScaleArg::AIScaler(action)),
+            ScalerType::HpaScaler => self.scaler.borrow_mut().scale(self, ScaleArg::HPAScaler),
+        }
+
+        let ret = (self.score(), self.state_str());
+
+        log::info!("score: {} frame:{}", ret.0, self.current_frame());
+
+        self.on_frame_end();
+
+        ret
+    }
+
+    fn on_frame_begin(&self) {
+        for n in self.nodes.borrow_mut().iter_mut() {
+            n.cpu = 0.0;
+            n.mem = n
+                .fn_containers
+                .iter()
+                .map(|(_, c)| c.calc_mem_used(self))
+                .sum();
+
+            //有些变为运行状态 内存占用变大很正常
+            assert!(
+                n.mem <= n.rsc_limit.mem,
+                "mem {} > limit {}",
+                n.mem,
+                n.rsc_limit.mem
+            );
+        }
+    }
+
+    fn on_frame_end(&self) {
+        for (_req_i, req) in self.requests.borrow_mut().iter_mut() {
+            req.cur_frame_done.clear();
+        }
+
+        for n in self.nodes.borrow_mut().iter_mut() {
+            for (_, c) in n.fn_containers.iter_mut() {
+                if c.this_frame_used {
+                    c.this_frame_used = false;
+                    c.used_times += 1;
+                }
+            }
+            let mut cost = self.cost.borrow_mut();
+            *cost += n.cpu * 0.00001 + n.mem * 0.00001;
+        }
+        // 自增 frame
+        let mut cur_frame = self.current_frame.borrow_mut();
+        *cur_frame += 1;
     }
 }

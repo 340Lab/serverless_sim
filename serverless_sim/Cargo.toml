@@ -8,5 +8,13 @@ edition = "2021"
 [dependencies]
 rand = "0.8.5"
 daggy = "0.8.0"
-serde = "1.0.178"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.104"
 lazy_static = "1.4.0"
+tokio = { version = "1", features = ["full"] }
+axum = "0.6.19"
+env_logger = "0.9.3"
+log = "0.4.11"
+figlet-rs = "0.1.5"
+clap = { version = "4", features = ["derive"] }
+enum_dispatch = "0.3.12"
