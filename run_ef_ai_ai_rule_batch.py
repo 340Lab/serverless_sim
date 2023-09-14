@@ -17,7 +17,7 @@ def create_subprocess(command):
             shell=True,
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE,
-            cwd="./serverless_sim",
+            # cwd="",
             )
         output, error = process.communicate()
         output = output.decode("utf-8")
@@ -40,17 +40,23 @@ def create_subprocess(command):
 # output, error = create_subprocess(command)
 # print(output)
 # print(error)
-def start_hpa_simu():
-    create_subprocess("cargo run hpa-scaler lazy-scale-from-zero 2>&1 | tee log")
+# def start_hpa_simu():
+#     create_subprocess("cargo run hpa-scaler lazy-scale-from-zero 2>&1 | tee log")
 
-thread1 = threading.Thread(target=start_hpa_simu)
-thread1.start()
+# thread1 = threading.Thread(target=start_hpa_simu)
+# thread1.start()
 
-time.sleep(5)
+# time.sleep(5)
 
-env=ProxyEnv()
-env.reset()
+# env=ProxyEnv()
 
-for i in range(10000):
-    state,score,stop,info=env.step(1)
-    print(state,score,stop,info)
+for j in range(10000):
+    print("iter",j)
+    create_subprocess("python -m run_ef_ai_ai_rule")
+    # for i in range(2000):
+    #     # if i%100==0:
+    #     #     time.sleep(0.1)
+    #     state,score,stop,info=env.step(1)
+    #     print(state,score,stop,info)
+
+    # env.reset()

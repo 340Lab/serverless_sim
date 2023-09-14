@@ -1,40 +1,52 @@
-use crate::{
-    actions::Action,
-    sim_env::SimEnv,
-    sim_scale_executor::{ScaleExecutor, ScaleOption},
-    sim_scaler::{ScaleArg, Scaler},
-};
+// use crate::{
+//     actions::{ Action, AdjustThres },
+//     sim_env::SimEnv,
+//     sim_scaler::{ ScaleArg, Scaler },
+//     // sim_scaler_lass::LassScaler,
+// };
 
-pub struct AIScaler;
+// pub struct AIScaler {
+//     pub lass_scaler: LassScaler,
+// }
 
-impl Scaler for AIScaler {
-    fn scale(&mut self, sim_env: &SimEnv, arg: ScaleArg) {
-        let action = match arg {
-            ScaleArg::AIScaler(action) => action,
-            _ => panic!("not match"),
-        };
-        match action {
-            Action::ScaleUpWithoutElem => {
-                if let Some((_req, fnid, _gid)) = sim_env.get_request_first_unscheduled_fn() {
-                    sim_env
-                        .scale_executor
-                        .borrow_mut()
-                        .scale_up(sim_env, fnid, 1);
-                }
-            }
-            Action::ScaleUpWithElem => {
-                if let Some((_req, fnid, _gid)) = sim_env.get_request_first_unscheduled_fn() {
-                    sim_env
-                        .scale_executor
-                        .borrow_mut()
-                        .scale_up(sim_env, fnid, 1);
-                }
-            }
-            Action::ProactiveScaleDown => sim_env
-                .scale_executor
-                .borrow_mut()
-                .scale_down(sim_env, ScaleOption::new()),
-            Action::DoNothing => {}
-        }
-    }
-}
+// impl AIScaler {
+//     pub fn new() -> Self {
+//         Self { lass_scaler: LassScaler::new() }
+//     }
+
+//     fn apply_adjust(&mut self, adj: AdjustThres) {
+//         match adj {
+//             AdjustThres::Up => {
+//                 self.lass_scaler.latency_required += 0.1;
+//             }
+//             AdjustThres::DOwn => {
+//                 self.lass_scaler.latency_required -= 0.1;
+//             }
+//             AdjustThres::Keep => {}
+//         }
+//     }
+// }
+// impl Scaler for AIScaler {
+//     fn scale(&mut self, sim_env: &SimEnv, arg: ScaleArg) {
+//         let action = match arg {
+//             ScaleArg::AIScaler(action) => action,
+//             _ => panic!("not match"),
+//         };
+
+//         match action {
+//             Action::ScaleUp(adjust) => {
+//                 self.apply_adjust(adjust);
+//                 self.lass_scaler.scale(sim_env, ScaleArg::LassScaler(Action::ScaleUp(adjust)));
+//             }
+//             Action::ScaleDown(adjust) => {
+//                 self.apply_adjust(adjust);
+//                 self.lass_scaler.scale(sim_env, ScaleArg::LassScaler(Action::ScaleDown(adjust)));
+//             }
+//             Action::DoNothing => {}
+//             Action::AllowAll(adjust) => {
+//                 self.apply_adjust(adjust);
+//                 self.lass_scaler.scale(sim_env, ScaleArg::LassScaler(Action::AllowAll(adjust)));
+//             }
+//         }
+//     }
+// }

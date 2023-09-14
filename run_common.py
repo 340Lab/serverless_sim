@@ -40,21 +40,24 @@ def create_subprocess(command):
 # output, error = create_subprocess(command)
 # print(output)
 # print(error)
-def start_hpa_simu():
-    create_subprocess("cargo run ai-scaler lazy-scale-from-zero 2>&1 | tee log")
+# def start_hpa_simu():
+#     create_subprocess("cargo run hpa-scaler lazy-scale-from-zero 2>&1 | tee log")
 
-def test():
-    env=ProxyEnv()
-    for j in range(100):
-        env.reset()
-        for i in range(10000):
-            state,score,stop,info=env.step(1)
-            print(state,score,stop,info)
+# thread1 = threading.Thread(target=start_hpa_simu)
+# thread1.start()
 
-thread1 = threading.Thread(target=start_hpa_simu)
-thread1.start()
+# time.sleep(5)
 
-time.sleep(5)
-
-test()
+env=ProxyEnv({
     
+})
+
+for j in range(3):
+
+    for i in range(2000):
+        # if i%100==0:
+        #     time.sleep(0.1)
+        state,score,stop,info=env.step(1)
+        print(state,score,stop,info)
+
+    env.reset()

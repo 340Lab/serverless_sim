@@ -1,2 +1,12 @@
 serverless
 __pycache__
+checkpoints
+logs
+mat
+deep_rl_zoo
+exprun*
+runs
+multiagent
+adaptive_trans
+adaptive-transformers-in-rl-master.zip
+log

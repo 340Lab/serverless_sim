@@ -1,4 +1,0 @@
-# Run HPA simulation
-python3 -m test_hpa
-
-# Run RL simulation

@@ -1,28 +1,67 @@
 use std::collections::HashSet;
 
 use clap::ValueEnum;
-use daggy::NodeIndex;
+use enum_as_inner::EnumAsInner;
 use enum_dispatch::enum_dispatch;
 
 use crate::{
     actions::Action,
-    fn_dag::{FnContainer, FnContainerState, FnId},
-    node::{Node, NodeId},
-    request::ReqId,
+    fn_dag::{ FnContainer, FnContainerState, FnId },
+    node::{ NodeId },
     sim_env::SimEnv,
-    sim_scaler_ai::AIScaler,
+    // sim_scaler_ai::AIScaler,
     sim_scaler_hpa::HpaScaler,
 };
 
+#[allow(dead_code)]
 pub enum ScaleArg {
     AIScaler(Action),
     HPAScaler,
+    LassScaler(Action),
+    AIEFScaler(Action),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+impl ScaleArg {
+    pub fn lass_down(&self) -> bool {
+        match self {
+            ScaleArg::LassScaler(act) => {
+                match act {
+                    Action::ScaleDown(_) => true,
+                    Action::AllowAll(_) => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+    pub fn lass_up(&self) -> bool {
+        match self {
+            ScaleArg::LassScaler(act) => {
+                match act {
+                    Action::ScaleUp(_) => true,
+                    Action::AllowAll(_) => true,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, EnumAsInner)]
 pub enum ScalerType {
-    AiScaler,
+    // AiScaler,
     HpaScaler,
+    // LassScaler,
+    AiEFScaler,
+}
+impl ScalerType {
+    pub fn is_aief_scaler(&self) -> bool {
+        match self {
+            ScalerType::AiEFScaler => true,
+            _ => false,
+        }
+    }
 }
 
 #[enum_dispatch]
@@ -32,8 +71,9 @@ pub trait Scaler {
 
 #[enum_dispatch(Scaler)]
 pub enum ScalerImpl {
-    AIScaler(AIScaler),
+    // AIScaler(AIScaler),
     HpaScaler(HpaScaler),
+    // LassScaler(LassScaler),
 }
 
 impl SimEnv {
@@ -66,22 +106,15 @@ impl SimEnv {
     // }
 
     pub fn set_scale_down_result(&self, fnid: FnId, nodeid: NodeId) {
-        log::info!("scale down fn {fnid} from node {nodeid}");
-        let cont = self.nodes.borrow_mut()[nodeid]
-            .fn_containers
-            .remove(&fnid)
-            .unwrap();
-        self.fn_2_nodes
-            .borrow_mut()
-            .get_mut(&fnid)
-            .unwrap()
-            .remove(&nodeid);
+        // log::info!("scale down fn {fnid} from node {nodeid}");
+        let cont = self.nodes.borrow_mut()[nodeid].fn_containers.remove(&fnid).unwrap();
+        self.fn_2_nodes.borrow_mut().get_mut(&fnid).unwrap().remove(&nodeid);
         match cont.state() {
             FnContainerState::Starting { .. } => {
-                self.node_mut(nodeid).mem -= self.func(fnid).cold_start_container_mem_use
+                self.node_mut(nodeid).mem -= self.func(fnid).cold_start_container_mem_use;
             }
             FnContainerState::Running => {
-                self.node_mut(nodeid).mem -= self.func(fnid).container_mem()
+                self.node_mut(nodeid).mem -= self.func(fnid).container_mem();
             }
         }
     }
@@ -111,7 +144,7 @@ impl SimEnv {
     // }
 
     pub fn set_scale_up_result(&self, fn_id: FnId, node_id: NodeId) {
-        log::info!("expand fn: {fn_id} to node: {node_id}");
+        // log::info!("expand fn: {fn_id} to node: {node_id}");
         // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
         self.fn_2_nodes
             .borrow_mut()
@@ -125,28 +158,28 @@ impl SimEnv {
                 set
             });
 
-        self.nodes.borrow_mut()[node_id]
-            .fn_containers
-            .entry(fn_id)
+        self.nodes
+            .borrow_mut()
+            [node_id].fn_containers.entry(fn_id)
             .and_modify(|_| panic!("fn container already exists"))
             .or_insert(FnContainer::new(fn_id, self));
 
         self.nodes.borrow_mut()[node_id].mem += self.func(fn_id).cold_start_container_mem_use;
     }
 
-    pub fn get_request_first_unscheduled_fn(&self) -> Option<(ReqId, FnId, NodeIndex)> {
-        // 1. 从请求队列中拿到一个请求
-        let env_reqs = self.requests.borrow();
-        let mut iter = env_reqs.iter();
-        while let Some((req_id, req)) = iter.next() {
-            // 2. 从请求中拿到一个fn
-            if let Some((fn_id, fngid)) = req.fn_2_bind_node() {
-                return Some((*req_id, fn_id, fngid));
-            }
-        }
+    // pub fn get_request_first_unscheduled_fn(&self) -> Option<(ReqId, FnId, NodeIndex)> {
+    //     // 1. 从请求队列中拿到一个请求
+    //     let env_reqs = self.requests.borrow();
+    //     let mut iter = env_reqs.iter();
+    //     while let Some((req_id, req)) = iter.next() {
+    //         // 2. 从请求中拿到一个fn
+    //         if let Some((fn_id, fngid)) = req.fn_2_bind_node() {
+    //             return Some((*req_id, fn_id, fngid));
+    //         }
+    //     }
 
-        None
-    }
+    //     None
+    // }
 
     // fn expand_random(&self) {}
 

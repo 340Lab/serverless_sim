@@ -1,18 +1,13 @@
-use std::{
-    cell::RefMut,
-    collections::{HashMap, HashSet},
-};
+use std::{ cell::RefMut, collections::{ HashMap, HashSet } };
 
-use daggy::{
-    petgraph::visit::{Topo, Visitable},
-    NodeIndex,
-};
+use daggy::{ petgraph::visit::{ Topo } };
 
 use crate::{
-    fn_dag::{DagId, FnDagInner, FnId},
+    fn_dag::{ DagId, FnId },
     node::NodeId,
     sim_env::SimEnv,
-    util, REQUEST_GEN_FRAME_INTERVAL,
+    util,
+    REQUEST_GEN_FRAME_INTERVAL,
 };
 
 pub type ReqId = usize;
@@ -50,9 +45,9 @@ pub struct Request {
 
     pub end_frame: usize,
 
-    fn_dag_walker: Topo<NodeIndex, <FnDagInner as Visitable>::Map>,
+    // fn_dag_walker: Topo<NodeIndex, <FnDagInner as Visitable>::Map>,
 
-    current_fn: Option<(FnId, NodeIndex)>,
+    // current_fn: Option<(FnId, NodeIndex)>,
 
     pub walk_cnt: usize,
 }
@@ -68,33 +63,43 @@ impl Request {
     //     }
     // }
     pub fn new(env: &SimEnv, dag_i: DagId, begin_frame: usize) -> Self {
-        let mut new = Self {
+        let new = Self {
             req_id: env.req_alloc_req_id(),
             dag_i,
             fn_node: HashMap::new(),
             done_fns: HashSet::new(),
-            fn_dag_walker: Topo::new(&env.dags.borrow()[dag_i].dag),
-            current_fn: None,
+            // fn_dag_walker: Topo::new(&env.dags.borrow()[dag_i].dag),
+            // current_fn: None,
             begin_frame,
             end_frame: 0,
             cur_frame_done: HashSet::new(),
             walk_cnt: 0,
         };
-        new.prepare_next_fn_2_bind_node(&env.dags.borrow()[dag_i].dag);
-        {
-            log::info!("req{} dag{dag_i} has following fns", new.req_id);
-            print!("   ");
-            new.print_fns(env);
-        }
+        // new.prepare_next_fn_2_bind_node(&env.dags.borrow()[dag_i].dag);
+        // {
+        //     log::info!("req{} dag{dag_i} has following fns", new.req_id);
+        //     print!("   ");
+        //     new.print_fns(env);
+        // }
         new
+    }
+
+    pub fn parents_all_done(&self, env: &SimEnv, fnid: FnId) -> bool {
+        let ps = env.func(fnid).parent_fns(env);
+        for p in &ps {
+            if !self.done_fns.contains(p) {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn print_fns(&self, env: &SimEnv) {
         let dag_i = self.dag_i;
-        let mut iter = Topo::new(&env.dags.borrow()[dag_i].dag);
+        let mut iter = Topo::new(&env.dags.borrow()[dag_i].dag_inner);
 
-        while let Some(next) = iter.next(&env.dags.borrow()[dag_i].dag) {
-            let fnid = &env.dags.borrow()[dag_i].dag[next];
+        while let Some(next) = iter.next(&env.dags.borrow()[dag_i].dag_inner) {
+            let fnid = &env.dags.borrow()[dag_i].dag_inner[next];
             print!("{} ", fnid);
         }
         println!();
@@ -104,20 +109,21 @@ impl Request {
         self.fn_node.get(&fnid).map(|v| *v)
     }
 
-    pub fn prepare_next_fn_2_bind_node(&mut self, g: &FnDagInner) -> Option<(FnId, NodeIndex)> {
-        let res = self.fn_dag_walker.next(g);
-        let res = res.map(|i| (g[i], i));
-        self.current_fn = res;
-        self.walk_cnt += 1;
-        res
-    }
+    // pub fn prepare_next_fn_2_bind_node(&mut self, g: &FnDagInner) -> Option<(FnId, NodeIndex)> {
+    //     let res = self.fn_dag_walker.next(g);
+    //     let res = res.map(|i| (g[i], i));
+    //     self.current_fn = res;
+    //     self.walk_cnt += 1;
+    //     res
+    // }
 
-    pub fn fn_2_bind_node(&self) -> Option<(FnId, NodeIndex)> {
-        self.current_fn
-    }
+    // #[allow(dead_code)]
+    // pub fn fn_2_bind_node(&self) -> Option<(FnId, NodeIndex)> {
+    //     self.current_fn
+    // }
 
     pub fn fn_done(&mut self, env: &SimEnv, fnid: FnId, current_frame: usize) {
-        log::info!("request {} fn {} done", self.req_id, fnid);
+        // log::info!("request {} fn {} done", self.req_id, fnid);
         self.done_fns.insert(fnid);
         self.cur_frame_done.insert(fnid);
         if self.is_done(env) {
@@ -125,7 +131,7 @@ impl Request {
         }
     }
     pub fn fn_count(&self, env: &SimEnv) -> usize {
-        env.dags.borrow()[self.dag_i].dag.node_count()
+        env.dags.borrow()[self.dag_i].dag_inner.node_count()
     }
     pub fn is_done(&self, env: &SimEnv) -> bool {
         self.done_fns.len() == self.fn_count(env)
@@ -143,7 +149,7 @@ impl SimEnv {
     pub fn req_sim_gen_requests(&self) {
         let env = self;
         if *env.current_frame.borrow() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let req_cnt = util::rand_i(2, env.dags.borrow().len());
+            let req_cnt = util::rand_i(2, 60 * env.dags.borrow().len());
 
             for _ in 0..req_cnt {
                 let dag_i = util::rand_i(0, env.dags.borrow().len() - 1);

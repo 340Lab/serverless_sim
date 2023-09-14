@@ -1,7 +1,7 @@
 import subprocess 
 import threading
 import time
-from proxy_env import ProxyEnv
+from proxy_env2 import ProxyEnv2
 # 执行命令并返回输出
 def run_command(command):
     try:
@@ -40,21 +40,30 @@ def create_subprocess(command):
 # output, error = create_subprocess(command)
 # print(output)
 # print(error)
-def start_hpa_simu():
-    create_subprocess("cargo run ai-scaler lazy-scale-from-zero 2>&1 | tee log")
+# def start_hpa_simu():
+#     create_subprocess("cargo run hpa-scaler lazy-scale-from-zero 2>&1 | tee log")
 
-def test():
-    env=ProxyEnv()
-    for j in range(100):
-        env.reset()
-        for i in range(10000):
-            state,score,stop,info=env.step(1)
-            print(state,score,stop,info)
+# thread1 = threading.Thread(target=start_hpa_simu)
+# thread1.start()
 
-thread1 = threading.Thread(target=start_hpa_simu)
-thread1.start()
+# time.sleep(5)
 
-time.sleep(5)
 
-test()
-    
+env=ProxyEnv2({
+    "plan":"aief",
+    "aief":{
+        "up":"faasflow",
+        "down":"faasflow",
+        "sche":"faasflow",
+    }
+})
+
+env.reset()
+
+for i in range(1):
+    state,score,stop,info=env.step(1)
+    print(state,score,stop,info)
+
+#save record
+env.reset()
+
