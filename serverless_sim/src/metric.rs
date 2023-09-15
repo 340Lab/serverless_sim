@@ -1,8 +1,6 @@
 use crate::{
     // parse_arg,
     sim_env::SimEnv,
-    sim_scale_from_zero::ScaleFromZeroType,
-    sim_scaler::ScalerType,
 };
 use chrono;
 use serde::{ Deserialize, Serialize };
@@ -118,6 +116,8 @@ impl Records {
             log::info!("flush to target key: {}", self.record_name);
             let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
             file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
+
+            // 计算几个关键指标，输出到对应seed的文件中
         }
     }
 }

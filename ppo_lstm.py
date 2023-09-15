@@ -104,10 +104,10 @@ class PPO(nn.Module):
 def main():
     # env = gym.make('CartPole-v1')
     env=ProxyEnv2({
-        # /// "ai", "lass", "hpa", "aief"
-        "plan": "aief",
+        # /// "ai", "lass", "hpa", "es"
+        "plan": "es",
         # // optional
-        "aief": {
+        "es": {
             # // ai, lass, hpa
             "up": "ai",
             # // no, ai, rule

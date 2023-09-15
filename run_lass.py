@@ -50,12 +50,16 @@ def create_subprocess(command):
 
 
 env=ProxyEnv2({
-    "plan":"aief",
-    "aief":{
+    "rand_seed":"hello",
+    "request_freq":"middle",
+    "dag_type":"single",
+    "cold_start":"high",
+    "fn_type":"cpu",
+    "es": {
         "up":"lass",
         "down":"lass",
         "sche":"rule",
-    }
+    },    
 })
 
 env.reset()

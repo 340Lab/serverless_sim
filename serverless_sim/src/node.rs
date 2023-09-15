@@ -103,7 +103,7 @@ impl SimEnv {
             let nodecnt: usize = env.nodes.borrow().len();
 
             for i in 0..nodecnt - 1 {
-                let randspeed = util::rand_f(8000.0, 10000.0);
+                let randspeed = env.util_rand_f(8000.0, 10000.0);
                 env.node_set_speed_btwn(i, nodecnt - 1, randspeed);
             }
         }

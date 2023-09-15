@@ -11,6 +11,10 @@ maturin develop
 ## CUDA
 https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
 
+## Some Abbreviations
+
+ES: each stage, the main stages are frame_begin, scale, schedule, sim_compute, analyze, frame_end.
+
 # Start sim server
 cd serverless_sim
 ```

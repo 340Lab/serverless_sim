@@ -34,10 +34,10 @@ class ProxyEnv2:
     
     # according to network config
     config={
-        # /// "ai", "lass", "hpa", "aief"
+        # /// "ai", "lass", "hpa", "es"
         "plan": "",
         # // optional
-        "aief": {
+        "es": {
             # // ai, lass, hpa
             "up": "ai",
             # // no, ai, rule
@@ -47,12 +47,12 @@ class ProxyEnv2:
         },
     }
     def typekey(self):
-        if "aief" in self.config:
-            return self.config["plan"]+"_"+self.config["aief"]["up"]+"_"+self.config["aief"]["down"]+"_"+self.config["aief"]["sche"]
+        if "es" in self.config:
+            return self.config["plan"]+"_"+self.config["es"]["up"]+"_"+self.config["es"]["down"]+"_"+self.config["es"]["sche"]
         return self.config["plan"]
 
     def __init__(self,config):
-        allowed_plans=["hpa","aief"]
+        allowed_plans=["hpa","es"]
         allowed_up=["ai","lass","fnsche","hpa","faasflow"]
         allowed_down=["ai","lass","fnsche","hpa","faasflow"]
         allowed_sche=["rule","fnsche","faasflow"]
@@ -60,14 +60,14 @@ class ProxyEnv2:
         scale_sche_must_same=["fnsche","faasflow"]
 
         assert config["plan"] in allowed_plans
-        if "aief" in config:
-            assert config["aief"]["up"] in allowed_up
-            assert config["aief"]["down"] in allowed_down
-            assert config["aief"]["sche"] in allowed_sche
-            if config["aief"]["up"] in up_down_must_same:
-                assert config["aief"]["up"]==config["aief"]["down"]
-            if config["aief"]["sche"] in scale_sche_must_same:
-                assert config["aief"]["sche"]==config["aief"]["up"]
+        if "es" in config:
+            assert config["es"]["up"] in allowed_up
+            assert config["es"]["down"] in allowed_down
+            assert config["es"]["sche"] in allowed_sche
+            if config["es"]["up"] in up_down_must_same:
+                assert config["es"]["up"]==config["es"]["down"]
+            if config["es"]["sche"] in scale_sche_must_same:
+                assert config["es"]["sche"]==config["es"]["up"]
         self.config=config
 
     def __request(self,api,data=None):

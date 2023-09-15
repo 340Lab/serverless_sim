@@ -3,14 +3,17 @@ use std::{ collections::{ HashMap, HashSet } };
 use priority_queue::PriorityQueue;
 use rand::Rng;
 
-pub fn rand_f(begin: f32, end: f32) -> f32 {
-    let a = rand::thread_rng().gen_range(begin..end);
-    a
-}
-pub fn rand_i(begin: usize, end: usize) -> usize {
-    let a = rand::thread_rng().gen_range(begin..end);
-    a
-}
+use crate::sim_env::SimEnv;
+// use rand::Rng;
+
+// pub fn rand_f(begin: f32, end: f32) -> f32 {
+//     let a = rand::thread_rng().gen_range(begin..end);
+//     a
+// }
+// pub fn rand_i(begin: usize, end: usize) -> usize {
+//     let a = rand::thread_rng().gen_range(begin..end);
+//     a
+// }
 
 pub fn to_range(r: f32, begin: usize, end: usize) -> usize {
     let mut v: usize = unsafe { ((begin as f32) + ((end - begin) as f32) * r).to_int_unchecked() };
@@ -47,7 +50,7 @@ impl Ord for OrdF32 {
 }
 
 pub mod graph {
-    use daggy::{ Dag, NodeIndex, petgraph::visit::{ Topo, Visitable }, Walker, EdgeIndex };
+    use daggy::{ Dag, NodeIndex, petgraph::visit::{ Topo, Visitable }, Walker };
     use super::*;
 
     pub fn new_dag_walker<N, E>(dag: &Dag<N, E>) -> Topo<NodeIndex, <Dag<N, E> as Visitable>::Map> {
@@ -63,7 +66,7 @@ pub mod graph {
             let mut parents = dag.parents(node);
             while let Some((e, p)) = parents.walk_next(dag) {
                 // let p = nodes.entry(p).or_insert_with(|| inverse_dag.add_node(dag[p]));
-                inverse_dag.add_edge(node, p, dag.edge_weight(e).unwrap().clone());
+                inverse_dag.add_edge(node, p, dag.edge_weight(e).unwrap().clone()).unwrap();
             }
         }
         inverse_dag
@@ -182,11 +185,46 @@ impl DirectedGraph {
     }
 }
 
+impl SimEnv {
+    pub fn util_rand_i(&self, min: usize, max: usize) -> usize {
+        let mut rng = self.rander.borrow_mut();
+        rng.gen_range(min..max)
+    }
+    pub fn util_rand_f(&self, min: f32, max: f32) -> f32 {
+        let mut rng = self.rander.borrow_mut();
+        rng.gen_range(min..max)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
+    use crate::{ sim_env::SimEnv, config::{ Config, ESConfig } };
+
     use super::DirectedGraph;
+
+    #[test]
+    fn test_seeded_rand() {
+        let seed = "helloworld";
+        let config = Config {
+            rand_seed: seed.to_owned(),
+            request_freq: "low".to_owned(),
+            dag_type: "single".to_owned(),
+            cold_start: "high".to_owned(),
+            fn_type: "cpu".to_owned(),
+            es: ESConfig {
+                up: "hpa".to_owned(),
+                down: "hpa".to_owned(),
+                sche: "rule".to_owned(),
+            },
+        };
+        let sim1 = SimEnv::new(config.clone());
+        let sim2 = SimEnv::new(config.clone());
+        for _ in 0..1000 {
+            assert_eq!(sim1.util_rand_i(0, 100), sim2.util_rand_i(0, 100));
+        }
+    }
 
     #[test]
     fn test_digistra() {

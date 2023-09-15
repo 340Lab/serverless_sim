@@ -23,6 +23,7 @@ from absl import app
 from absl import flags
 from absl import logging
 import os
+import random
 
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
@@ -103,36 +104,11 @@ def main(argv):
 
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
-    # Create environment.
-    def environment_builder():
-        # return gym_env.create_atari_environment(
-        #     env_name=FLAGS.environment_name,
-        #     frame_height=FLAGS.environment_height,
-        #     frame_width=FLAGS.environment_width,
-        #     frame_skip=FLAGS.environment_frame_skip,
-        #     frame_stack=FLAGS.environment_frame_stack,
-        #     max_episode_steps=FLAGS.max_episode_steps,
-        #     seed=random_state.randint(1, 2**10),
-        #     noop_max=30,
-        #     terminal_on_life_loss=True,
-        # )
-        return ProxyEnv2({
-            # /// "ai", "lass", "hpa", "aief"
-            "plan": "aief",
-            # // optional
-            "aief": {
-                # // ai, lass, hpa
-                "up": "ai",
-                # // no, ai, rule
-                "down": "ai",
-                # // rule,ai
-                "sche": "rule",
-            },
-        })
+    
 
     # eval_env = environment_builder()
     # Create actor environments, runtime devices, and actor instances.
-    actor_envs = [environment_builder() for _ in range(FLAGS.num_actors)]
+    actor_envs = [Env() for _ in range(FLAGS.num_actors)]
 
     state_dim = actor_envs[0].observation_space.shape
     action_dim = actor_envs[0].action_space.n

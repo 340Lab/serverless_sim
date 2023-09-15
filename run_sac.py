@@ -23,6 +23,7 @@ from absl import app
 from absl import flags
 from absl import logging
 import os
+import random
 
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
@@ -41,7 +42,7 @@ from deep_rl_zoo import main_loop
 from deep_rl_zoo import gym_env
 from deep_rl_zoo import greedy_actors
 from deep_rl_zoo import replay as replay_lib
-
+# import proxy_env2
 from proxy_env2 import ProxyEnv2
 
 FLAGS = flags.FLAGS
@@ -81,7 +82,6 @@ flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
 flags.DEFINE_string('results_csv_path', './logs/sac_atari_results.csv', 'Path for CSV log file.')
 flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
-
 def main(argv):
     """Trains SAC agent on Atari."""
     del argv
@@ -97,29 +97,17 @@ def main(argv):
 
     # Create environment.
     def environment_builder():
-        # return gym_env.create_atari_environment(
-        #     env_name=FLAGS.environment_name,
-        #     frame_height=FLAGS.environment_height,
-        #     frame_width=FLAGS.environment_width,
-        #     frame_skip=FLAGS.environment_frame_skip,
-        #     frame_stack=FLAGS.environment_frame_stack,
-        #     max_episode_steps=FLAGS.max_episode_steps,
-        #     seed=random_state.randint(1, 2**10),
-        #     noop_max=30,
-        #     terminal_on_life_loss=True,
-        # )
-        return ProxyEnv2({
-            # /// "ai", "lass", "hpa", "aief"
-            "plan": "aief",
-            # // optional
-            "aief": {
-                # // ai, lass, hpa
-                "up": "ai",
-                # // no, ai, rule
-                "down": "ai",
-                # // rule,ai
-                "sche": "rule",
-            },
+        return ProxyEnv2(True,{
+            "rand_seed":"hello",
+            "request_freq":"middle",
+            "dag_type":"single",
+            "cold_start":"high",
+            "fn_type":"cpu",
+            "es": {
+                "up":"ai",
+                "down":"ai",
+                "sche":"rule",
+            },    
         })
 
     # eval_env = environment_builder()

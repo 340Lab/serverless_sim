@@ -4,27 +4,26 @@ use std::{
     time::{ SystemTime, UNIX_EPOCH, Duration },
 };
 
+use rand_pcg::Pcg64;
+use rand_seeder::Seeder;
+
 use crate::{
-    actions::{ Action, AdjustEachFnWatchWindow, RawAction, EFActionWrapper },
+    actions::{ ESActionWrapper },
     fn_dag::{ FnDAG, FnId, Func },
     metric::Records,
     node::{ Node, NodeId },
     // parse_arg,
     request::{ ReqId, Request },
-    sim_scale_executor::DefaultScaleExecutor,
-    sim_scale_from_zero::{ LazyScaleFromZero, ScaleFromZero },
-    sim_scaler::{ ScaleArg, Scaler, ScalerImpl, ScalerType },
-    sim_scaler_hpa::HpaScaler,
-    sim_ef::{ EFState, EFScalerImpl, self },
-    network::Config,
-    sim_schedule::SchedulerImpl,
-    sim_ef_faas_flow::FaasFlowScheduler,
-    sim_ef_lass::LassEFScaler,
-    sim_ef_fnsche::FnScheScaler,
+    scale_executor::DefaultScaleExecutor,
+    es::{ ESState, self, ESScaler },
+    schedule::{ Scheduler },
+    config::Config,
 };
 
 pub struct SimEnv {
     pub recent_use_time: Duration,
+
+    pub rander: RefCell<Pcg64>,
 
     pub config: Config,
 
@@ -56,22 +55,19 @@ pub struct SimEnv {
 
     pub scale_executor: RefCell<DefaultScaleExecutor>,
 
-    pub scaler: RefCell<ScalerImpl>,
-
     pub metric_record: RefCell<Records>,
 
     pub each_fn_watch_window: RefCell<usize>,
 
-    pub aief_state: Option<RefCell<EFState>>,
+    pub ef_state: RefCell<ESState>,
 
-    pub spec_scheduler: RefCell<Option<SchedulerImpl>>,
+    pub spec_scheduler: RefCell<Option<Box<dyn Scheduler + Send>>>,
 
-    pub spec_ef_scaler: RefCell<Option<EFScalerImpl>>,
+    pub spec_ef_scaler: RefCell<Option<Box<dyn ESScaler + Send>>>,
 }
 
 impl SimEnv {
     pub fn new(config: Config) -> Self {
-        let scaler_type = config.scaler_type();
         let start = SystemTime::now();
         let recent_use_time = start.duration_since(UNIX_EPOCH).unwrap();
 
@@ -89,22 +85,14 @@ impl SimEnv {
             done_requests: RefCell::new(Vec::new()),
             cost: RefCell::new(0.00000001),
             scale_executor: RefCell::new(DefaultScaleExecutor),
-            scaler: RefCell::new(match scaler_type {
-                // ScalerType::AiScaler => AIScaler::new().into(),
-                ScalerType::HpaScaler => HpaScaler::new().into(),
-                // ScalerType::LassScaler => LassScaler::new().into(),
-                ScalerType::AiEFScaler => HpaScaler::new().into(),
-            }),
             metric_record: Records::new(config.str()).into(),
             each_fn_watch_window: (20).into(),
-            aief_state: if scaler_type.is_ai_ef_scaler() {
-                Some(RefCell::new(EFState::new()))
-            } else {
-                None
-            },
+            ef_state: RefCell::new(ESState::new()),
             recent_use_time,
-            spec_scheduler: sim_ef::prepare_spec_scheduler(&config).into(),
-            spec_ef_scaler: sim_ef::prepare_spec_scaler(&config).into(),
+            spec_scheduler: es::prepare_spec_scheduler(&config).into(),
+            spec_ef_scaler: es::prepare_spec_scaler(&config).into(),
+            rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
+
             config,
         };
 
@@ -156,81 +144,7 @@ impl SimEnv {
     pub fn step(&mut self, raw_action: u32) -> (f32, String) {
         // update to current time
         self.avoid_gc();
-        if self.config.scaler_type().is_aief_scaler() {
-            // panic!("not support")
-            self.step_ef(EFActionWrapper::Int(raw_action))
-        } else {
-            self.step_common(
-                (raw_action / 3).try_into().unwrap(),
-                (raw_action % 3).try_into().unwrap()
-            )
-        }
-    }
-
-    fn step_common(
-        &self,
-        action: Action,
-        adjust_watch_window: AdjustEachFnWatchWindow
-    ) -> (f32, String) {
-        self.on_frame_begin();
-
-        //没有正在调度的请求了，分配一个正在调度的请求
-        self.req_sim_gen_requests();
-
-        match self.config.scaler_type() {
-            ScalerType::HpaScaler => {
-                // match parse_arg::get_arg().scale_from_zero {
-                //     ScaleFromZeroType::LazyScaleFromZero => LazyScaleFromZero.scale_some(self),
-                //     ScaleFromZeroType::DirectlyScaleFromZero => ,
-                // }
-                LazyScaleFromZero.scale_some(self);
-            }
-            // ScalerType::AiScaler => {
-            //     match adjust_watch_window {
-            //         AdjustEachFnWatchWindow::Up => {
-            //             if *self.each_fn_watch_window.borrow_mut() < 255 {
-            //                 *self.each_fn_watch_window.borrow_mut() += 1;
-            //             }
-            //         }
-            //         AdjustEachFnWatchWindow::Down => {
-            //             if *self.each_fn_watch_window.borrow_mut() > 4 {
-            //                 *self.each_fn_watch_window.borrow_mut() -= 1;
-            //             }
-            //         }
-            //         AdjustEachFnWatchWindow::Keep => {}
-            //     }
-            //     self.scaler.borrow_mut().scale(self, ScaleArg::AIScaler(action));
-            // }
-            // ScalerType::LassScaler =>
-            //     self.scaler
-            //         .borrow_mut()
-            //         .scale(
-            //             self,
-            //             ScaleArg::LassScaler(Action::AllowAll(crate::actions::AdjustThres::Keep))
-            //         ),
-            ScalerType::AiEFScaler => {}
-        }
-
-        self.schedule_fn();
-
-        match self.config.scaler_type() {
-            // ScalerType::AiScaler => {}
-            ScalerType::HpaScaler => self.scaler.borrow_mut().scale(self, ScaleArg::HPAScaler),
-            // ScalerType::LassScaler => {}
-            ScalerType::AiEFScaler => {
-                panic!();
-            }
-        }
-
-        self.metric_record.borrow_mut().add_frame(self);
-
-        let ret = (self.score(), "[]".to_string());
-
-        log::info!("score: {} frame:{}", ret.0, self.current_frame());
-
-        self.on_frame_end();
-
-        ret
+        self.step_es(ESActionWrapper::Int(raw_action))
     }
 
     pub fn on_frame_begin(&self) {

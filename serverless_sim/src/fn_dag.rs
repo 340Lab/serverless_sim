@@ -310,13 +310,13 @@ impl SimEnv {
         let id = self.fn_alloc_fn_id();
         self.fns.borrow_mut().push(Func {
             fn_id: id,
-            cpu: util::rand_f(0.3, 100.0),
-            mem: util::rand_f(100.0, 1000.0),
-            out_put_size: util::rand_f(0.1, 20.0),
+            cpu: self.util_rand_f(0.3, 100.0),
+            mem: self.util_rand_f(100.0, 1000.0),
+            out_put_size: self.util_rand_f(0.1, 20.0),
             nodes: HashSet::new(),
-            cold_start_container_mem_use: util::rand_f(100.0, 500.0),
-            cold_start_container_cpu_use: util::rand_f(0.1, 50.0),
-            cold_start_time: util::rand_i(5, 10),
+            cold_start_container_mem_use: self.util_rand_f(100.0, 500.0),
+            cold_start_container_cpu_use: self.util_rand_f(0.1, 50.0),
+            cold_start_time: self.util_rand_i(5, 10),
             dag_id: 0,
             graph_i: (0).into(),
         });

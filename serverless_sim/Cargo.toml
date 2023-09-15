@@ -27,3 +27,5 @@ moka = "0.11.3"
 priority-queue = "1.3.2"
 enum-as-inner = "0.6.0"
 #pyo3 = { version = "0.19.2", features = ["extension-module"] }
+rand_seeder = "0.2.3"
+rand_pcg = "0.3.1"

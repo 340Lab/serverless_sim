@@ -2,13 +2,7 @@ use std::{ cell::RefMut, collections::{ HashMap, HashSet } };
 
 use daggy::{ petgraph::visit::{ Topo } };
 
-use crate::{
-    fn_dag::{ DagId, FnId },
-    node::NodeId,
-    sim_env::SimEnv,
-    util,
-    REQUEST_GEN_FRAME_INTERVAL,
-};
+use crate::{ fn_dag::{ DagId, FnId }, node::NodeId, sim_env::SimEnv, REQUEST_GEN_FRAME_INTERVAL };
 
 pub type ReqId = usize;
 
@@ -149,10 +143,10 @@ impl SimEnv {
     pub fn req_sim_gen_requests(&self) {
         let env = self;
         if *env.current_frame.borrow() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let req_cnt = util::rand_i(2, 60 * env.dags.borrow().len());
+            let req_cnt = env.util_rand_i(2, 60 * env.dags.borrow().len());
 
             for _ in 0..req_cnt {
-                let dag_i = util::rand_i(0, env.dags.borrow().len() - 1);
+                let dag_i = env.util_rand_i(0, env.dags.borrow().len() - 1);
                 let request = Request::new(env, dag_i, *env.current_frame.borrow());
                 let req_id = request.req_id;
                 env.requests.borrow_mut().insert(req_id, request);

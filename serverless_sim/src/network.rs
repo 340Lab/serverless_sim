@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
 };
 
-use crate::{ metric::Records, sim_env::SimEnv, sim_scaler::ScalerType, actions::EFActionWrapper };
+use crate::{ metric::Records, sim_env::SimEnv, config::Config };
 
 pub async fn start() {
     // build our application with a route
@@ -19,7 +19,7 @@ pub async fn start() {
         // .route("/", get(root))
         // `POST /users` goes to `create_user`
         .route("/step", post(step))
-        .route("/step_float", post(step_float))
+        // .route("/step_float", post(step_float))
         // .route("/step_batch", post(step_batch))
         .route("/reset", post(reset))
         // .route("/state_score", post(state_score))
@@ -201,83 +201,6 @@ async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
     (StatusCode::OK, ())
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct EFConfig {
-    // ai, lass, hpa
-    pub up: String,
-    // no, ai, rule
-    pub down: String,
-    // rule,ai,faasflow
-    pub sche: String,
-}
-
-impl EFConfig {
-    pub fn sche_ai(&self) -> bool {
-        if &*self.sche == "ai" {
-            return true;
-        }
-        false
-    }
-    pub fn sche_rule(&self) -> bool {
-        if &*self.sche == "rule" {
-            return true;
-        }
-        false
-    }
-    pub fn sche_faas_flow(&self) -> bool {
-        if &*self.sche == "faasflow" {
-            return true;
-        }
-        false
-    }
-    pub fn sche_fnsche(&self) -> bool {
-        if &*self.sche == "fnsche" {
-            return true;
-        }
-        false
-    }
-    pub fn scale_lass(&self) -> bool {
-        if &*self.up == "lass" && &*self.down == "lass" {
-            return true;
-        }
-        false
-    }
-    pub fn scale_ai(&self) -> bool {
-        if &*self.up == "ai" && &*self.down == "ai" {
-            return true;
-        }
-        false
-    }
-    pub fn scale_hpa(&self) -> bool {
-        if &*self.up == "hpa" && &*self.down == "hpa" {
-            return true;
-        }
-        false
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    /// "ai", "lass", "hpa", "aief"
-    pub plan: String,
-    pub aief: Option<EFConfig>,
-}
-
-impl Config {
-    pub fn scaler_type(&self) -> ScalerType {
-        match &*self.plan {
-            // "ai" => ScalerType::AiScaler,
-            // "lass" => ScalerType::LassScaler,
-            "hpa" => ScalerType::HpaScaler,
-            "aief" => ScalerType::AiEFScaler,
-            _ => { panic!("invalid scaler type") }
-        }
-    }
-    pub fn str(&self) -> String {
-        serde_json::to_string(self).unwrap()
-    }
-}
-
 // async fn step_batch(Json(payload): Json<StepBatchReq>) -> (StatusCode, Json<StepBatchResp>) {
 //     let key = payload.config.str();
 //     // log::info!("Step sim env");
@@ -345,46 +268,43 @@ async fn step(
     (StatusCode::OK, Json(resp))
 }
 
-async fn step_float(
-    // this argument tells axum to parse the request body
-    // as JSON into a `CreateUser` type
-    Json(payload): Json<StepFloatReq>
-) -> (StatusCode, Json<StepResp>) {
-    let key = payload.config.str();
-    // log::info!("Step sim env");
+// async fn step_float(
+//     // this argument tells axum to parse the request body
+//     // as JSON into a `CreateUser` type
+//     Json(payload): Json<StepFloatReq>
+// ) -> (StatusCode, Json<StepResp>) {
+//     let key = payload.config.str();
+//     // log::info!("Step sim env");
 
-    let mut resp = StepResp {
-        score: 0.0,
-        state: "invalid{{{".to_owned(),
-        stop: false,
-        info: format!("unreset for {}", key.clone()),
-    };
-    {
-        let sim_envs = SIM_ENVS.read().unwrap();
-        if let Some(sim_env) = sim_envs.get(&key) {
-            let mut sim_env = sim_env.lock().unwrap();
-            if !sim_env.config.scaler_type().is_ai_ef_scaler() {
-                panic!("invalid scaler type");
-            }
-            let (score, state) = sim_env.step_ef(EFActionWrapper::Float(payload.action));
+//     let mut resp = StepResp {
+//         score: 0.0,
+//         state: "invalid{{{".to_owned(),
+//         stop: false,
+//         info: format!("unreset for {}", key.clone()),
+//     };
+//     {
+//         let sim_envs = SIM_ENVS.read().unwrap();
+//         if let Some(sim_env) = sim_envs.get(&key) {
+//             let mut sim_env = sim_env.lock().unwrap();
+//             let (score, state) = sim_env.step_ef(ESActionWrapper::Float(payload.action));
 
-            // insert your application logic here
-            resp = StepResp {
-                score,
-                state,
-                stop: sim_env.current_frame() > 297,
-                info: "".to_owned(),
-            };
-        } else {
-            log::warn!("Sim env {key} not found, create new one");
-        }
-    }
-    // let sim_env = SIM_ENV.lock().unwrap();
+//             // insert your application logic here
+//             resp = StepResp {
+//                 score,
+//                 state,
+//                 stop: sim_env.current_frame() > 297,
+//                 info: "".to_owned(),
+//             };
+//         } else {
+//             log::warn!("Sim env {key} not found, create new one");
+//         }
+//     }
+//     // let sim_env = SIM_ENV.lock().unwrap();
 
-    // this will be converted into a JSON response
-    // with a status code of `201 Created`
-    (StatusCode::OK, Json(resp))
-}
+//     // this will be converted into a JSON response
+//     // with a status code of `201 Created`
+//     (StatusCode::OK, Json(resp))
+// }
 
 #[derive(Deserialize)]
 pub struct StepFloatReq {
