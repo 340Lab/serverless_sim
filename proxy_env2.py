@@ -138,7 +138,7 @@ class ProxyEnv2:
 
             return random_str
         if self.do_change_seed:
-            if self.reset_cnt%100==0:
+            if self.reset_cnt%5==0:
                 self.config["rand_seed"]=self.begin_seed
             else:
                 self.config["rand_seed"]=generate_random_str()

@@ -143,7 +143,7 @@ impl SimEnv {
     pub fn req_sim_gen_requests(&self) {
         let env = self;
         if *env.current_frame.borrow() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let req_cnt = env.util_rand_i(2, 60 * env.dags.borrow().len());
+            let req_cnt = env.util_rand_i(60, 60 * env.dags.borrow().len());
 
             for _ in 0..req_cnt {
                 let dag_i = env.util_rand_i(0, env.dags.borrow().len() - 1);

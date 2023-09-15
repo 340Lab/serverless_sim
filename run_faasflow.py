@@ -49,7 +49,7 @@ def create_subprocess(command):
 # time.sleep(5)
 
 
-env=ProxyEnv2({
+env=ProxyEnv2(False,{
     "rand_seed":"hello",
     "request_freq":"middle",
     "dag_type":"single",
