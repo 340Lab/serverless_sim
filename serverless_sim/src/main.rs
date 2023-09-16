@@ -43,7 +43,7 @@ async fn main() {
 
 const SPEED_SIMILAR_THRESHOLD: f32 = 0.1;
 
-const REQUEST_GEN_FRAME_INTERVAL: usize = 30;
+const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
 
 const NODE_SCORE_CPU_WEIGHT: f32 = 0.5;
 
