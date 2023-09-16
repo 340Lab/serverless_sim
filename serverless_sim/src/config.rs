@@ -2,12 +2,16 @@ use serde::{ Deserialize, Serialize };
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ESConfig {
-    /// ai, lass, hpa
+    /// "ai","lass","fnsche","hpa","faasflow"
     pub up: String,
-    /// no, ai, rule
+    /// "ai","lass","fnsche","hpa","faasflow"
     pub down: String,
-    /// rule,ai,faasflow
+    /// "rule","fnsche","faasflow"
     pub sche: String,
+    /// ai_type  sac, ppo, mat
+    pub ai_type: Option<String>,
+    /// direct smooth_30 smooth_100
+    pub down_smooth: String,
 }
 
 impl ESConfig {
@@ -90,21 +94,33 @@ impl Config {
             _ => panic!("fn_type should be cpu, data or mix"),
         }
         match &*self.es.up {
-            "ai" | "lass" | "hpa" => {}
-            _ => panic!("ef.up should be ai, lass or hpa"),
+            // "ai","lass","fnsche","hpa","faasflow"
+            "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
+            _ => panic!("ef.up should be lass, ai, fnsche, hpa or faasflow"),
         }
         match &*self.es.down {
-            "ai" | "rule" | "lass" => {}
-            _ => panic!("ef.down should be ai, rule or lass"),
+            // "ai","lass","fnsche","hpa","faasflow"
+            "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
+            _ => panic!("ef.down should be lass, ai, fnsche, hpa or faasflow"),
         }
         match &*self.es.sche {
             "rule" | "ai" | "faasflow" | "fnsche" => {}
             _ => panic!("ef.sche should be rule, ai, faasflow or fnsche"),
         }
+        match &*self.es.down_smooth {
+            "direct" | "smooth_30" | "smooth_100" => {}
+            _ => panic!("ef.down_smooth should be direct, smooth_30 or smooth_100"),
+        }
+        if self.es.sche_ai() {
+            match &**self.es.ai_type.as_ref().unwrap() {
+                "sac" | "ppo" | "mat" => {}
+                _ => panic!("ef.ai_type should be sac, ppo or mat"),
+            }
+        }
     }
     pub fn str(&self) -> String {
         format!(
-            "sd{}.rf{}.dt{}.cs{}.ft{}.up{}.dn{}.sc{}",
+            "sd{}.rf{}.dt{}.cs{}.ft{}.up{}.dn{}.sc{}.ds{}{}",
             self.rand_seed,
             self.request_freq,
             self.dag_type,
@@ -112,7 +128,9 @@ impl Config {
             self.fn_type,
             self.es.up,
             self.es.down,
-            self.es.sche
+            self.es.sche,
+            self.es.down_smooth,
+            self.es.ai_type.as_ref().map_or("".to_owned(), |aitype| format!(".at{}", aitype))
         )
     }
 }

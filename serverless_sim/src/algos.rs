@@ -1,4 +1,4 @@
-use std::collections::{ HashMap, BTreeMap, VecDeque };
+use std::{ collections::{ HashMap, BTreeMap, VecDeque }, hash::Hash };
 
 use crate::{ fn_dag::FnId, node::{ Node, NodeId }, sim_env::SimEnv, request::{ Request, ReqId } };
 

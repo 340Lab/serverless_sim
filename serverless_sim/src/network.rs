@@ -181,6 +181,7 @@ struct HistoryListResp {
 
 async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
     log::info!("Reset sim env");
+    payload.check_valid();
     let key = payload.str();
     {
         let sim_envs = SIM_ENVS.read().unwrap();
@@ -244,7 +245,7 @@ async fn step(
         stop: false,
         info: format!("unreset for {}", key.clone()),
     };
-    {
+    let mut step = || {
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
@@ -257,10 +258,18 @@ async fn step(
                 stop: sim_env.current_frame() > 1000,
                 info: "".to_owned(),
             };
+            true
         } else {
             log::warn!("Sim env {key} not found, create new one");
+            false
         }
+    };
+    if !step() {
+        let mut sim_envs = SIM_ENVS.write().unwrap();
+        sim_envs.insert(key.clone(), SimEnv::new(payload.config.clone()).into());
+        step();
     }
+
     // let sim_env = SIM_ENV.lock().unwrap();
 
     // this will be converted into a JSON response

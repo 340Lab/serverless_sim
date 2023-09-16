@@ -62,6 +62,10 @@ class ProxyEnv2:
             "down": "ai",
             # // rule,ai,faasflow
             "sche": "ai",
+            # direct, smooth_30, smooth_100
+            "down_smooth":"",
+            # sac ppo mat
+            "ai_type":"",
         },
     }
 
@@ -71,24 +75,24 @@ class ProxyEnv2:
             return self.config["plan"]+"_"+self.config["es"]["up"]+"_"+self.config["es"]["down"]+"_"+self.config["es"]["sche"]
         return self.config["plan"]
 
-    def rule_request_freq(self):
+    def _rule_request_freq(self):
         # print("request_freq",self.config["request_freq"])
         assert self.config["request_freq"] in ["middle"]
         return self
 
-    def rule_dag_type(self):
+    def _rule_dag_type(self):
         assert self.config["dag_type"] in ["single"]
         return self
 
-    def rule_cold_start(self):
+    def _rule_cold_start(self):
         assert self.config["cold_start"] in ["high"]
         return self
 
-    def rule_fn_type(self):
+    def _rule_fn_type(self):
         assert self.config["fn_type"] in ["cpu"]
         return self
 
-    def rule_es(self):
+    def _rule_es(self):
         allowed_up=["ai","lass","fnsche","hpa","faasflow"]
         allowed_down=["ai","lass","fnsche","hpa","faasflow"]
         allowed_sche=["rule","fnsche","faasflow"]
@@ -100,6 +104,10 @@ class ProxyEnv2:
         assert config["es"]["up"] in allowed_up
         assert config["es"]["down"] in allowed_down
         assert config["es"]["sche"] in allowed_sche
+        assert config["es"]["down_smooth"] in ["direct","smooth_30","smooth_100"]
+        if config["es"]["up"] in ["ai"]:
+            assert config["es"]["ai_type"] in ["sac","ppo","mat"]
+
         if config["es"]["up"] in up_down_must_same:
             assert config["es"]["up"]==config["es"]["down"]
         if config["es"]["sche"] in scale_sche_must_same:
@@ -109,11 +117,11 @@ class ProxyEnv2:
         self.config=config
         self.begin_seed=config["rand_seed"]
         self.do_change_seed=do_change_seed
-        self.rule_cold_start() \
-            .rule_dag_type() \
-            .rule_fn_type() \
-            .rule_request_freq() \
-            .rule_es()
+        self._rule_cold_start() \
+            ._rule_dag_type() \
+            ._rule_fn_type() \
+            ._rule_request_freq() \
+            ._rule_es() 
         
 
 
@@ -138,7 +146,7 @@ class ProxyEnv2:
 
             return random_str
         if self.do_change_seed:
-            if self.reset_cnt%100==0:
+            if self.reset_cnt%7==0:
                 self.config["rand_seed"]=self.begin_seed
             else:
                 self.config["rand_seed"]=generate_random_str()

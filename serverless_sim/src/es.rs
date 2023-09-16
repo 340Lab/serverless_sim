@@ -1,4 +1,4 @@
-use std::{ cell::RefMut, collections::{ BTreeMap, HashMap, VecDeque } };
+use std::{ cell::RefMut, collections::{ BTreeMap, HashMap, VecDeque }, hash::Hash };
 
 use enum_as_inner::EnumAsInner;
 
@@ -14,7 +14,7 @@ use crate::{
     es_fnsche::FnScheScaler,
     es_faas_flow::FaasFlowScheduler,
     es_hpa::HpaESScaler,
-    es_ai,
+    es_ai::{ self, AIScaler },
     config::Config,
 };
 
@@ -23,27 +23,43 @@ pub trait ActionEffectStage {
 }
 
 pub trait ESScaler {
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric);
+    /// return (action, action_is_done)
+    /// - action_is_done: need prepare next state and wait for new action
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnv,
+        fnid: FnId,
+        metric: &ContainerMetric,
+        action: &ESActionWrapper
+    ) -> (f32, bool);
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
-    pub current_fnid: Option<FnId>,
-    pub fn_cnt: usize,
-    pub fn_need_schedule: HashMap<FnId, ContainerMetric>,
+    current_index: Option<usize>,
+    // pub fn_need_schedule: HashMap<FnId, ContainerMetric>,
+    pub fn_metrics: Vec<(FnId, ContainerMetric)>,
     // pub fns: HashMap<FnId, ContainerMetric>,
     // pub current_fn_to_scale: Option<(FnId, ContainerMetric)>,
     // // action target_size
     // pub scaled: Vec<(FnId, usize, RawAction)>,
 }
+impl StageScaleForFns {
+    fn current_fn<'a>(&'a self) -> Option<&'a (FnId, ContainerMetric)> {
+        if let Some(current_index) = self.current_index.as_ref() {
+            return self.fn_metrics.get(*current_index);
+        }
+        None
+    }
+}
 impl ActionEffectStage for StageScaleForFns {
     fn prepare_next(&mut self) -> bool {
-        if let Some(fnid) = self.current_fnid.as_mut() {
-            *fnid += 1;
+        if let Some(current_index) = self.current_index.as_mut() {
+            *current_index += 1;
         } else {
-            self.current_fnid = Some(0);
+            self.current_index = Some(0);
         }
 
-        if self.current_fnid.unwrap() >= self.fn_cnt {
+        if self.current_index.unwrap() >= self.fn_metrics.len() {
             return false;
         }
 
@@ -196,10 +212,19 @@ impl ESState {
         loop {
             if self.stage.is_frame_begin() {
                 // collect scale infos
+                let mut fn_metrics_map = env.algo_collect_ready_2_schedule_metric();
+                let fn_all_sched_metrics = env.algo_get_fn_all_scheduled_metric(&fn_metrics_map);
+                let mut fn_metrics = Vec::new();
+                while fn_metrics_map.len() > 0 {
+                    let fnid = *fn_metrics_map.iter().next().unwrap().0;
+                    fn_metrics.push((fnid, fn_metrics_map.remove(&fnid).unwrap()));
+                }
+                fn_metrics.extend(fn_all_sched_metrics);
+
+                assert_eq!(fn_metrics.len(), env.fns.borrow().len());
                 self.stage = EFStage::ScaleForFns(StageScaleForFns {
-                    current_fnid: None,
-                    fn_cnt: env.fns.borrow().len(),
-                    fn_need_schedule: env.algo_collect_ready_2_schedule_metric(),
+                    current_index: None,
+                    fn_metrics,
                     // scaled: Vec::new(),
                     // current_fn_to_scale: None,
                 });
@@ -246,6 +271,8 @@ pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> 
         return Some(Box::new(FnScheScaler::new()));
     } else if es.scale_hpa() {
         return Some(Box::new(HpaESScaler::new()));
+    } else if es.scale_ai() {
+        return Some(Box::new(AIScaler::new(config)));
     }
 
     None
@@ -270,39 +297,6 @@ impl SimEnv {
         }
         ret
     }
-
-    // fn step_scale_down(&self, raw_action: RawAction, stage: &mut StageScaleDown) {
-    //     let (nodeid, fnid) = stage.cur_container().unwrap();
-    //     if RawActionHelper(raw_action).is_scale_down() {
-    //         self.scale_executor
-    //             .borrow_mut()
-    //             .scale_down(self, ScaleOption::new().for_spec_node_fn(nodeid, fnid));
-    //     }
-    //     stage.records.push((nodeid, fnid, raw_action));
-    // }
-
-    /// return (scores, states)
-    // pub fn step_aief_batch(&self, mut raw_actions: Vec<Vec<f32>>) -> (Vec<f32>, String) {
-    //     let stage = self.aief_state.as_ref().unwrap().borrow_mut().stage.type_str();
-    //     let mut scores = Vec::new();
-    //     let mut state = String::new();
-    //     for action in raw_actions {
-    //         if self.aief_state.as_ref().unwrap().borrow_mut().stage.type_str() == stage {
-    //             // same stage
-    //             let (score, state_) = self.step_aief(action);
-    //             scores.push(score);
-    //             state = state_;
-    //         } else {
-    //             scores.push(0.0);
-    //             // states.push(String::new());
-    //         }
-    //     }
-    //     let score = scores
-    //         .iter()
-    //         .map(|v| *v)
-    //         .sum();
-    //     (vec![score], state)
-    // }
 
     /// raw_action[0] container count
     pub fn step_es(&mut self, raw_action: ESActionWrapper) -> (f32, String) {
@@ -334,37 +328,29 @@ impl SimEnv {
                 self.req_sim_gen_requests();
                 ef_state.trans_stage(self);
             } else if ef_state.stage.is_scale_for_fns() {
+                if action_done {
+                    // next action effect stage is prepared
+                    break;
+                }
                 // faas flow don't do scale for fns
                 if config_es().sche_faas_flow() {
                     ef_state.trans_stage(self);
                     continue;
                 }
-                if config_es().scale_ai() {
-                    if
-                        !es_ai::step_scale(
-                            self,
-                            &raw_action,
-                            &mut action_done,
-                            &mut action_score,
-                            &mut ef_state
-                        )
-                    {
-                        break;
-                    }
-                } else {
-                    let fn_2_schedule_metrics = self.algo_collect_ready_2_schedule_metric();
-                    let fn_schedule_metrics = self.algo_get_fn_all_scheduled_metric(
-                        &fn_2_schedule_metrics
-                    );
-                    for (&fnid, metric) in fn_2_schedule_metrics
-                        .iter()
-                        .chain(fn_schedule_metrics.iter().map(|(p1, p2)| (p1, p2))) {
-                        self.spec_ef_scaler
-                            .borrow_mut()
-                            .as_mut()
-                            .unwrap()
-                            .scale_for_fn(self, fnid, metric);
-                    }
+                let has_next = {
+                    let stage = ef_state.stage.as_scale_for_fns_mut().unwrap();
+                    // let fnid = stage.current_fnid.unwrap();
+                    let &(fnid, ref metric) = stage.current_fn().unwrap();
+                    let (action_score_, action_done_) = self.spec_ef_scaler
+                        .borrow_mut()
+                        .as_mut()
+                        .unwrap()
+                        .scale_for_fn(self, fnid, metric, &raw_action);
+                    action_score += action_score_;
+                    action_done = action_done_;
+                    stage.prepare_next()
+                };
+                if !has_next {
                     ef_state.trans_stage(self);
                 }
             } else if ef_state.stage.is_schedule() {
@@ -456,7 +442,7 @@ impl SimEnv {
         let state = if ef_state.stage.is_scale_for_fns() {
             let scale_stage = ef_state.stage.as_scale_for_fns().unwrap();
 
-            let fnid = scale_stage.current_fnid.unwrap();
+            let fnid = scale_stage.current_fn().unwrap().0;
 
             let mut fn_container_busy = 0.0;
             self.fn_containers_for_each(fnid, |c| {
@@ -480,10 +466,11 @@ impl SimEnv {
                 fn_container_busy,
                 fn_container_count as f32,
                 fn_running_tasks as f32,
-                scale_stage.fn_need_schedule
-                    .get(&fnid)
-                    .map(|v| { v.ready_2_schedule_fn_count() })
-                    .unwrap_or(0) as f32,
+                scale_stage.fn_metrics
+                    .iter()
+                    .filter(|&&(fnid_, _)| fnid_ == fnid)
+                    .map(|(_, v)| { v.ready_2_schedule_fn_count() })
+                    .sum::<usize>() as f32,
                 fn_avg_cpu
             ];
             log::info!("state: {:?}", state);
