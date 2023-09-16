@@ -4,6 +4,7 @@ use crate::{
     algos::ContainerMetric,
     scale_executor::{ ScaleExecutor, ScaleOption },
     es::ESScaler,
+    actions::ESActionWrapper,
 };
 
 pub struct FnScheScaler {}
@@ -15,7 +16,13 @@ impl FnScheScaler {
 }
 
 impl ESScaler for FnScheScaler {
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric) {
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnv,
+        fnid: FnId,
+        metric: &ContainerMetric,
+        action: &ESActionWrapper
+    ) -> (f32, bool) {
         // 对于容器一段时间未使用，就执行缩减
         // 优先扩容到索引小的node上
         let mut containers_2_zero = vec![];
@@ -67,5 +74,6 @@ impl ESScaler for FnScheScaler {
             }
             // log::info!("schedule req {} to node {}", req_id, found_node);
         }
+        (0.0, false)
     }
 }

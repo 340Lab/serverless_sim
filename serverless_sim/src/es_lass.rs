@@ -5,6 +5,7 @@ use crate::{
     algos::ContainerMetric,
     scale_executor::{ ScaleExecutor, ScaleOption },
     scale_down_policy::{ ScaleDownPolicy, CarefulScaleDown },
+    actions::ESActionWrapper,
 };
 
 pub struct LassESScaler {
@@ -24,7 +25,13 @@ impl LassESScaler {
 // unsafe impl Send for LassEFScaler {}
 
 impl ESScaler for LassESScaler {
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric) {
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnv,
+        fnid: FnId,
+        metric: &ContainerMetric,
+        action: &ESActionWrapper
+    ) -> (f32, bool) {
         // 请求时间=请求数/(当前容器数(cc)*每个容器请求处理速率(r/t))
         let mut desired_container_cnt = if
             metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count == 0
@@ -78,5 +85,7 @@ impl ESScaler for LassESScaler {
             let scale = desired_container_cnt - container_cnt;
             env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
         }
+
+        (0.0, false)
     }
 }

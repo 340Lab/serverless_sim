@@ -107,6 +107,8 @@ def main(argv):
                 "up":"ai",
                 "down":"ai",
                 "sche":"rule",
+                "down_smooth":"direct",
+                "ai_type":"sac",
             },    
         })
 

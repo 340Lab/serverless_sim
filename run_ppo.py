@@ -105,10 +105,25 @@ def main(argv):
     random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
     
+    def new_env():
+        return ProxyEnv2(True,{
+            "rand_seed":"hello",
+            "request_freq":"middle",
+            "dag_type":"single",
+            "cold_start":"high",
+            "fn_type":"cpu",
+            "es": {
+                "up":"ai",
+                "down":"ai",
+                "sche":"rule",
+                "down_smooth":"direct",
+                "ai_type":"ppo",
+            },    
+        })
 
     # eval_env = environment_builder()
     # Create actor environments, runtime devices, and actor instances.
-    actor_envs = [Env() for _ in range(FLAGS.num_actors)]
+    actor_envs = [new_env() for _ in range(FLAGS.num_actors)]
 
     state_dim = actor_envs[0].observation_space.shape
     action_dim = actor_envs[0].action_space.n

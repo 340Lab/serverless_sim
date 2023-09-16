@@ -4,6 +4,7 @@ use crate::{
     fn_dag::FnId,
     algos::ContainerMetric,
     scale_executor::{ ScaleExecutor, ScaleOption },
+    actions::ESActionWrapper,
 };
 
 enum Target {
@@ -27,7 +28,13 @@ impl HpaESScaler {
 }
 
 impl ESScaler for HpaESScaler {
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric) {
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnv,
+        fnid: FnId,
+        metric: &ContainerMetric,
+        action: &ESActionWrapper
+    ) -> (f32, bool) {
         match self.target {
             Target::CpuUseRate(cpu_target_use_rate) => {
                 let container_cnt = metric.container_count;
@@ -66,7 +73,7 @@ impl ESScaler for HpaESScaler {
                         // # ratio is sufficiently close to 1.0
 
                         // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
-                        return;
+                        return (0.0, false);
                     }
                 }
 
@@ -88,5 +95,6 @@ impl ESScaler for HpaESScaler {
                 }
             }
         }
+        (0.0, false)
     }
 }
