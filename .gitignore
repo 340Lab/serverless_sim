@@ -3,7 +3,6 @@ __pycache__
 checkpoints
 logs
 mat
-deep_rl_zoo
 exprun*
 runs
 multiagent
