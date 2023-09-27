@@ -109,7 +109,7 @@ def main(argv):
         return ProxyEnv2(True,{
             "rand_seed":"hello",
             "request_freq":"middle",
-            "dag_type":"single",
+            "dag_type":"dag",
             "cold_start":"high",
             "fn_type":"cpu",
             "es": {
@@ -118,6 +118,8 @@ def main(argv):
                 "sche":"rule",
                 "down_smooth":"direct",
                 "ai_type":"ppo",
+                "fit_hpa":"",
+                # "no_perform_cost_rate_score":""
             },    
         })
 
@@ -222,7 +224,7 @@ def main(argv):
     checkpoint.register_pair(('policy_network', policy_network))
     checkpoint.register_pair(('icm_network', icm_network))
     
-    # checkpoint.restore("./checkpoints/ppo_icm_v2/PPO-ICM_Pong_32.ckpt")
+    # checkpoint.restore("./checkpoints/ppo_icm_v3/PPO-ICM_Pong_3.ckpt")
     # policy_network.eval()
     # icm_network.eval()
 

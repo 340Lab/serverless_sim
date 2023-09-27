@@ -4,6 +4,7 @@ use std::{
     time::{ SystemTime, UNIX_EPOCH, Duration },
 };
 
+use daggy::petgraph;
 use rand_pcg::Pcg64;
 use rand_seeder::Seeder;
 
@@ -31,6 +32,8 @@ pub struct SimEnv {
 
     // 节点间网速图
     pub node2node_graph: RefCell<Vec<Vec<f32>>>,
+    // 节点间网速图
+    pub node2node_connection_count: RefCell<Vec<Vec<usize>>>,
 
     // databases=[]
 
@@ -64,6 +67,15 @@ pub struct SimEnv {
     pub spec_scheduler: RefCell<Option<Box<dyn Scheduler + Send>>>,
 
     pub spec_ef_scaler: RefCell<Option<Box<dyn ESScaler + Send>>>,
+
+    // end time - tasks
+    pub timers: RefCell<HashMap<usize, Vec<Box<dyn FnMut(&SimEnv) + Send>>>>,
+
+    pub fn_must_scale_up: RefCell<HashSet<FnId>>,
+
+    pub distance2hpa: RefCell<usize>,
+
+    pub hpa_action: RefCell<usize>,
 }
 
 impl SimEnv {
@@ -75,6 +87,7 @@ impl SimEnv {
         let newenv = Self {
             nodes: RefCell::new(Vec::new()),
             node2node_graph: RefCell::new(Vec::new()),
+            node2node_connection_count: RefCell::new(Vec::new()),
             dags: RefCell::new(Vec::new()),
             fn_next_id: RefCell::new(0),
             current_frame: RefCell::new(0),
@@ -94,6 +107,10 @@ impl SimEnv {
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
 
             config,
+            timers: HashMap::new().into(),
+            fn_must_scale_up: HashSet::new().into(),
+            distance2hpa: (0).into(),
+            hpa_action: (0).into(),
         };
 
         newenv.init();
@@ -159,6 +176,14 @@ impl SimEnv {
             //有些变为运行状态 内存占用变大很正常
             assert!(n.mem <= n.rsc_limit.mem, "mem {} > limit {}", n.mem, n.rsc_limit.mem);
         }
+
+        if let Some(timers) = self.timers.borrow_mut().remove(&self.current_frame()) {
+            for mut timer in timers {
+                timer(self);
+            }
+        }
+
+        *self.distance2hpa.borrow_mut() = 0;
     }
 
     pub fn on_frame_end(&self) {

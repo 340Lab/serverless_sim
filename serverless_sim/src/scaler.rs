@@ -36,7 +36,7 @@ impl SimEnv {
             .borrow_mut()
             [node_id].fn_containers.entry(fn_id)
             .and_modify(|_| panic!("fn container already exists"))
-            .or_insert(FnContainer::new(fn_id, self));
+            .or_insert(FnContainer::new(fn_id, node_id, self));
 
         self.nodes.borrow_mut()[node_id].mem += self.func(fn_id).cold_start_container_mem_use;
     }

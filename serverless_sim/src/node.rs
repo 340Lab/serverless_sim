@@ -103,13 +103,14 @@ impl SimEnv {
             let nodecnt: usize = env.nodes.borrow().len();
 
             for i in 0..nodecnt - 1 {
-                let randspeed = env.util_rand_f(8000.0, 10000.0);
+                let randspeed = env.env_rand_f(8000.0, 10000.0);
                 env.node_set_speed_btwn(i, nodecnt - 1, randspeed);
             }
         }
 
         // # init nodes graph
         let dim = NODE_CNT;
+        *self.node2node_connection_count.borrow_mut() = vec![vec![0; dim];dim];
         *self.node2node_graph.borrow_mut() = vec![vec![0.0; dim]; dim];
         for i in 0..dim {
             _init_one_node(self, i);
@@ -141,6 +142,59 @@ impl SimEnv {
             _get_speed_btwn(n1, n2)
         } else {
             _get_speed_btwn(n2, n1)
+        }
+    }
+
+    pub fn node_set_connection_count_between(&self, n1: NodeId, n2: NodeId, count: usize) {
+        let _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
+            self.node2node_connection_count.borrow_mut()[nbig][nsmall] = count;
+        };
+        if n1 > n2 {
+            _set_connection_count_between(n1, n2, count);
+        } else {
+            _set_connection_count_between(n2, n1, count);
+        }
+    }
+
+    pub fn node_get_connection_count_between(&self, n1: NodeId, n2: NodeId) -> usize {
+        let _get_connection_count_between = |nbig: usize, nsmall: usize| {
+            self.node2node_connection_count.borrow()[nbig][nsmall]
+        };
+        if n1 > n2 {
+            _get_connection_count_between(n1, n2)
+        } else {
+            _get_connection_count_between(n2, n1)
+        }
+    }
+
+    pub fn node_get_connection_count_between_by_offerd_graph(
+        &self,
+        n1: NodeId,
+        n2: NodeId,
+        offerd: &Vec<Vec<usize>>
+    ) -> usize {
+        let _get_connection_count_between = |nbig: usize, nsmall: usize| { offerd[nbig][nsmall] };
+        if n1 > n2 {
+            _get_connection_count_between(n1, n2)
+        } else {
+            _get_connection_count_between(n2, n1)
+        }
+    }
+
+    pub fn node_set_connection_count_between_by_offerd_graph(
+        &self,
+        n1: NodeId,
+        n2: NodeId,
+        count: usize,
+        offerd: &mut Vec<Vec<usize>>
+    ) {
+        let mut _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
+            offerd[nbig][nsmall] = count;
+        };
+        if n1 > n2 {
+            _set_connection_count_between(n1, n2, count);
+        } else {
+            _set_connection_count_between(n2, n1, count);
         }
     }
 

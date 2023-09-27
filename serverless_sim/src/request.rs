@@ -44,6 +44,9 @@ pub struct Request {
     // current_fn: Option<(FnId, NodeIndex)>,
 
     pub walk_cnt: usize,
+
+    // fnid-(predict_time, scheduled_prev_fns_cnt, prev_fns_cnt)
+    pub fn_predict_prevs_done_time: HashMap<FnId, (f32, usize, usize)>,
 }
 
 impl Request {
@@ -68,6 +71,7 @@ impl Request {
             end_frame: 0,
             cur_frame_done: HashSet::new(),
             walk_cnt: 0,
+            fn_predict_prevs_done_time: HashMap::new(),
         };
         // new.prepare_next_fn_2_bind_node(&env.dags.borrow()[dag_i].dag);
         // {
@@ -143,10 +147,28 @@ impl SimEnv {
     pub fn req_sim_gen_requests(&self) {
         let env = self;
         if *env.current_frame.borrow() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let req_cnt = env.util_rand_i(60, 60 * env.dags.borrow().len());
+            let scale = if env.config.dag_type_dag() {
+                if env.config.request_freq_high() {
+                    30
+                } else if env.config.request_freq_middle() {
+                    20
+                } else {
+                    10
+                }
+            } else {
+                if env.config.request_freq_high() {
+                    120
+                } else if env.config.request_freq_middle() {
+                    75
+                } else {
+                    30
+                }
+            };
+
+            let req_cnt = env.env_rand_i(scale, scale * env.dags.borrow().len());
 
             for _ in 0..req_cnt {
-                let dag_i = env.util_rand_i(0, env.dags.borrow().len() - 1);
+                let dag_i = env.env_rand_i(0, env.dags.borrow().len() - 1);
                 let request = Request::new(env, dag_i, *env.current_frame.borrow());
                 let req_id = request.req_id;
                 env.requests.borrow_mut().insert(req_id, request);
@@ -164,6 +186,8 @@ impl SimEnv {
     pub fn request_mut<'a>(&'a self, i: ReqId) -> RefMut<'a, Request> {
         let b = self.requests.borrow_mut();
 
-        RefMut::map(b, |map| map.get_mut(&i).unwrap())
+        RefMut::map(b, |map|
+            map.get_mut(&i).unwrap_or_else(|| { panic!("request {} not found", i) })
+        )
     }
 }

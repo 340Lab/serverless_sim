@@ -1,6 +1,7 @@
 use std::collections::{ HashMap };
 
 use daggy::{ petgraph::visit::{ IntoEdgeReferences, EdgeRef }, EdgeIndex };
+use rand::{ thread_rng, Rng };
 
 use crate::{
     schedule::Scheduler,
@@ -26,6 +27,7 @@ impl FaasFlowScheduler {
     }
 
     fn generate_schedule(&mut self, req: &Request, env: &SimEnv) {
+        log::info!("faasflow start generate schedule for req {}", req.req_id);
         let mut nodes_left_mem = env.nodes
             .borrow()
             .iter()
@@ -38,7 +40,8 @@ impl FaasFlowScheduler {
             let mut walker = dag.new_dag_walker();
             while let Some(fnode) = walker.next(&dag.dag_inner) {
                 let fnid = dag.dag_inner[fnode];
-                let node_id = env.util_rand_i(0, nodes_left_mem.len());
+                let node_id = thread_rng().gen_range(0..nodes_left_mem.len());
+                // let node_id = (0, nodes_left_mem.len());
                 fn_poses.insert(fnid, node_id);
                 nodes_left_mem[node_id] -= env.func(fnid).container_mem();
             }
@@ -46,6 +49,7 @@ impl FaasFlowScheduler {
         //2.遍历收集关键路径
         let dag = env.dag(req.dag_i);
         let critical_path_nodes = util::graph::critical_path(&dag.dag_inner);
+        log::info!("C");
         let mut cri_paths = vec![];
         for i in 0..critical_path_nodes.len() - 1 {
             cri_paths.push(
@@ -61,7 +65,7 @@ impl FaasFlowScheduler {
         let cmp_edge = |e1: &EdgeIndex, e2: &EdgeIndex| {
             let e1_weight = *dag.dag_inner.edge_weight(*e1).unwrap();
             let e2_weight = *dag.dag_inner.edge_weight(*e2).unwrap();
-            e2_weight.partial_cmp(&e1_weight).unwrap().reverse()
+            e2_weight.partial_cmp(&e1_weight).unwrap()
         };
         cri_paths.sort_by(cmp_edge);
         non_cri_paths.sort_by(cmp_edge);
@@ -97,6 +101,7 @@ impl FaasFlowScheduler {
         }
 
         self.request_schedule_state.insert(req.req_id, RequestSchedulePlan { fn_nodes: fn_poses });
+        log::info!("faasflow end generate schedule for req {}", req.req_id);
     }
 
     fn do_some_schedule(&self, req: &mut Request, env: &SimEnv) {
@@ -105,9 +110,15 @@ impl FaasFlowScheduler {
         let mut walker = dag.new_dag_walker();
         while let Some(fnode) = walker.next(&dag.dag_inner) {
             let fnid = dag.dag_inner[fnode];
+            // Already scheduled
+            if req.get_fn_node(fnid).is_some() {
+                continue;
+            }
+            // Not schduled but not all parents done
             if !req.parents_all_done(env, fnid) {
                 continue;
             }
+            // Ready to be scheduled
             let fn_node = *plan.fn_nodes.get(&fnid).unwrap();
             if env.node(fn_node).fn_containers.get(&fnid).is_none() {
                 if

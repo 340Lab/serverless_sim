@@ -10,17 +10,14 @@ use std::{
     collections::HashMap,
 };
 
-use crate::{ metric::Records, sim_env::SimEnv, config::Config };
+use crate::{ metric::{ self, Records }, sim_env::SimEnv, config::Config };
 
 pub async fn start() {
     // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
-        // .route("/", get(root))
-        // `POST /users` goes to `create_user`
         .route("/step", post(step))
-        // .route("/step_float", post(step_float))
-        // .route("/step_batch", post(step_batch))
+        .route("/collect_seed_metrics", post(collect_seed_metrics))
+        .route("/get_seeds_metrics", post(get_seeds_metrics))
         .route("/reset", post(reset))
         // .route("/state_score", post(state_score))
         .route("/history_list", post(history_list))
@@ -44,6 +41,7 @@ lazy_static! {
     /// This is an example for using doc comment attributes
     pub static ref SIM_ENVS: RwLock<HashMap<String,Mutex<SimEnv>>> = RwLock::new(HashMap::new());
     static ref HISTORY_CACHE: Cache<String,Arc<Records>> = Cache::new(100);
+    static ref COLLECT_SEED_METRICS_LOCK :tokio::sync::Mutex<()>= tokio::sync::Mutex::new(());
 }
 
 // async fn history() -> (StatusCode, Json<()>) {
@@ -187,7 +185,7 @@ async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
-            sim_env.metric_record.borrow().flush();
+            sim_env.metric_record.borrow().flush(&sim_env);
             *sim_env = SimEnv::new(payload);
         } else {
             drop(sim_envs);
@@ -231,6 +229,22 @@ async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
 //     (StatusCode::OK, Json(resp))
 // }
 
+async fn get_seeds_metrics(Json(payload): Json<Vec<String>>) -> (
+    StatusCode,
+    Json<HashMap<String, Vec<Vec<Value>>>>,
+) {
+    let res = tokio::task
+        ::spawn_blocking(move || metric::get_seeds_metrics(payload.iter())).await
+        .unwrap();
+    (StatusCode::OK, Json(res))
+}
+
+async fn collect_seed_metrics() -> (StatusCode, Json<()>) {
+    let _hold = COLLECT_SEED_METRICS_LOCK.lock().await;
+    tokio::task::spawn_blocking(metric::group_records_by_seed).await.unwrap();
+    (StatusCode::OK, ().into())
+}
+
 async fn step(
     // this argument tells axum to parse the request body
     // as JSON into a `CreateUser` type
@@ -249,7 +263,7 @@ async fn step(
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
-            let (score, state) = sim_env.step(payload.action);
+            let (score, state) = tokio::task::block_in_place(|| sim_env.step(payload.action));
 
             // insert your application logic here
             resp = StepResp {

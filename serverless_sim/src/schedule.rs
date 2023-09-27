@@ -1,10 +1,13 @@
-use std::collections::{ BTreeSet, HashMap };
+use std::{ collections::{ BTreeSet, HashMap }, vec };
+
+use daggy::Walker;
 
 use crate::{
     fn_dag::{ FnContainer, FnContainerState, FnId },
     node::{ Node, NodeId },
     request::{ ReqId, Request },
     sim_env::SimEnv,
+    scale_executor::ScaleExecutor,
 };
 
 pub trait Scheduler {
@@ -41,11 +44,13 @@ impl SimEnv {
         self.nodes
             .borrow_mut()
             [nodeid].fn_containers.get_mut(&fnid)
-            .unwrap()
+            .unwrap_or_else(|| {
+                panic!("Node {} suppose to have fn {} container.", nodeid, fnid);
+            })
             .req_fn_state.insert(req.req_id, new_fn_running);
         req.fn_node.insert(fnid, nodeid);
     }
-    fn schedule_one_req_fns(&self, req: &mut Request) {
+    fn schedule_one_req_fns(&self, req: &mut Request, do_prewarm_check: bool) {
         let dag_i = req.dag_i;
         let mut dag_walker = self.dag(dag_i).new_dag_walker();
         let mut schedule_able_fns = vec![];
@@ -57,39 +62,172 @@ impl SimEnv {
             }
             let parents = self.func(fnid).parent_fns(self);
             for p in &parents {
-                if !req.done_fns.contains(p) {
+                // parent has't been scheduled
+                if !req.fn_node.contains_key(p) {
                     continue 'next_fn;
                 }
             }
-            if
-                self.fn_2_nodes.borrow().contains_key(&fnid) &&
-                self.fn_2_nodes.borrow().get(&fnid).unwrap().len() > 0
+            // if
+            //     self.fn_2_nodes.borrow().contains_key(&fnid) &&
+            //     self.fn_running_containers_nodes(fnid).len() > 0
             {
                 // parents all done schedule able
                 schedule_able_fns.push(fnid);
             }
         }
+        let mut node2node_connection_count = self.node2node_connection_count.borrow().clone();
+        schedule_able_fns.sort_by(|&a, &b| {
+            self.func(a).cpu.partial_cmp(&self.func(b).cpu).unwrap().reverse()
+        });
         for &fnid in &schedule_able_fns {
-            let fn_2_nodes = self.fn_2_nodes.borrow();
-            let nodes = fn_2_nodes.get(&fnid).unwrap();
-            let mut best_node = None;
-            for &n in nodes {
-                let time = self.algo_predict_fn_on_node_work_time(req, fnid, n);
-                if let Some((best_n, besttime)) = best_node.take() {
-                    if time < besttime {
-                        best_node = Some((n, time));
-                    } else {
-                        best_node = Some((best_n, besttime));
-                    }
-                } else {
-                    best_node = Some((n, time));
+            if
+                !self.fn_2_nodes.borrow().contains_key(&fnid) ||
+                self.fn_2_nodes.borrow().get(&fnid).unwrap().len() == 0
+            {
+                if self.scale_executor.borrow_mut().scale_up(self, fnid, 1) == 1 {
+                    let node = *self.fn_2_nodes.borrow().get(&fnid).unwrap().iter().next().unwrap();
+                    self.schedule_reqfn_on_node(req, fnid, node);
+                    continue;
                 }
             }
-            let node_to_run_req_fn = best_node.unwrap().0;
+            let nodes = self.fn_running_containers_nodes(fnid);
+            if nodes.len() == 0 {
+                // assert_eq!(self.fn_2_nodes.borrow().get(&fnid).unwrap().len(), 1);
+                let fn_2_nodes = self.fn_2_nodes.borrow();
+                let nodes = fn_2_nodes.get(&fnid).unwrap();
+                let mut best_node = None;
+                for &n in nodes.iter() {
+                    let time = self.node(n).task_cnt() as f32;
+                    if let Some((best_n, besttime)) = best_node.take() {
+                        if time < besttime {
+                            best_node = Some((n, time));
+                        } else {
+                            best_node = Some((best_n, besttime));
+                        }
+                    } else {
+                        best_node = Some((n, time));
+                    }
+                }
+                self.schedule_reqfn_on_node(req, fnid, best_node.unwrap().0);
+                continue;
+            }
+            let mut best_node = None;
+            if self.func(fnid).parent_fns(self).len() == 0 {
+                for &n in nodes.iter() {
+                    let time = self.node(n).task_cnt() as f32;
+                    if let Some((best_n, besttime)) = best_node.take() {
+                        if time < besttime {
+                            best_node = Some((n, time));
+                        } else {
+                            best_node = Some((best_n, besttime));
+                        }
+                    } else {
+                        best_node = Some((n, time));
+                    }
+                }
+            } else {
+                for &n in nodes.iter() {
+                    let time = self.algo_predict_fn_on_node_work_time(
+                        req,
+                        fnid,
+                        n,
+                        (&node2node_connection_count).into()
+                    );
+                    if let Some((best_n, besttime)) = best_node.take() {
+                        if time < besttime {
+                            best_node = Some((n, time));
+                        } else {
+                            best_node = Some((best_n, besttime));
+                        }
+                    } else {
+                        best_node = Some((n, time));
+                    }
+                }
+            }
+
+            let (node_to_run_req_fn, run_time) = best_node.unwrap();
             self.schedule_reqfn_on_node(req, fnid, node_to_run_req_fn);
+            // update connection count map
+            {
+                let parents = self.func(fnid).parent_fns(self);
+                for &p in &parents {
+                    let pnode = *req.fn_node.get(&p).unwrap();
+                    if pnode == node_to_run_req_fn {
+                    } else {
+                        let connection_count =
+                            self.node_get_connection_count_between_by_offerd_graph(
+                                pnode,
+                                node_to_run_req_fn,
+                                &node2node_connection_count
+                            );
+                        self.node_set_connection_count_between_by_offerd_graph(
+                            pnode,
+                            node_to_run_req_fn,
+                            connection_count + 1,
+                            &mut node2node_connection_count
+                        );
+                    }
+                }
+            }
+            if do_prewarm_check {
+                // // 有一个请求函数（预测所有前驱函数结束时间点，计数）表
+                // // 在调度一个函数时，预估该函数的结束时间，对于后继节点，
+                // // 其冷启动时间点应该为前驱结束时间点-冷启动时间，
+                // // 若当前预测结束时间点大于预测启动表中时间，更新该时间，
+                // // 同时计数+1，直到计数等于该后继函数的所有前驱节点数时，
+                // // 代表预计时间以及确定，从表中移除该项，并注册定时器，
+                // // 时间为（预测所有前驱函数结束时间点-观测到的冷启动时间），
+                // // 在对应时间判断容器数是否为0，若为0，则进行预热。
+                // let mut children = self.dag_inner(dag_i).children(self.func(fnid).graph_i);
+                // // update children predict
+                // while let Some((e, child_n)) = children.walk_next(&self.dag_inner(dag_i)) {
+                //     let child_fnid = self.dag_inner(dag_i)[child_n];
+                //     let cunrrent_fn_done_time = (self.current_frame() as f32) + run_time;
+                //     let mut prev_done_time_all_collected = false;
+                //     req.fn_predict_prevs_done_time
+                //         .entry(child_fnid)
+                //         .and_modify(|(time, cnt, total)| {
+                //             if cunrrent_fn_done_time > *time {
+                //                 *time = cunrrent_fn_done_time;
+                //             }
+                //             *cnt += 1;
+                //             if *cnt == *total {
+                //                 prev_done_time_all_collected = true;
+                //             }
+                //         })
+                //         .or_insert_with(|| {
+                //             (cunrrent_fn_done_time, 1, self.func(child_fnid).parent_fns(self).len())
+                //         });
+                //     if prev_done_time_all_collected {
+                //         let (time, _, _) = req.fn_predict_prevs_done_time
+                //             .remove(&child_fnid)
+                //             .unwrap();
+                //         let time =
+                //             (time as isize) + 1 - (self.func(child_fnid).cold_start_time as isize);
+                //         if time > 0 {
+                //             let req_id = req.req_id;
+                //             self.start_timer(time as usize, move |env: &SimEnv| {
+                //                 let requests = env.requests.borrow();
+                //                 if let Some(req) = requests.get(&req_id) {
+                //                     // 子函数未调度
+                //                     if !req.fn_node.contains_key(&child_fnid) {
+                //                         if env.fn_container_cnt(child_fnid) == 0 {
+                //                             env.scale_executor
+                //                                 .borrow_mut()
+                //                                 .scale_up(env, child_fnid, 1);
+                //                         }
+                //                     }
+                //                 }
+                //             });
+                //         }
+                //     }
+                // }
+            }
         }
     }
-    pub fn try_put_fn(&self) {
+
+    // rule based schedule
+    pub fn try_put_fn(&self, do_prewarm_check: bool) {
         log::info!("try put fn");
         //针对所有请求，将请求可以放的的fn放到可以放的fn容器中，
 
@@ -99,7 +237,7 @@ impl SimEnv {
         //  1.前驱fn已经执行完了
         //  2.fn instance 存在
         for (_req_id, req) in self.requests.borrow_mut().iter_mut() {
-            self.schedule_one_req_fns(req);
+            self.schedule_one_req_fns(req, do_prewarm_check);
             // if let Some((fnid, _fn_g_i)) = req.fn_2_bind_node() {
             //     let env_fn_2_nodes = &self.fn_2_nodes.borrow();
             //     //对应请求还有未调度的fn
@@ -297,6 +435,14 @@ impl SimEnv {
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
                 if x > y {
+                    let connection_count = node2node_trans.len();
+                    self.node_set_connection_count_between(x, y, connection_count);
+                }
+            }
+        }
+        for x in 0..nodes_cnt {
+            for y in 0..nodes_cnt {
+                if x > y {
                     // simu transfer between node x and y
                     self.sim_transfer_btwn_nodes(x, y, &mut node2node_trans);
                 }
@@ -466,8 +612,8 @@ impl SimEnv {
         self.sim_transfers();
         self.sim_computes();
     }
-    pub fn schedule_fn(&self) {
-        self.try_put_fn();
-        self.sim_run();
-    }
+    // pub fn schedule_fn(&self) {
+    //     self.try_put_fn();
+    //     self.sim_run();
+    // }
 }

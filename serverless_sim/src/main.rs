@@ -25,6 +25,8 @@ mod es_fnsche;
 mod es_hpa;
 mod scale_down_policy;
 mod config;
+mod sim_timer;
+mod sche_rule_based;
 
 #[macro_use]
 extern crate lazy_static;

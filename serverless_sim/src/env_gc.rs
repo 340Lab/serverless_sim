@@ -18,7 +18,7 @@ pub fn start_gc() {
                     if now > Duration::from_secs(60) + env.recent_use_time {
                         let key = env.config.str();
                         log::warn!("gc env {}", key);
-                        env.metric_record.borrow().flush();
+                        env.metric_record.borrow().flush(&env);
                         to_remove.push(key);
                     }
                 }

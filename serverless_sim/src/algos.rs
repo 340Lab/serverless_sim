@@ -176,8 +176,22 @@ impl SimEnv {
         &self,
         req: &Request,
         fnid: FnId,
-        nodeid: NodeId
+        nodeid: NodeId,
+        n2n_connection_count: Option<&Vec<Vec<usize>>>
     ) -> f32 {
+        let get_connection_count = |n1: NodeId, n2: NodeId| -> usize {
+            if let Some(n2n_connection_count) = n2n_connection_count.as_ref() {
+                if n1 == n2 {
+                    return 1;
+                } else if n1 > n2 {
+                    n2n_connection_count[n1][n2]
+                } else {
+                    n2n_connection_count[n2][n1]
+                }
+            } else {
+                return 1;
+            }
+        };
         let parents = self.func(fnid).parent_fns(self);
         let mut transtime: f32 = 0.0;
         for &p in &parents {
@@ -185,7 +199,11 @@ impl SimEnv {
             let pnode = *req.fn_node.get(&p).unwrap();
             if pnode == nodeid {
             } else {
-                transtime = transtime.max(pdata / self.node_get_speed_btwn(pnode, nodeid));
+                transtime = transtime.max(
+                    pdata /
+                        (self.node_get_speed_btwn(pnode, nodeid) /
+                            (get_connection_count(pnode, nodeid) as f32))
+                );
             }
         }
         let computetime =

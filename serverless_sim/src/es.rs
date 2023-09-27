@@ -16,6 +16,7 @@ use crate::{
     es_hpa::HpaESScaler,
     es_ai::{ self, AIScaler },
     config::Config,
+    sche_rule_based::{ RuleBasedScheduler, ScheduleRule },
 };
 
 pub trait ActionEffectStage {
@@ -258,6 +259,30 @@ impl ESState {
 pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Send>> {
     if config.es.sche_faas_flow() {
         return Some(Box::new(FaasFlowScheduler::new()));
+    } else if config.es.sche_gofs() {
+        return Some(
+            Box::new(RuleBasedScheduler {
+                rule: ScheduleRule::GOFS,
+            })
+        );
+    } else if config.es.sche_load_least() {
+        return Some(
+            Box::new(RuleBasedScheduler {
+                rule: ScheduleRule::LeastLoad,
+            })
+        );
+    } else if config.es.sche_random() {
+        return Some(
+            Box::new(RuleBasedScheduler {
+                rule: ScheduleRule::Random,
+            })
+        );
+    } else if config.es.sche_round_robin() {
+        return Some(
+            Box::new(RuleBasedScheduler {
+                rule: ScheduleRule::RoundRobin(9999),
+            })
+        );
     }
     None
 }
@@ -316,7 +341,7 @@ impl SimEnv {
                 if (self.current_frame() == 0 && ef_state.computed) || self.current_frame() > 0 {
                     // log::info!("score: {} frame:{}", score, self.current_frame());
                     self.on_frame_end();
-                    log::info!("frame end");
+                    log::info!("frame {} end", self.current_frame());
                     if self.current_frame() > 1000 {
                         break;
                     }
@@ -372,9 +397,18 @@ impl SimEnv {
                         ef_state.trans_stage(self);
                     }
                 } else if self.config.es.sche_rule() {
-                    self.try_put_fn();
+                    self.try_put_fn(false);
                     ef_state.trans_stage(self);
-                } else if self.config.es.sche_faas_flow() {
+                } else if self.config.es.sche_rule_prewarm_succ() {
+                    self.try_put_fn(true);
+                    ef_state.trans_stage(self);
+                } else if
+                    self.config.es.sche_faas_flow() ||
+                    self.config.es.sche_random() ||
+                    self.config.es.sche_gofs() ||
+                    self.config.es.sche_round_robin() ||
+                    self.config.es.sche_load_least()
+                {
                     let mut spec = self.spec_scheduler.borrow_mut();
                     spec.as_mut().unwrap().schedule_some(self);
                     ef_state.trans_stage(self);
@@ -453,12 +487,16 @@ impl SimEnv {
 
             let mut fn_running_tasks = 0;
             let mut fn_avg_cpu = 0.0;
+            let mut fn_avg_mem_rate = 0.0;
             self.fn_containers_for_each(fnid, |c| {
                 fn_running_tasks += c.req_fn_state.len();
-                fn_avg_cpu += c.cpu_use_rate();
+                fn_avg_cpu +=
+                    self.node(c.node_id).last_frame_cpu / self.node(c.node_id).rsc_limit.cpu;
+                fn_avg_mem_rate += self.node(c.node_id).mem / self.node(c.node_id).rsc_limit.mem;
             });
             if fn_container_count > 0 {
                 fn_avg_cpu /= fn_container_count as f32;
+                fn_avg_mem_rate /= fn_container_count as f32;
             }
 
             let state = vec![
@@ -471,7 +509,12 @@ impl SimEnv {
                     .filter(|&&(fnid_, _)| fnid_ == fnid)
                     .map(|(_, v)| { v.ready_2_schedule_fn_count() })
                     .sum::<usize>() as f32,
-                fn_avg_cpu
+                fn_avg_cpu,
+                fn_avg_mem_rate,
+                *self.hpa_action.borrow() as f32,
+                self.req_done_time_avg(),
+                self.cost_each_req(),
+                self.cost_perform()
             ];
             log::info!("state: {:?}", state);
             state

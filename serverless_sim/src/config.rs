@@ -1,3 +1,4 @@
+use clap::builder::Str;
 use serde::{ Deserialize, Serialize };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -6,12 +7,17 @@ pub struct ESConfig {
     pub up: String,
     /// "ai","lass","fnsche","hpa","faasflow"
     pub down: String,
-    /// "rule","fnsche","faasflow"
+    /// "rule","fnsche","faasflow", "rule_prewarm_succ",
+    /// "round_robin","random","load_least","gofs"
     pub sche: String,
     /// ai_type  sac, ppo, mat
     pub ai_type: Option<String>,
     /// direct smooth_30 smooth_100
     pub down_smooth: String,
+
+    pub fit_hpa: Option<String>,
+
+    pub no_perform_cost_rate_score: Option<String>,
 }
 
 impl ESConfig {
@@ -39,6 +45,41 @@ impl ESConfig {
         }
         false
     }
+    pub fn sche_rule_prewarm_succ(&self) -> bool {
+        if &*self.sche == "rule_prewarm_succ" {
+            return true;
+        }
+        false
+    }
+
+    pub fn sche_round_robin(&self) -> bool {
+        if &*self.sche == "round_robin" {
+            return true;
+        }
+        false
+    }
+
+    pub fn sche_random(&self) -> bool {
+        if &*self.sche == "random" {
+            return true;
+        }
+        false
+    }
+
+    pub fn sche_load_least(&self) -> bool {
+        if &*self.sche == "load_least" {
+            return true;
+        }
+        false
+    }
+
+    pub fn sche_gofs(&self) -> bool {
+        if &*self.sche == "gofs" {
+            return true;
+        }
+        false
+    }
+
     pub fn scale_lass(&self) -> bool {
         if &*self.up == "lass" && &*self.down == "lass" {
             return true;
@@ -73,9 +114,65 @@ pub struct Config {
     pub fn_type: String,
     /// each stage control algorithm settings
     pub es: ESConfig,
+    /// whether to log the resultz
+    pub no_log: bool,
 }
 
 impl Config {
+    pub fn request_freq_low(&self) -> bool {
+        if &*self.request_freq == "low" {
+            return true;
+        }
+        false
+    }
+    pub fn request_freq_middle(&self) -> bool {
+        if &*self.request_freq == "middle" {
+            return true;
+        }
+        false
+    }
+    pub fn request_freq_high(&self) -> bool {
+        if &*self.request_freq == "high" {
+            return true;
+        }
+        false
+    }
+
+    pub fn dag_type_single(&self) -> bool {
+        if &*self.dag_type == "single" {
+            return true;
+        }
+        false
+    }
+
+    pub fn dag_type_dag(&self) -> bool {
+        if &*self.dag_type == "dag" {
+            return true;
+        }
+        false
+    }
+
+    pub fn dag_type_mix(&self) -> bool {
+        if &*self.dag_type == "mix" {
+            return true;
+        }
+        false
+    }
+
+    pub fn fntype_cpu(&self) -> bool {
+        if &*self.fn_type == "cpu" {
+            return true;
+        }
+        false
+    }
+
+    pub fn fntype_data(&self) -> bool {
+        if &*self.fn_type == "data" {
+            return true;
+        }
+        false
+    }
+
     pub fn check_valid(&self) {
         match &*self.request_freq {
             "low" | "middle" | "high" => {}
@@ -104,7 +201,15 @@ impl Config {
             _ => panic!("ef.down should be lass, ai, fnsche, hpa or faasflow"),
         }
         match &*self.es.sche {
-            "rule" | "ai" | "faasflow" | "fnsche" => {}
+            | "rule"
+            | "ai"
+            | "faasflow"
+            | "fnsche"
+            | "rule_prewarm_succ"
+            | "random"
+            | "round_robin"
+            | "load_least"
+            | "gofs" => {}
             _ => panic!("ef.sche should be rule, ai, faasflow or fnsche"),
         }
         match &*self.es.down_smooth {

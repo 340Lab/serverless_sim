@@ -134,7 +134,7 @@ impl DefaultScaleExecutor {
                 env.set_scale_up_result(fnid, nodeid);
                 really_scale_cnt += 1;
             } else {
-                break;
+                // break;
             }
         }
         really_scale_cnt
@@ -168,7 +168,22 @@ impl DefaultScaleExecutor {
 
             scale_cnt = nodes_no_container.len();
         } else {
-            nodes_no_container.sort_by(|n1, n2| env.node(*n1).cmp_rsc_used(&env.node(*n2)));
+            // 不相干应用容器数
+            let dag = env.dag(env.func(fnid).dag_id);
+            nodes_no_container.sort_by(|n1, n2|
+                env
+                    .node(*n1)
+                    .fn_containers.iter()
+                    .filter(|(_, fc)| { !dag.contains_fn(env, fc.fn_id) })
+                    .count()
+                    .cmp(
+                        &env
+                            .node(*n2)
+                            .fn_containers.iter()
+                            .filter(|(_, fc)| { !dag.contains_fn(env, fc.fn_id) })
+                            .count()
+                    )
+            );
         }
 
         self.scale_up_fn_to_nodes(env, fnid, &nodes_no_container[0..scale_cnt])
@@ -190,10 +205,14 @@ impl DefaultScaleExecutor {
             parent_fn_data: Option<f32>
         ) -> f32 {
             let env_fn_2_nodes = env.fn_2_nodes.borrow();
-            let rela_fn_nodes = env_fn_2_nodes.get(&rela_fn).expect("前驱fn一定已经被扩容了");
-            if rela_fn_nodes.len() == 0 {
+            let rela_fn_nodes = if let Some(rela_fn_nodes) = env_fn_2_nodes.get(&rela_fn) {
+                if rela_fn_nodes.len() == 0 {
+                    return 0.0;
+                }
+                rela_fn_nodes
+            } else {
                 return 0.0;
-            }
+            };
             // 对于每一个fn都找最近的，如果存在一样快的fn实例，选择负载更低的node
             let fastest_node: NodeId = *rela_fn_nodes
                 .iter()

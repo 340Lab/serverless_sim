@@ -18,6 +18,9 @@ class ProxyEnv2:
 
     url=SIM_URL
 
+    multi_agent_cnt=1
+    multi_agent_obs=np.zeros((10,))
+
     action_space=type('',(object,),{
         "low":[ACTION_SPACE_LOW],
         "high":[ACTION_SPACE_HIGH],
@@ -54,6 +57,7 @@ class ProxyEnv2:
         "dag_type":"single",
         "cold_start":"high",
         "fn_type":"cpu",
+        "no_log":False,
         # // optional
         "es": {
             # // ai, lass, hpa
@@ -77,11 +81,11 @@ class ProxyEnv2:
 
     def _rule_request_freq(self):
         # print("request_freq",self.config["request_freq"])
-        assert self.config["request_freq"] in ["middle"]
+        assert self.config["request_freq"] in ["middle","low","high"]
         return self
 
     def _rule_dag_type(self):
-        assert self.config["dag_type"] in ["single"]
+        assert self.config["dag_type"] in ["single","chain","dag","mix"]
         return self
 
     def _rule_cold_start(self):
@@ -89,13 +93,14 @@ class ProxyEnv2:
         return self
 
     def _rule_fn_type(self):
-        assert self.config["fn_type"] in ["cpu"]
+        assert self.config["fn_type"] in ["cpu","data"]
         return self
 
     def _rule_es(self):
         allowed_up=["ai","lass","fnsche","hpa","faasflow"]
         allowed_down=["ai","lass","fnsche","hpa","faasflow"]
-        allowed_sche=["rule","fnsche","faasflow"]
+        allowed_sche=["rule","fnsche","faasflow","rule_prewarm_succ",
+            "round_robin","random","load_least","gofs"]
         up_down_must_same=["ai","lass","hpa","faasflow","fnsche"]
         scale_sche_must_same=["fnsche","faasflow"]
 
@@ -106,14 +111,14 @@ class ProxyEnv2:
         assert config["es"]["sche"] in allowed_sche
         assert config["es"]["down_smooth"] in ["direct","smooth_30","smooth_100"]
         if config["es"]["up"] in ["ai"]:
-            assert config["es"]["ai_type"] in ["sac","ppo","mat"]
+            assert config["es"]["ai_type"] in ["sac","ppo","mat","ppo_hrf"]
 
         if config["es"]["up"] in up_down_must_same:
             assert config["es"]["up"]==config["es"]["down"]
         if config["es"]["sche"] in scale_sche_must_same:
             assert config["es"]["sche"]==config["es"]["up"]
 
-    def __init__(self,do_change_seed,config):
+    def __init__(self,do_change_seed,config,multi_agent=False):
         self.config=config
         self.begin_seed=config["rand_seed"]
         self.do_change_seed=do_change_seed
@@ -122,6 +127,7 @@ class ProxyEnv2:
             ._rule_fn_type() \
             ._rule_request_freq() \
             ._rule_es() 
+        self.multi_agent=multi_agent
         
 
 
@@ -146,19 +152,39 @@ class ProxyEnv2:
 
             return random_str
         if self.do_change_seed:
-            if self.reset_cnt%7==0:
+            if self.reset_cnt%3==0:
                 self.config["rand_seed"]=self.begin_seed
+                self.config["no_log"]=False
             else:
                 self.config["rand_seed"]=generate_random_str()
+                self.config["no_log"]=True
+        if self.reset_cnt>20 and "no_perform_cost_rate_score" in self.config["es"]:
+            self.config["es"].pop("no_perform_cost_rate_score")
+        if self.reset_cnt>7 and "fit_hpa" in self.config["es"]:
+            self.config["es"].pop("fit_hpa")
 
         self.step_cnt=0
         
         self.__request("reset",self.config)
-        return self.obs
+        if self.multi_agent:
+            return [self.multi_agent_obs for _ in range(self.n_agents)]
+        else:
+            return self.obs
         # serverless_sim.fn_reset(json.dumps(self.config))
+    
+    def step(self,action):
+        if self.multi_agent:
+            return self.multi_agent_step(action)
+        else:
+            return self.single_agent_step(action)
 
-    def step(self,action:int):
-        print("step",action)
+    def multi_agent_step(self,action):
+        res=self.__request("step",{"action":action,"config":self.config})
+        print("res",res)
+        res=res.json()
+
+    def single_agent_step(self,action):
+        print("single_agent_step",action)
         # res=serverless_sim.fn_step(json.dumps({"action":action,"config":self.config}))
         res=self.__request("step",{"action":action,"config":self.config})
         print("res",res)
@@ -171,7 +197,7 @@ class ProxyEnv2:
         # res=res.json()
         # return res["observation"],res["reward"],res["done"],res["info"]
         state_arr=json.loads(res["state"])
-        print("state arr len",len(state_arr),"current step",self.step_cnt)
+        print("state arr len",len(state_arr),"current step",self.step_cnt,"reset_cnt",self.reset_cnt)
         # state_arr
         # for c in state_str:
         #     state_arr.append(ord(c))
@@ -186,9 +212,6 @@ class ProxyEnv2:
         # if self.step_cnt==10000:
         #     res["stop"]=True
         return state_mat,res["score"],res["stop"],res["info"]
-
-
-
 
 # class EnvForAI:
 #     env=ProxyEnv2({

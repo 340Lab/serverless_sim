@@ -1,9 +1,10 @@
 use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque } };
 
 use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
+use enum_as_inner::EnumAsInner;
 
 use crate::{
-    node::NodeId,
+    node::{ NodeId, Node },
     request::{ ReqId, Request },
     sim_env::SimEnv,
     util,
@@ -71,6 +72,11 @@ impl FnDAG {
     pub fn new_dag_walker(&self) -> Topo<NodeIndex, <FnDagInner as Visitable>::Map> {
         Topo::new(&self.dag_inner)
     }
+
+    pub fn contains_fn(&self, env: &SimEnv, fnid: FnId) -> bool {
+        let gi = env.func(fnid).graph_i;
+        self.dag_inner.node_weight(gi).is_some() && self.dag_inner[gi] == fnid
+    }
 }
 
 pub struct Func {
@@ -119,6 +125,7 @@ impl Func {
     }
 }
 
+#[derive(EnumAsInner)]
 pub enum FnContainerState {
     Starting {
         left_frame: usize,
@@ -127,8 +134,9 @@ pub enum FnContainerState {
 }
 
 pub struct FnContainer {
+    pub node_id: NodeId,
     pub fn_id: FnId,
-    pub req_fn_state: HashMap<ReqId, FnRunningState>,
+    pub req_fn_state: HashMap<ReqId, RunningTask>,
     pub born_frame: usize,
     pub used_times: usize,
     pub this_frame_used: bool,
@@ -200,8 +208,9 @@ impl FnContainer {
         }
     }
 
-    pub fn new(fn_id: FnId, sim_env: &SimEnv) -> Self {
+    pub fn new(fn_id: FnId, node_id: NodeId, sim_env: &SimEnv) -> Self {
         Self {
+            node_id,
             fn_id,
             req_fn_state: HashMap::default(),
             born_frame: sim_env.current_frame(),
@@ -280,7 +289,7 @@ impl FnContainer {
     }
 }
 
-pub struct FnRunningState {
+pub struct RunningTask {
     /// nodeid - (need,recv)
     pub data_recv: HashMap<NodeId, (f32, f32)>,
 
@@ -288,7 +297,7 @@ pub struct FnRunningState {
     pub left_calc: f32,
 }
 
-impl FnRunningState {
+impl RunningTask {
     pub fn data_recv_done(&self) -> bool {
         let mut done = true;
         for (_, (need, recv)) in self.data_recv.iter() {
@@ -308,15 +317,22 @@ impl FnRunningState {
 impl SimEnv {
     fn fn_gen_rand_fn(&self) -> FnId {
         let id = self.fn_alloc_fn_id();
+        let (cpu, out_put_size) = if self.config.fntype_cpu() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
+        } else if self.config.fntype_data() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
+        } else {
+            panic!("not support fntype");
+        };
         self.fns.borrow_mut().push(Func {
             fn_id: id,
-            cpu: self.util_rand_f(0.3, 100.0),
-            mem: self.util_rand_f(100.0, 1000.0),
-            out_put_size: self.util_rand_f(0.1, 20.0),
+            cpu,
+            mem: self.env_rand_f(100.0, 1000.0),
+            out_put_size,
             nodes: HashSet::new(),
-            cold_start_container_mem_use: self.util_rand_f(100.0, 500.0),
-            cold_start_container_cpu_use: self.util_rand_f(0.1, 50.0),
-            cold_start_time: self.util_rand_i(5, 10),
+            cold_start_container_mem_use: self.env_rand_f(100.0, 500.0),
+            cold_start_container_cpu_use: self.env_rand_f(0.1, 50.0),
+            cold_start_time: self.env_rand_i(5, 10),
             dag_id: 0,
             graph_i: (0).into(),
         });
@@ -330,11 +346,21 @@ impl SimEnv {
         //     let dag = FnDAG::instance_map_reduce(dag_i, env, util::rand_i(2, 10));
         //     env.dags.borrow_mut().push(dag);
         // }
-
-        for _ in 0..10 {
-            let dag_i = env.dags.borrow().len();
-            let dag = FnDAG::instance_single_fn(dag_i, env);
-            env.dags.borrow_mut().push(dag);
+        if self.config.dag_type_dag() {
+            for _ in 0..6 {
+                let mapcnt = env.env_rand_i(2, 5); //2-4
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                env.dags.borrow_mut().push(dag);
+            }
+        } else if self.config.dag_type_single() {
+            for _ in 0..10 {
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_single_fn(dag_i, env);
+                env.dags.borrow_mut().push(dag);
+            }
+        } else {
+            panic!("not support dag type {}", self.config.dag_type);
         }
     }
 
@@ -351,7 +377,7 @@ impl SimEnv {
     //     dag.dag[dag.begin_fn_g_i] == fn_i
     // }
 
-    pub fn fn_new_fn_running_state(&self, req: &Request, fnid: FnId) -> FnRunningState {
+    pub fn fn_new_fn_running_state(&self, req: &Request, fnid: FnId) -> RunningTask {
         let env = self;
 
         let total_calc: f32 = env.func(fnid).cpu;
@@ -370,7 +396,7 @@ impl SimEnv {
                 })
                 .or_insert(env.fns.borrow()[p].out_put_size);
         }
-        FnRunningState {
+        RunningTask {
             data_recv: need_node_data
                 .iter()
                 .map(|(node_id, data)| (*node_id, (*data, 0.0)))
@@ -420,5 +446,15 @@ impl SimEnv {
                 f(node.container(fnid).unwrap());
             }
         }
+    }
+
+    pub fn fn_running_containers_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
+        let mut nodes = HashSet::<NodeId>::new();
+        self.fn_containers_for_each(fnid, |c| {
+            if c.state().is_running() {
+                nodes.insert(c.node_id);
+            }
+        });
+        nodes
     }
 }
