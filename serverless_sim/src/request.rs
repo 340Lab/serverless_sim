@@ -1,8 +1,16 @@
-use std::{ cell::RefMut, collections::{ HashMap, HashSet } };
+use std::{
+    cell::RefMut,
+    collections::{HashMap, HashSet},
+};
 
-use daggy::{ petgraph::visit::{ Topo } };
+use daggy::petgraph::visit::Topo;
 
-use crate::{ fn_dag::{ DagId, FnId }, node::NodeId, sim_env::SimEnv, REQUEST_GEN_FRAME_INTERVAL };
+use crate::{
+    fn_dag::{DagId, FnId},
+    node::NodeId,
+    sim_env::SimEnv,
+    REQUEST_GEN_FRAME_INTERVAL,
+};
 
 pub type ReqId = usize;
 
@@ -42,7 +50,6 @@ pub struct Request {
     // fn_dag_walker: Topo<NodeIndex, <FnDagInner as Visitable>::Map>,
 
     // current_fn: Option<(FnId, NodeIndex)>,
-
     pub walk_cnt: usize,
 
     // fnid-(predict_time, scheduled_prev_fns_cnt, prev_fns_cnt)
@@ -186,8 +193,9 @@ impl SimEnv {
     pub fn request_mut<'a>(&'a self, i: ReqId) -> RefMut<'a, Request> {
         let b = self.requests.borrow_mut();
 
-        RefMut::map(b, |map|
-            map.get_mut(&i).unwrap_or_else(|| { panic!("request {} not found", i) })
-        )
+        RefMut::map(b, |map| {
+            map.get_mut(&i)
+                .unwrap_or_else(|| panic!("request {} not found", i))
+        })
     }
 }

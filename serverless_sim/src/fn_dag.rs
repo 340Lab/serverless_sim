@@ -1,14 +1,19 @@
-use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque } };
+use std::{
+    cell::{Ref, RefMut},
+    collections::{HashMap, HashSet, VecDeque},
+};
 
-use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
+use daggy::{
+    petgraph::visit::{Topo, Visitable},
+    Dag, NodeIndex, Walker,
+};
 use enum_as_inner::EnumAsInner;
 
 use crate::{
-    node::{ NodeId, Node },
-    request::{ ReqId, Request },
+    node::{Node, NodeId},
+    request::{ReqId, Request},
     sim_env::SimEnv,
-    util,
-    CONTAINER_BASIC_MEM,
+    util, CONTAINER_BASIC_MEM,
 };
 
 pub type FnId = usize;
@@ -27,7 +32,8 @@ impl FnDAG {
     fn new(begin_fn: FnId, dag_i: DagId, env: &SimEnv) -> Self {
         let mut dag = Dag::new();
         let begin = dag.add_node(begin_fn);
-        env.func_mut(begin_fn).setup_after_insert_into_dag(dag_i, begin);
+        env.func_mut(begin_fn)
+            .setup_after_insert_into_dag(dag_i, begin);
 
         Self {
             dag_i,
@@ -48,18 +54,22 @@ impl FnDAG {
 
         let end_fn = env.fn_gen_rand_fn();
         let end_g_i = dag.dag_inner.add_node(end_fn);
-        env.func_mut(end_fn).setup_after_insert_into_dag(dag_i, end_g_i);
+        env.func_mut(end_fn)
+            .setup_after_insert_into_dag(dag_i, end_g_i);
 
         for _i in 0..map_cnt {
             let next = env.fn_gen_rand_fn();
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
                 env.fns.borrow()[begin_fn].out_put_size,
-                next
+                next,
             );
-            env.func_mut(next).setup_after_insert_into_dag(dag_i, next_i);
+            env.func_mut(next)
+                .setup_after_insert_into_dag(dag_i, next_i);
 
-            dag.dag_inner.add_edge(next_i, end_g_i, env.func(next).out_put_size).unwrap();
+            dag.dag_inner
+                .add_edge(next_i, end_g_i, env.func(next).out_put_size)
+                .unwrap();
         }
 
         dag
@@ -110,9 +120,7 @@ impl Func {
     pub fn parent_fns(&self, env: &SimEnv) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.parents(self.graph_i);
-        ps.iter(&dag)
-            .map(|(_edge, graph_i)| dag[graph_i])
-            .collect()
+        ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
     }
 
     pub fn setup_after_insert_into_dag(&mut self, dag_i: DagId, graph_i: NodeIndex) {
@@ -127,9 +135,7 @@ impl Func {
 
 #[derive(EnumAsInner)]
 pub enum FnContainerState {
-    Starting {
-        left_frame: usize,
-    },
+    Starting { left_frame: usize },
     Running,
 }
 
@@ -157,12 +163,12 @@ impl FnContainer {
         if self.recent_frmaes_done_cnt.len() == 0 {
             return 0.0;
         }
-        (
-            self.recent_frmaes_done_cnt
-                .iter()
-                .map(|v| *v)
-                .sum::<usize>() as f32
-        ) / (self.recent_frmaes_done_cnt.len() as f32)
+        (self
+            .recent_frmaes_done_cnt
+            .iter()
+            .map(|v| *v)
+            .sum::<usize>() as f32)
+            / (self.recent_frmaes_done_cnt.len() as f32)
     }
     pub fn busyness(&self) -> f32 {
         if self.recent_frames_working_cnt.len() == 0 {
@@ -177,7 +183,8 @@ impl FnContainer {
                 weight += 1;
                 v
             })
-            .sum::<f32>() / (self.recent_frames_working_cnt.len() as f32)
+            .sum::<f32>()
+            / (self.recent_frames_working_cnt.len() as f32)
     }
 
     pub fn recent_frame_is_idle(&self, mut frame_cnt: usize) -> bool {
@@ -234,7 +241,9 @@ impl FnContainer {
                     self.state = FnContainerState::Running;
                 }
             }
-            _ => { panic!("not starting") }
+            _ => {
+                panic!("not starting")
+            }
         }
     }
 
@@ -351,6 +360,8 @@ impl SimEnv {
                 let mapcnt = env.env_rand_i(2, 5); //2-4
                 let dag_i = env.dags.borrow().len();
                 let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
+
                 env.dags.borrow_mut().push(dag);
             }
         } else if self.config.dag_type_single() {
@@ -432,10 +443,7 @@ impl SimEnv {
 
     pub fn fn_container_cnt(&self, fnid: FnId) -> usize {
         let map = self.fn_2_nodes.borrow();
-        map.get(&fnid).map_or_else(
-            || 0,
-            |nodes| nodes.len()
-        )
+        map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
     }
 
     pub fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {

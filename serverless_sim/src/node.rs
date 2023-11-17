@@ -145,6 +145,31 @@ impl SimEnv {
         }
     }
 
+    //获取计算速度最慢的节点
+    pub fn node_get_lowest(&self)-> NodeId{
+        let nodes = self.nodes.borrow();
+        let res=nodes.iter().min_by(|x, y|x.cpu.partial_cmp(&y.cpu).unwrap()).unwrap();
+        res.node_id
+    }
+
+     //获取最低带宽
+     pub fn node_btw_get_lowest(&self)-> f32{
+        let mut low_btw = None;
+
+        for i in 0..self.nodes.borrow().len(){
+            for j in i+1..self.nodes.borrow().len(){
+                let btw = self.node_get_speed_btwn(i,j);
+                if let Some(low_btw_) = low_btw.take() {
+                    low_btw=Some(btw.min(low_btw_));
+                }else{
+                    low_btw=Some(btw);
+                }
+            }
+        }
+
+        low_btw.unwrap() 
+    }
+
     pub fn node_set_connection_count_between(&self, n1: NodeId, n2: NodeId, count: usize) {
         let _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
             self.node2node_connection_count.borrow_mut()[nbig][nsmall] = count;

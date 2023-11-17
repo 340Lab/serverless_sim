@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
-    collections::{ BTreeMap, HashMap, HashSet },
-    time::{ SystemTime, UNIX_EPOCH, Duration },
+    collections::{BTreeMap, HashMap, HashSet},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use daggy::petgraph;
@@ -9,16 +9,16 @@ use rand_pcg::Pcg64;
 use rand_seeder::Seeder;
 
 use crate::{
-    actions::{ ESActionWrapper },
-    fn_dag::{ FnDAG, FnId, Func },
-    metric::Records,
-    node::{ Node, NodeId },
-    // parse_arg,
-    request::{ ReqId, Request },
-    scale_executor::DefaultScaleExecutor,
-    es::{ ESState, self, ESScaler },
-    schedule::{ Scheduler },
+    actions::ESActionWrapper,
     config::Config,
+    es::{self, ESScaler, ESState},
+    fn_dag::{FnDAG, FnId, Func},
+    metric::Records,
+    node::{Node, NodeId},
+    // parse_arg,
+    request::{ReqId, Request},
+    scale_executor::DefaultScaleExecutor,
+    schedule::Scheduler,
 };
 
 pub struct SimEnv {
@@ -168,13 +168,19 @@ impl SimEnv {
         for n in self.nodes.borrow_mut().iter_mut() {
             n.last_frame_cpu = n.cpu;
             n.cpu = 0.0;
-            n.mem = n.fn_containers
+            n.mem = n
+                .fn_containers
                 .iter()
                 .map(|(_, c)| c.container_basic_mem(self))
                 .sum();
 
             //有些变为运行状态 内存占用变大很正常
-            assert!(n.mem <= n.rsc_limit.mem, "mem {} > limit {}", n.mem, n.rsc_limit.mem);
+            assert!(
+                n.mem <= n.rsc_limit.mem,
+                "mem {} > limit {}",
+                n.mem,
+                n.rsc_limit.mem
+            );
         }
 
         if let Some(timers) = self.timers.borrow_mut().remove(&self.current_frame()) {

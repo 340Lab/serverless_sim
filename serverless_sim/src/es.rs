@@ -1,22 +1,27 @@
-use std::{ cell::RefMut, collections::{ BTreeMap, HashMap, VecDeque }, hash::Hash };
+use std::{
+    cell::RefMut,
+    collections::{BTreeMap, HashMap, VecDeque},
+    hash::Hash,
+};
 
 use enum_as_inner::EnumAsInner;
 
 use crate::{
-    sim_env::SimEnv,
-    request::ReqId,
-    fn_dag::FnId,
+    actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
-    node::NodeId,
-    actions::{ RawAction, ESActionWrapper },
-    schedule::{ Scheduler },
-    es_lass::LassESScaler,
-    es_fnsche::FnScheScaler,
-    es_faas_flow::FaasFlowScheduler,
-    es_hpa::HpaESScaler,
-    es_ai::{ self, AIScaler },
     config::Config,
-    sche_rule_based::{ RuleBasedScheduler, ScheduleRule },
+    es_ai::{self, AIScaler},
+    es_faas_flow::FaasFlowScheduler,
+    es_fnsche::FnScheScaler,
+    es_hpa::HpaESScaler,
+    es_lass::LassESScaler,
+    es_pass::PassScheduler,
+    fn_dag::FnId,
+    node::NodeId,
+    request::ReqId,
+    sche_rule_based::{RuleBasedScheduler, ScheduleRule},
+    schedule::Scheduler,
+    sim_env::SimEnv,
 };
 
 pub trait ActionEffectStage {
@@ -31,7 +36,7 @@ pub trait ESScaler {
         env: &SimEnv,
         fnid: FnId,
         metric: &ContainerMetric,
-        action: &ESActionWrapper
+        action: &ESActionWrapper,
     ) -> (f32, bool);
 }
 #[derive(Debug)]
@@ -100,7 +105,12 @@ impl ActionEffectStage for StageSchedule {
     fn prepare_next(&mut self) -> bool {
         if self.ready_2_schedule.len() > 0 {
             let next: ReqId = *self.ready_2_schedule.iter().next().unwrap().0;
-            let next_fn: FnId = self.ready_2_schedule.get_mut(&next).unwrap().pop_front().unwrap();
+            let next_fn: FnId = self
+                .ready_2_schedule
+                .get_mut(&next)
+                .unwrap()
+                .pop_front()
+                .unwrap();
             self.next_2_schedule = (next, next_fn);
             if self.ready_2_schedule.get(&next).unwrap().len() == 0 {
                 self.ready_2_schedule.remove(&next);
@@ -190,12 +200,14 @@ impl ESState {
     }
     fn unwrap_aes_prepare_next(&mut self) -> bool {
         match self.stage {
-            EFStage::FrameBegin =>
-                panic!("FrameBegin stage should not call unwrap_aes_prepare_next"),
+            EFStage::FrameBegin => {
+                panic!("FrameBegin stage should not call unwrap_aes_prepare_next")
+            }
             EFStage::ScaleForFns(ref mut stage) => stage.prepare_next(),
             EFStage::Schedule(ref mut stage) => stage.prepare_next(),
-            EFStage::SimCompute =>
-                panic!("SimCompute stage should not call unwrap_aes_prepare_next"),
+            EFStage::SimCompute => {
+                panic!("SimCompute stage should not call unwrap_aes_prepare_next")
+            }
             EFStage::ScaleDown(ref mut stage) => stage.prepare_next(),
         }
     }
@@ -243,9 +255,9 @@ impl ESState {
                 return false;
             } else if self.stage.is_sim_compute() {
                 self.stage = EFStage::FrameBegin; // AiEFStage::ScaleDown(StageScaleDown::new(env));
-                // if self.stage.as_scale_down_mut().unwrap().prepare_next() {
-                // return true;
-                // }
+                                                  // if self.stage.as_scale_down_mut().unwrap().prepare_next() {
+                                                  // return true;
+                                                  // }
             }
             //  else if self.stage.is_scale_down() {
             //     self.stage = AiEFStage::FrameBegin;
@@ -260,29 +272,23 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
     if config.es.sche_faas_flow() {
         return Some(Box::new(FaasFlowScheduler::new()));
     } else if config.es.sche_gofs() {
-        return Some(
-            Box::new(RuleBasedScheduler {
-                rule: ScheduleRule::GOFS,
-            })
-        );
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::GOFS,
+        }));
     } else if config.es.sche_load_least() {
-        return Some(
-            Box::new(RuleBasedScheduler {
-                rule: ScheduleRule::LeastLoad,
-            })
-        );
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::LeastLoad,
+        }));
     } else if config.es.sche_random() {
-        return Some(
-            Box::new(RuleBasedScheduler {
-                rule: ScheduleRule::Random,
-            })
-        );
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::Random,
+        }));
     } else if config.es.sche_round_robin() {
-        return Some(
-            Box::new(RuleBasedScheduler {
-                rule: ScheduleRule::RoundRobin(9999),
-            })
-        );
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::RoundRobin(9999),
+        }));
+    } else if config.es.sche_pass() {
+        return Some(Box::new(PassScheduler::new()));
     }
     None
 }
@@ -318,7 +324,9 @@ impl SimEnv {
             } else {
                 ret = false;
             }
-            stage.scheduled.push((reqid, fnid, Some(nodeid), raw_action));
+            stage
+                .scheduled
+                .push((reqid, fnid, Some(nodeid), raw_action));
         }
         ret
     }
@@ -334,7 +342,7 @@ impl SimEnv {
         let mut action_done = false;
         // 只有确定了下一个action，才会有可以返回的state
 
-        let config_es = || { &self.config.es };
+        let config_es = || &self.config.es;
 
         loop {
             if ef_state.stage.is_frame_begin() {
@@ -366,7 +374,8 @@ impl SimEnv {
                     let stage = ef_state.stage.as_scale_for_fns_mut().unwrap();
                     // let fnid = stage.current_fnid.unwrap();
                     let &(fnid, ref metric) = stage.current_fn().unwrap();
-                    let (action_score_, action_done_) = self.spec_ef_scaler
+                    let (action_score_, action_done_) = self
+                        .spec_ef_scaler
                         .borrow_mut()
                         .as_mut()
                         .unwrap()
@@ -393,7 +402,12 @@ impl SimEnv {
                     if !self.step_schedule(action, ef_state.stage.as_schedule_mut().unwrap()) {
                         action_score -= 100.0;
                     }
-                    if !ef_state.stage.as_scale_for_fns_mut().unwrap().prepare_next() {
+                    if !ef_state
+                        .stage
+                        .as_scale_for_fns_mut()
+                        .unwrap()
+                        .prepare_next()
+                    {
                         ef_state.trans_stage(self);
                     }
                 } else if self.config.es.sche_rule() {
@@ -402,12 +416,12 @@ impl SimEnv {
                 } else if self.config.es.sche_rule_prewarm_succ() {
                     self.try_put_fn(true);
                     ef_state.trans_stage(self);
-                } else if
-                    self.config.es.sche_faas_flow() ||
-                    self.config.es.sche_random() ||
-                    self.config.es.sche_gofs() ||
-                    self.config.es.sche_round_robin() ||
-                    self.config.es.sche_load_least()
+                } else if self.config.es.sche_faas_flow()
+                    || self.config.es.sche_random()
+                    || self.config.es.sche_gofs()
+                    || self.config.es.sche_round_robin()
+                    || self.config.es.sche_load_least()
+                    || self.config.es.sche_pass()
                 {
                     let mut spec = self.spec_scheduler.borrow_mut();
                     spec.as_mut().unwrap().schedule_some(self);
@@ -504,17 +518,18 @@ impl SimEnv {
                 fn_container_busy,
                 fn_container_count as f32,
                 fn_running_tasks as f32,
-                scale_stage.fn_metrics
+                scale_stage
+                    .fn_metrics
                     .iter()
                     .filter(|&&(fnid_, _)| fnid_ == fnid)
-                    .map(|(_, v)| { v.ready_2_schedule_fn_count() })
+                    .map(|(_, v)| v.ready_2_schedule_fn_count())
                     .sum::<usize>() as f32,
                 fn_avg_cpu,
                 fn_avg_mem_rate,
                 *self.hpa_action.borrow() as f32,
                 self.req_done_time_avg(),
                 self.cost_each_req(),
-                self.cost_perform()
+                self.cost_perform(),
             ];
             log::info!("state: {:?}", state);
             state
@@ -533,6 +548,9 @@ impl SimEnv {
         ef_state.step_cnt += 1;
 
         // state should has prompt info for next action
-        (frame_score + action_score, serde_json::to_string(&state).unwrap())
+        (
+            frame_score + action_score,
+            serde_json::to_string(&state).unwrap(),
+        )
     }
 }

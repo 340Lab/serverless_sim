@@ -23,6 +23,7 @@ mod es_ai;
 mod es_lass;
 mod es_fnsche;
 mod es_hpa;
+mod es_pass;
 mod scale_down_policy;
 mod config;
 mod sim_timer;

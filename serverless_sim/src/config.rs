@@ -1,5 +1,5 @@
 use clap::builder::Str;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ESConfig {
@@ -75,6 +75,13 @@ impl ESConfig {
 
     pub fn sche_gofs(&self) -> bool {
         if &*self.sche == "gofs" {
+            return true;
+        }
+        false
+    }
+
+    pub fn sche_pass(&self) -> bool {
+        if &*self.sche == "pass" {
             return true;
         }
         false
@@ -201,15 +208,8 @@ impl Config {
             _ => panic!("ef.down should be lass, ai, fnsche, hpa or faasflow"),
         }
         match &*self.es.sche {
-            | "rule"
-            | "ai"
-            | "faasflow"
-            | "fnsche"
-            | "rule_prewarm_succ"
-            | "random"
-            | "round_robin"
-            | "load_least"
-            | "gofs" => {}
+            "rule" | "ai" | "faasflow" | "fnsche" | "rule_prewarm_succ" | "random"
+            | "round_robin" | "load_least" | "gofs" | "pass" => {}
             _ => panic!("ef.sche should be rule, ai, faasflow or fnsche"),
         }
         match &*self.es.down_smooth {
@@ -235,7 +235,10 @@ impl Config {
             self.es.down,
             self.es.sche,
             self.es.down_smooth,
-            self.es.ai_type.as_ref().map_or("".to_owned(), |aitype| format!(".at{}", aitype))
+            self.es
+                .ai_type
+                .as_ref()
+                .map_or("".to_owned(), |aitype| format!(".at{}", aitype))
         )
     }
 }

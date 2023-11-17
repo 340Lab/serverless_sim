@@ -100,7 +100,7 @@ class ProxyEnv2:
         allowed_up=["ai","lass","fnsche","hpa","faasflow"]
         allowed_down=["ai","lass","fnsche","hpa","faasflow"]
         allowed_sche=["rule","fnsche","faasflow","rule_prewarm_succ",
-            "round_robin","random","load_least","gofs"]
+            "round_robin","random","load_least","gofs","pass"]
         up_down_must_same=["ai","lass","hpa","faasflow","fnsche"]
         scale_sche_must_same=["fnsche","faasflow"]
 
