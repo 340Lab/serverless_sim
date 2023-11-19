@@ -1,5 +1,5 @@
 use std::{
-    cell::RefMut,
+    cell::{Ref, RefMut},
     collections::{HashMap, HashSet},
 };
 
@@ -187,7 +187,17 @@ impl SimEnv {
 
     pub fn on_request_done(&self, req_id: ReqId) {
         let req = self.requests.borrow_mut().remove(&req_id).unwrap();
+        self.metric.borrow_mut().add_done_request();
         self.done_requests.borrow_mut().push(req);
+    }
+
+    pub fn request<'a>(&'a self, i: ReqId) -> Ref<'a, Request> {
+        let b = self.requests.borrow();
+
+        Ref::map(b, |map| {
+            map.get(&i)
+                .unwrap_or_else(|| panic!("request {} not found", i))
+        })
     }
 
     pub fn request_mut<'a>(&'a self, i: ReqId) -> RefMut<'a, Request> {

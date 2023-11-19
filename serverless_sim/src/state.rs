@@ -15,16 +15,16 @@
 // 。     mem：
 // .  }
 
-use std::{ collections::{ BTreeMap, BTreeSet } };
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    fn_dag::{ DagId, FnDagInner, FnId },
+    fn_dag::{DagId, FnDagInner, FnId},
     request::ReqId,
     sim_env::SimEnv,
     // util::{ to_range, in_range },
 };
 
-use daggy::{ petgraph::visit::Topo, Walker };
+use daggy::{petgraph::visit::Topo, Walker};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -156,20 +156,15 @@ impl SimEnv {
     fn state_requests(&self) -> Vec<SerialRequest> {
         let mut reqs = vec![];
         for (_req_id, req) in self.requests.borrow().iter() {
-            let dag_fn_2_node = req.fn_node
-                .iter()
-                .map(|(fid, nid)| (*fid, *nid))
-                .collect();
+            let dag_fn_2_node = req.fn_node.iter().map(|(fid, nid)| (*fid, *nid)).collect();
             reqs.push(SerialRequest {
                 req_id: req.req_id,
                 dag_id: req.dag_i,
                 dag_fn_2_node,
-                done_fns: req.done_fns
-                    .iter()
-                    .map(|fnid| *fnid)
-                    .collect(),
+                done_fns: req.done_fns.iter().map(|fnid| *fnid).collect(),
                 total_fn_cnt: req.fn_count(self),
-                working_fns: req.fn_node
+                working_fns: req
+                    .fn_node
                     .iter()
                     .filter(|(fnid, _)| !req.done_fns.contains(*fnid))
                     .map(|(fnid, _)| *fnid)
@@ -197,19 +192,22 @@ impl SimEnv {
         let mut serial_nodes = vec![];
         for n in nodes.iter() {
             let mut running_req_fns = vec![];
-            for (fnid, fn_cont) in n.fn_containers.iter() {
-                fn_cont.req_fn_state.iter().for_each(|(req_id, _req_fn_state)| {
-                    running_req_fns.push(RunningReqFn {
-                        req_id: *req_id,
-                        fn_id: *fnid,
+            for (fnid, fn_cont) in n.fn_containers.borrow().iter() {
+                fn_cont
+                    .req_fn_state
+                    .iter()
+                    .for_each(|(req_id, _req_fn_state)| {
+                        running_req_fns.push(RunningReqFn {
+                            req_id: *req_id,
+                            fn_id: *fnid,
+                        });
                     });
-                });
             }
             serial_nodes.push(SerialNode {
                 cpu: n.rsc_limit.cpu,
                 mem: n.rsc_limit.mem,
                 used_cpu: n.cpu,
-                used_mem: n.mem,
+                used_mem: n.mem(),
                 running_req_fns,
             });
         }

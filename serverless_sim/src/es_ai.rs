@@ -1,11 +1,12 @@
 use crate::{
-    es::{ ESState, StageScaleForFns, ActionEffectStage, ESScaler },
-    es_hpa::HpaESScaler,
     actions::ESActionWrapper,
-    sim_env::SimEnv,
-    scale_executor::{ ScaleOption, ScaleExecutor },
     config::Config,
-    scale_down_policy::{ ScaleDownPolicy, CarefulScaleDown },
+    es::{ActionEffectStage, ESScaler, ESState, StageScaleForFns},
+    es_hpa::HpaESScaler,
+    fn_dag::FnId,
+    scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
+    scale_executor::{ScaleExecutor, ScaleOption},
+    sim_env::SimEnv,
 };
 
 pub struct AIScaler {
@@ -23,12 +24,15 @@ impl AIScaler {
 }
 
 impl ESScaler for AIScaler {
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
+        0
+    }
     fn scale_for_fn(
         &mut self,
         env: &SimEnv,
         fnid: crate::fn_dag::FnId,
         metric: &crate::algos::ContainerMetric,
-        action: &ESActionWrapper
+        action: &ESActionWrapper,
     ) -> (f32, bool) {
         let raw_action = (match action {
             ESActionWrapper::Int(raw_action) => *raw_action,
@@ -66,19 +70,18 @@ impl ESScaler for AIScaler {
             env.fns.borrow().len()
         );
 
-        let desired_container_cnt = self.scale_down_policy.filter_desired(
-            fnid,
-            desired_container_cnt,
-            container_cnt
-        );
+        let desired_container_cnt =
+            self.scale_down_policy
+                .filter_desired(fnid, desired_container_cnt, container_cnt);
 
         if desired_container_cnt < container_cnt {
             // # scale down
             let scale = container_cnt - desired_container_cnt;
 
-            env.scale_executor
-                .borrow_mut()
-                .scale_down(env, ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale));
+            env.scale_executor.borrow_mut().scale_down(
+                env,
+                ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
+            );
         } else if desired_container_cnt > container_cnt {
             // # scale up
             let scale = desired_container_cnt - container_cnt;

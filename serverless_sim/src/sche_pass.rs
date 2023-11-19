@@ -168,16 +168,16 @@ impl PassScheduler {
         }
 
         for (fnid, nodeid) in schedule_to {
-            if env.node(nodeid).fn_containers.get(&fnid).is_none() {
-                if env
-                    .scale_executor
-                    .borrow_mut()
-                    .scale_up_fn_to_nodes(env, fnid, &vec![nodeid])
-                    == 0
-                {
-                    panic!("can't fail");
-                }
-            }
+            // if env.node(nodeid).fn_containers.get(&fnid).is_none() {
+            //     if env
+            //         .scale_executor
+            //         .borrow_mut()
+            //         .scale_up_fn_to_nodes(env, fnid, &vec![nodeid])
+            //         == 0
+            //     {
+            //         panic!("can't fail");
+            //     }
+            // }
             // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
             env.schedule_reqfn_on_node(req, fnid, nodeid);
         }
@@ -203,19 +203,19 @@ impl Scheduler for PassScheduler {
             }
         }
 
-        let mut to_scale_down = vec![];
-        // 回收空闲container
-        for n in env.nodes.borrow().iter() {
-            for (_, c) in n.fn_containers.iter() {
-                if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
-                    to_scale_down.push((n.node_id(), c.fn_id));
-                }
-            }
-        }
-        for (n, f) in to_scale_down {
-            env.scale_executor
-                .borrow_mut()
-                .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
-        }
+        // let mut to_scale_down = vec![];
+        // // 回收空闲container
+        // for n in env.nodes.borrow().iter() {
+        //     for (_, c) in n.fn_containers.iter() {
+        //         if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
+        //             to_scale_down.push((n.node_id(), c.fn_id));
+        //         }
+        //     }
+        // }
+        // for (n, f) in to_scale_down {
+        //     env.scale_executor
+        //         .borrow_mut()
+        //         .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
+        // }
     }
 }

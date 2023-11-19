@@ -1,10 +1,10 @@
 use crate::{
-    sim_env::SimEnv,
-    fn_dag::FnId,
-    algos::ContainerMetric,
-    scale_executor::{ ScaleExecutor, ScaleOption },
-    es::ESScaler,
     actions::ESActionWrapper,
+    algos::ContainerMetric,
+    es::ESScaler,
+    fn_dag::FnId,
+    scale_executor::{ScaleExecutor, ScaleOption},
+    sim_env::SimEnv,
 };
 
 pub struct FnScheScaler {}
@@ -16,12 +16,15 @@ impl FnScheScaler {
 }
 
 impl ESScaler for FnScheScaler {
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
+        0
+    }
     fn scale_for_fn(
         &mut self,
         env: &SimEnv,
         fnid: FnId,
         metric: &ContainerMetric,
-        action: &ESActionWrapper
+        action: &ESActionWrapper,
     ) -> (f32, bool) {
         // 对于容器一段时间未使用，就执行缩减
         // 优先扩容到索引小的node上
@@ -29,7 +32,7 @@ impl ESScaler for FnScheScaler {
         if let Some(nodes) = env.fn_2_nodes.borrow().get(&fnid) {
             for &nodeid in nodes.iter() {
                 let node = env.node(nodeid);
-                let container = node.fn_containers.get(&fnid).unwrap();
+                let container = node.container(fnid).unwrap();
 
                 if container.recent_frame_is_idle(3) && container.req_fn_state.len() == 0 {
                     containers_2_zero.push((fnid, nodeid));
@@ -55,8 +58,8 @@ impl ESScaler for FnScheScaler {
             // 寻找一个有空间的node进行调度
             let mut found_node = None;
             for n in env.nodes.borrow_mut().iter_mut() {
-                if n.fn_containers.get_mut(&fnid).is_some() {
-                    if n.left_mem() / ((n.task_cnt() + 1) as f32) < env.func(fnid).mem {
+                if n.container(fnid).is_some() {
+                    if n.left_mem() / ((n.running_task_cnt() + 1) as f32) < env.func(fnid).mem {
                         continue;
                     }
                     found_node = Some(n.node_id());
@@ -69,9 +72,11 @@ impl ESScaler for FnScheScaler {
             if let Some(found_node) = found_node {
                 // log::info!("Found node for fn {} on node {}", fnid, found_node);
                 if env.node(found_node).container(fnid).is_none() {
-                    env.scale_executor
-                        .borrow_mut()
-                        .scale_up_fn_to_nodes(env, fnid, &vec![found_node]);
+                    env.scale_executor.borrow_mut().scale_up_fn_to_nodes(
+                        env,
+                        fnid,
+                        &vec![found_node],
+                    );
                 }
                 let mut req = env.request_mut(req_id);
                 env.schedule_reqfn_on_node(&mut *req, fnid, found_node);

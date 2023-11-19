@@ -81,10 +81,11 @@ impl ESConfig {
     }
 
     pub fn sche_pass(&self) -> bool {
-        if &*self.sche == "pass" {
-            return true;
-        }
-        false
+        &*self.sche == "pass"
+    }
+
+    pub fn scale_up_no(&self) -> bool {
+        &*self.up == "no"
     }
 
     pub fn scale_lass(&self) -> bool {
@@ -180,49 +181,49 @@ impl Config {
         false
     }
 
-    pub fn check_valid(&self) {
-        match &*self.request_freq {
-            "low" | "middle" | "high" => {}
-            _ => panic!("request_freq should be low, middle or high"),
-        }
-        match &*self.dag_type {
-            "single" | "chain" | "dag" | "mix" => {}
-            _ => panic!("dag_type should be single, chain, dag or mix"),
-        }
-        match &*self.cold_start {
-            "high" | "low" | "mix" => {}
-            _ => panic!("cold_start should be high, low or mix"),
-        }
-        match &*self.fn_type {
-            "cpu" | "data" | "mix" => {}
-            _ => panic!("fn_type should be cpu, data or mix"),
-        }
-        match &*self.es.up {
-            // "ai","lass","fnsche","hpa","faasflow"
-            "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
-            _ => panic!("ef.up should be lass, ai, fnsche, hpa or faasflow"),
-        }
-        match &*self.es.down {
-            // "ai","lass","fnsche","hpa","faasflow"
-            "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
-            _ => panic!("ef.down should be lass, ai, fnsche, hpa or faasflow"),
-        }
-        match &*self.es.sche {
-            "rule" | "ai" | "faasflow" | "fnsche" | "rule_prewarm_succ" | "random"
-            | "round_robin" | "load_least" | "gofs" | "pass" => {}
-            _ => panic!("ef.sche should be rule, ai, faasflow or fnsche"),
-        }
-        match &*self.es.down_smooth {
-            "direct" | "smooth_30" | "smooth_100" => {}
-            _ => panic!("ef.down_smooth should be direct, smooth_30 or smooth_100"),
-        }
-        if self.es.sche_ai() {
-            match &**self.es.ai_type.as_ref().unwrap() {
-                "sac" | "ppo" | "mat" => {}
-                _ => panic!("ef.ai_type should be sac, ppo or mat"),
-            }
-        }
-    }
+    // pub fn check_valid(&self) {
+    //     match &*self.request_freq {
+    //         "low" | "middle" | "high" => {}
+    //         _ => panic!("request_freq should be low, middle or high"),
+    //     }
+    //     match &*self.dag_type {
+    //         "single" | "chain" | "dag" | "mix" => {}
+    //         _ => panic!("dag_type should be single, chain, dag or mix"),
+    //     }
+    //     match &*self.cold_start {
+    //         "high" | "low" | "mix" => {}
+    //         _ => panic!("cold_start should be high, low or mix"),
+    //     }
+    //     match &*self.fn_type {
+    //         "cpu" | "data" | "mix" => {}
+    //         _ => panic!("fn_type should be cpu, data or mix"),
+    //     }
+    //     match &*self.es.up {
+    //         // "ai","lass","fnsche","hpa","faasflow"
+    //         "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
+    //         _ => panic!("ef.up should be lass, ai, fnsche, hpa or faasflow"),
+    //     }
+    //     match &*self.es.down {
+    //         // "ai","lass","fnsche","hpa","faasflow"
+    //         "lass" | "ai" | "fnsche" | "hpa" | "faasflow" => {}
+    //         _ => panic!("ef.down should be lass, ai, fnsche, hpa or faasflow"),
+    //     }
+    //     match &*self.es.sche {
+    //         "rule" | "ai" | "faasflow" | "fnsche" | "rule_prewarm_succ" | "random"
+    //         | "round_robin" | "load_least" | "gofs" | "pass" => {}
+    //         _ => panic!("ef.sche should be rule, ai, faasflow or fnsche"),
+    //     }
+    //     match &*self.es.down_smooth {
+    //         "direct" | "smooth_30" | "smooth_100" => {}
+    //         _ => panic!("ef.down_smooth should be direct, smooth_30 or smooth_100"),
+    //     }
+    //     if self.es.sche_ai() {
+    //         match &**self.es.ai_type.as_ref().unwrap() {
+    //             "sac" | "ppo" | "mat" => {}
+    //             _ => panic!("ef.ai_type should be sac, ppo or mat"),
+    //         }
+    //     }
+    // }
     pub fn str(&self) -> String {
         format!(
             "sd{}.rf{}.dt{}.cs{}.ft{}.up{}.dn{}.sc{}.ds{}{}",

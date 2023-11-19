@@ -159,6 +159,13 @@ pub struct FnContainer {
 const WORKING_CNT_WINDOW: usize = 20;
 
 impl FnContainer {
+    pub fn mem_take(&self, env: &SimEnv) -> f32 {
+        match self.state() {
+            FnContainerState::Starting { .. } => env.func(self.fn_id).cold_start_container_mem_use,
+            FnContainerState::Running => env.func(self.fn_id).container_mem(),
+        }
+    }
+
     pub fn recent_handle_speed(&self) -> f32 {
         if self.recent_frmaes_done_cnt.len() == 0 {
             return 0.0;
@@ -451,18 +458,18 @@ impl SimEnv {
         if let Some(nodes) = map.get(&fnid) {
             for node in nodes.iter() {
                 let node = self.node(*node);
-                f(node.container(fnid).unwrap());
+                f(&node.container(fnid).unwrap());
             }
         }
     }
 
-    pub fn fn_running_containers_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
-        let mut nodes = HashSet::<NodeId>::new();
-        self.fn_containers_for_each(fnid, |c| {
-            if c.state().is_running() {
-                nodes.insert(c.node_id);
-            }
-        });
-        nodes
-    }
+    // pub fn fn_running_containers_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
+    //     let mut nodes = HashSet::<NodeId>::new();
+    //     self.fn_containers_for_each(fnid, |c| {
+    //         if c.state().is_running() {
+    //             nodes.insert(c.node_id);
+    //         }
+    //     });
+    //     nodes
+    // }
 }

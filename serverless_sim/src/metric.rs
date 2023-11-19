@@ -1,12 +1,16 @@
 use crate::{
+    config::{Config, ESConfig},
     // parse_arg,
     sim_env::SimEnv,
-    config::{ Config, ESConfig },
 };
 use chrono;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{ fs::{ self, File }, io::{ Write, Read }, collections::{ HashMap, BTreeMap } };
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs::{self, File},
+    io::{Read, Write},
+};
 
 // #[derive(Serialize, Deserialize)]
 // pub struct ReqFrame {
@@ -40,8 +44,28 @@ use std::{ fs::{ self, File }, io::{ Write, Read }, collections::{ HashMap, BTre
 //     score:f32,
 // }
 
-pub struct OneFrameRecord {
-    pub frame: usize,
+pub struct OneFrameMetric {
+    // pub frame: usize,
+    done_request_count: usize,
+}
+
+impl OneFrameMetric {
+    pub fn new() -> Self {
+        Self {
+            // frame: 0,
+            done_request_count: 0,
+        }
+    }
+    pub fn on_frame_begin(&mut self) {
+        // self.frame += 1;
+        self.done_request_count = 0;
+    }
+    pub fn add_done_request(&mut self) {
+        self.done_request_count += 1;
+    }
+    // pub fn done_request_count(&self) -> usize {
+    //     self.done_request_count
+    // }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -65,7 +89,10 @@ const FRAME_IDX_REQ_DONE_TIME_STD: usize = 4;
 const FRAME_IDX_REQ_DONE_TIME_AVG_90P: usize = 5;
 const FRAME_IDX_COST: usize = 6;
 const FRAME_IDX_SCORE: usize = 7;
-const FRAME_LEN: usize = 8;
+const FRAME_IDX_DONE_REQ_COUNT: usize = 8;
+
+// the last + 1
+const FRAME_LEN: usize = 9;
 
 impl Records {
     pub fn new(mut key: String) -> Self {
@@ -88,29 +115,31 @@ impl Records {
         }
     }
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
-        let mut frame = vec![Value::Null;FRAME_LEN];
+        let mut frame = vec![Value::Null; FRAME_LEN];
         frame[FRAME_IDX_FRAME] = (*sim_env.current_frame.borrow()).into();
-        frame[FRAME_IDX_RUNNING_REQS] = sim_env.requests
+        frame[FRAME_IDX_RUNNING_REQS] = sim_env
+            .requests
             .borrow()
             .iter()
             .map(|(reqid, req)| {
                 serde_json::json!({
-                        "r": *reqid,
-                        "d": req.dag_i,
-                        "n": (req.begin_frame == sim_env.current_frame()),
-                    })
+                    "r": *reqid,
+                    "d": req.dag_i,
+                    "n": (req.begin_frame == sim_env.current_frame()),
+                })
             })
             .collect::<Vec<_>>()
             .into();
-        frame[FRAME_IDX_NODES] = sim_env.nodes
+        frame[FRAME_IDX_NODES] = sim_env
+            .nodes
             .borrow()
             .iter()
             .map(|node| {
                 serde_json::json!( {
-                        "n": node.node_id(),
-                        "c": node.cpu,
-                        "m": node.mem,
-                    })
+                    "n": node.node_id(),
+                    "c": node.cpu,
+                    "m": node.mem,
+                })
             })
             .collect::<Vec<_>>()
             .into();
@@ -119,6 +148,7 @@ impl Records {
         frame[FRAME_IDX_REQ_DONE_TIME_AVG_90P] = sim_env.req_done_time_avg_90p().into();
         frame[FRAME_IDX_COST] = sim_env.cost_each_req().into();
         frame[FRAME_IDX_SCORE] = sim_env.score().into();
+        frame[FRAME_IDX_DONE_REQ_COUNT] = sim_env.metric.borrow().done_request_count.into();
 
         self.frames.push(frame);
     }
@@ -131,7 +161,8 @@ impl Records {
 
             log::info!("flush to target key: {}", self.record_name);
             let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
-            file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
+            file.write_all(serde_json::to_string(self).unwrap().as_bytes())
+                .unwrap();
 
             // 计算几个关键指标，输出到对应seed的文件中
         }
@@ -262,19 +293,21 @@ pub fn group_records_by_seed() {
         // let mut config_metrics = vec![];
         let mut count = recordfiles.len();
         if !seeds_metrics_cache.contains_key(&seed) {
-            seeds_metrics_cache.insert(
-                seed.clone(),
-                get_seed_metrics(&seed).map_or(vec![], |v| v)
-            );
+            seeds_metrics_cache.insert(seed.clone(), get_seed_metrics(&seed).map_or(vec![], |v| v));
         }
         let mut config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
         for (configstr, f) in recordfiles.iter().rev() {
             let mut read_data = || {
-                let mut records: Records = serde_json
-                    ::from_str(&fs::read_to_string(format!("records/{}", f.file_name)).unwrap())
-                    .unwrap();
+                let mut records: Records = serde_json::from_str(
+                    &fs::read_to_string(format!("records/{}", f.file_name)).unwrap(),
+                )
+                .unwrap();
                 count -= 1;
-                log::info!("deserialed one record file: {}, left:{}", f.file_name, count);
+                log::info!(
+                    "deserialed one record file: {}, left:{}",
+                    f.file_name,
+                    count
+                );
                 if records.frames.len() < 999 {
                     return None;
                 }
@@ -282,25 +315,34 @@ pub fn group_records_by_seed() {
                 let last_frame = records.frames.iter_mut().rev().next().unwrap();
                 let cost_per_req = last_frame[FRAME_IDX_COST].take();
                 let time_per_req = last_frame[FRAME_IDX_REQ_DONE_TIME_AVG].take();
-                let score = last_frame[FRAME_IDX_SCORE].take();
+                let score = last_frame[FRAME_IDX_SCORE].clone();
+                drop(last_frame);
+                // let req_done = last_frame[FRAME_IDX_DONE_REQ_COUNT].take();
+                let rps = records
+                    .frames
+                    .iter()
+                    .map(|f| f[FRAME_IDX_DONE_REQ_COUNT].as_f64().unwrap())
+                    .sum::<f64>()
+                    / records.frames.len() as f64;
+
                 let one_config_info: Vec<Value> = vec![
                     configstr.clone().into(),
                     cost_per_req,
                     time_per_req,
                     score,
-                    f.time_str.clone().into()
+                    rps.into(),
+                    f.time_str.clone().into(),
                 ];
                 Some(one_config_info)
             };
-            if
-                let Some(update) = config_metrics
-                    .iter_mut()
-                    .filter(|config| { config[0].as_str().unwrap() == &*configstr })
-                    .next()
+            if let Some(update) = config_metrics
+                .iter_mut()
+                .filter(|config| config[0].as_str().unwrap() == &*configstr)
+                .next()
             {
                 if update.len() > 4 {
                     // check time is bigger
-                    if update[4].as_str().unwrap() < f.time_str.as_str() {
+                    if update[5].as_str().unwrap() < f.time_str.as_str() {
                         if let Some(one_config_info) = read_data() {
                             *update = one_config_info;
                         }
@@ -324,14 +366,15 @@ pub fn group_records_by_seed() {
             .truncate(true)
             .open(format!("records/seed_{}.json", seed))
             .unwrap();
-        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes()).unwrap();
+        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes())
+            .unwrap();
     }
 }
 
 /// used sync io operation, use spawn_blocking
 /// return: seed->[[configstr, cost, time, score]...]
 pub fn get_seeds_metrics<'a>(
-    seeds: impl Iterator<Item = &'a String>
+    seeds: impl Iterator<Item = &'a String>,
 ) -> HashMap<String, Vec<Vec<Value>>> {
     let mut seeds_metrics = HashMap::new();
     for seed in seeds {
@@ -345,12 +388,11 @@ pub fn get_seeds_metrics<'a>(
 /// return: [[configstr, cost, time, score]...]
 pub fn get_seed_metrics(seed: &String) -> Option<Vec<Vec<Value>>> {
     let mut seed_metrics = vec![];
-    if
-        let Ok(mut file) = File::options()
-            .read(true)
-            .write(true)
-            .append(false)
-            .open(format!("records/seed_{}.json", seed))
+    if let Ok(mut file) = File::options()
+        .read(true)
+        .write(true)
+        .append(false)
+        .open(format!("records/seed_{}.json", seed))
     {
         let mut content = String::new();
         file.read_to_string(&mut content).unwrap();

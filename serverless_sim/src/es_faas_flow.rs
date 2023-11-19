@@ -1,16 +1,19 @@
-use std::collections::{ HashMap };
+use std::collections::{HashMap, HashSet};
 
-use daggy::{ petgraph::visit::{ IntoEdgeReferences, EdgeRef }, EdgeIndex };
-use rand::{ thread_rng, Rng };
+use daggy::{
+    petgraph::visit::{EdgeRef, IntoEdgeReferences},
+    EdgeIndex,
+};
+use rand::{thread_rng, Rng};
 
 use crate::{
+    fn_dag::FnId,
+    node::NodeId,
+    request::{ReqId, Request},
+    scale_executor::{ScaleExecutor, ScaleOption},
     schedule::Scheduler,
     sim_env::SimEnv,
-    request::{ Request, ReqId },
-    node::NodeId,
     util,
-    fn_dag::FnId,
-    scale_executor::{ ScaleExecutor, ScaleOption },
 };
 
 struct RequestSchedulePlan {
@@ -18,20 +21,24 @@ struct RequestSchedulePlan {
 }
 
 pub struct FaasFlowScheduler {
-    request_schedule_state: HashMap<ReqId, RequestSchedulePlan>,
+    // request_schedule_state: HashMap<ReqId, RequestSchedulePlan>,
+    scheduled_reqs: HashSet<ReqId>,
 }
 
 impl FaasFlowScheduler {
     pub fn new() -> Self {
-        Self { request_schedule_state: HashMap::new() }
+        Self {
+            scheduled_reqs: HashSet::new(),
+        }
     }
 
-    fn generate_schedule(&mut self, req: &Request, env: &SimEnv) {
+    fn schedule_one_req(&mut self, req: &mut Request, env: &SimEnv) {
         log::info!("faasflow start generate schedule for req {}", req.req_id);
-        let mut nodes_left_mem = env.nodes
+        let mut nodes_left_mem = env
+            .nodes
             .borrow()
             .iter()
-            .map(|n| { n.left_mem_for_place_container() })
+            .map(|n| n.left_mem_for_place_container())
             .collect::<Vec<_>>();
         //1.为请求的所有函数随机分配节点
         let mut fn_poses = HashMap::new();
@@ -53,14 +60,17 @@ impl FaasFlowScheduler {
         let mut cri_paths = vec![];
         for i in 0..critical_path_nodes.len() - 1 {
             cri_paths.push(
-                dag.dag_inner.find_edge(critical_path_nodes[i], critical_path_nodes[i + 1]).unwrap()
+                dag.dag_inner
+                    .find_edge(critical_path_nodes[i], critical_path_nodes[i + 1])
+                    .unwrap(),
             );
             // non_cti_paths.remove(&(critical_path_nodes[i], critical_path_nodes[i+1]));
         }
-        let mut non_cri_paths = dag.dag_inner
+        let mut non_cri_paths = dag
+            .dag_inner
             .edge_references()
             .map(|e| e.id())
-            .filter(|e| { !cri_paths.contains(e) })
+            .filter(|e| !cri_paths.contains(e))
             .collect::<Vec<_>>();
         let cmp_edge = |e1: &EdgeIndex, e2: &EdgeIndex| {
             let e1_weight = *dag.dag_inner.edge_weight(*e1).unwrap();
@@ -72,8 +82,8 @@ impl FaasFlowScheduler {
 
         if cri_paths.len() > 1 {
             assert!(
-                *dag.dag_inner.edge_weight(cri_paths[0]).unwrap() >=
-                    *dag.dag_inner.edge_weight(cri_paths[1]).unwrap()
+                *dag.dag_inner.edge_weight(cri_paths[0]).unwrap()
+                    >= *dag.dag_inner.edge_weight(cri_paths[1]).unwrap()
             );
         }
 
@@ -100,46 +110,52 @@ impl FaasFlowScheduler {
             try_merge_e(e);
         }
 
-        self.request_schedule_state.insert(req.req_id, RequestSchedulePlan { fn_nodes: fn_poses });
+        // self.request_schedule_state
+        //     .insert(req.req_id, RequestSchedulePlan { fn_nodes: fn_poses });
         log::info!("faasflow end generate schedule for req {}", req.req_id);
+        for (fnid, nodeid) in fn_poses {
+            env.schedule_reqfn_on_node(req, fnid, nodeid)
+        }
+        self.scheduled_reqs.insert(req.req_id);
     }
 
-    fn do_some_schedule(&self, req: &mut Request, env: &SimEnv) {
-        let dag = env.dag(req.dag_i);
-        let plan = self.request_schedule_state.get(&req.req_id).unwrap();
-        let mut walker = dag.new_dag_walker();
-        while let Some(fnode) = walker.next(&dag.dag_inner) {
-            let fnid = dag.dag_inner[fnode];
-            // Already scheduled
-            if req.get_fn_node(fnid).is_some() {
-                continue;
-            }
-            // Not schduled but not all parents done
-            if !req.parents_all_done(env, fnid) {
-                continue;
-            }
-            // Ready to be scheduled
-            let fn_node = *plan.fn_nodes.get(&fnid).unwrap();
-            if env.node(fn_node).fn_containers.get(&fnid).is_none() {
-                if
-                    env.scale_executor
-                        .borrow_mut()
-                        .scale_up_fn_to_nodes(env, fnid, &vec![fn_node]) == 0
-                {
-                    continue;
-                }
-            }
-            // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
-            env.schedule_reqfn_on_node(req, fnid, fn_node);
-            // }
-        }
-    }
+    // fn do_some_schedule(&self, req: &mut Request, env: &SimEnv) {
+    //     let dag = env.dag(req.dag_i);
+    //     let plan = self.request_schedule_state.get(&req.req_id).unwrap();
+    //     let mut walker = dag.new_dag_walker();
+    //     while let Some(fnode) = walker.next(&dag.dag_inner) {
+    //         let fnid = dag.dag_inner[fnode];
+    //         // Already scheduled
+    //         if req.get_fn_node(fnid).is_some() {
+    //             continue;
+    //         }
+    //         // Not schduled but not all parents done
+    //         if !req.parents_all_done(env, fnid) {
+    //             continue;
+    //         }
+    //         // Ready to be scheduled
+    //         let fn_node = *plan.fn_nodes.get(&fnid).unwrap();
+    //         if env.node(fn_node).container(fnid).is_none() {
+    //             if env
+    //                 .scale_executor
+    //                 .borrow_mut()
+    //                 .scale_up_fn_to_nodes(env, fnid, &vec![fn_node])
+    //                 == 0
+    //             {
+    //                 continue;
+    //             }
+    //         }
+    //         // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
+    //         env.schedule_reqfn_on_node(req, fnid, fn_node);
+    //         // }
+    //     }
+    // }
 
     fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) {
-        if !self.request_schedule_state.contains_key(&req.req_id) {
-            self.generate_schedule(req, env);
+        if !self.scheduled_reqs.contains(&req.req_id) {
+            self.schedule_one_req(req, env);
         }
-        self.do_some_schedule(req, env);
+        // self.do_some_schedule(req, env);
     }
 }
 
@@ -163,14 +179,16 @@ impl Scheduler for FaasFlowScheduler {
         let mut to_scale_down = vec![];
         // 回收空闲container
         for n in env.nodes.borrow().iter() {
-            for (_, c) in n.fn_containers.iter() {
+            for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
                     to_scale_down.push((n.node_id(), c.fn_id));
                 }
             }
         }
         for (n, f) in to_scale_down {
-            env.scale_executor.borrow_mut().scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
+            env.scale_executor
+                .borrow_mut()
+                .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
         }
     }
 }

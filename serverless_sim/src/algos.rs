@@ -1,6 +1,14 @@
-use std::{ collections::{ HashMap, BTreeMap, VecDeque }, hash::Hash };
+use std::{
+    collections::{BTreeMap, HashMap, VecDeque},
+    hash::Hash,
+};
 
-use crate::{ fn_dag::FnId, node::{ Node, NodeId }, sim_env::SimEnv, request::{ Request, ReqId } };
+use crate::{
+    fn_dag::FnId,
+    node::{Node, NodeId},
+    request::{ReqId, Request},
+    sim_env::SimEnv,
+};
 
 #[derive(Clone, Debug)]
 pub struct ContainerMetric {
@@ -18,7 +26,7 @@ impl ContainerMetric {
 impl SimEnv {
     pub fn algo_get_fn_all_scheduled_metric(
         &self,
-        fns_ready_2_schedule: &HashMap<FnId, ContainerMetric>
+        fns_ready_2_schedule: &HashMap<FnId, ContainerMetric>,
     ) -> Vec<(FnId, ContainerMetric)> {
         self.fns
             .borrow()
@@ -29,23 +37,17 @@ impl SimEnv {
                     f.fn_id,
                     ContainerMetric {
                         container_count: self.fn_container_cnt(f.fn_id),
-                        scheduled_fn_count: self.fn_2_nodes
-                            .borrow()
-                            .get(&f.fn_id)
-                            .map_or_else(
-                                || 0,
-                                |nodes| {
-                                    nodes
-                                        .iter()
-                                        .map(|n| {
-                                            self.node(*n)
-                                                .fn_containers.get(&f.fn_id)
-                                                .unwrap()
-                                                .req_fn_state.len()
-                                        })
-                                        .sum()
-                                }
-                            ),
+                        scheduled_fn_count: self.fn_2_nodes.borrow().get(&f.fn_id).map_or_else(
+                            || 0,
+                            |nodes| {
+                                nodes
+                                    .iter()
+                                    .map(|n| {
+                                        self.node(*n).container(f.fn_id).unwrap().req_fn_state.len()
+                                    })
+                                    .sum()
+                            },
+                        ),
                         ready_2_schedule_fn_reqs: vec![],
                     },
                 )
@@ -84,7 +86,7 @@ impl SimEnv {
 
                 collect_map
                     .entry(reqid)
-                    .and_modify(|q| { q.push_back(fnid) })
+                    .and_modify(|q| q.push_back(fnid))
                     .or_insert_with(|| {
                         let mut q = VecDeque::new();
                         q.push_back(fnid);
@@ -123,30 +125,22 @@ impl SimEnv {
                         metric.ready_2_schedule_fn_reqs.push(req.req_id);
                     })
                     .or_insert(ContainerMetric {
-                        container_count: env.fn_2_nodes
+                        container_count: env
+                            .fn_2_nodes
                             .borrow()
                             .get(&fnid)
-                            .map_or_else(
-                                || { 0 },
-                                |nodes| { nodes.len() }
-                            ),
-                        scheduled_fn_count: env.fn_2_nodes
-                            .borrow()
-                            .get(&fnid)
-                            .map_or_else(
-                                || 0,
-                                |nodes| {
-                                    nodes
-                                        .iter()
-                                        .map(|n| {
-                                            env.node(*n)
-                                                .fn_containers.get(&fnid)
-                                                .unwrap()
-                                                .req_fn_state.len()
-                                        })
-                                        .sum()
-                                }
-                            ),
+                            .map_or_else(|| 0, |nodes| nodes.len()),
+                        scheduled_fn_count: env.fn_2_nodes.borrow().get(&fnid).map_or_else(
+                            || 0,
+                            |nodes| {
+                                nodes
+                                    .iter()
+                                    .map(|n| {
+                                        env.node(*n).container(fnid).unwrap().req_fn_state.len()
+                                    })
+                                    .sum()
+                            },
+                        ),
                         ready_2_schedule_fn_reqs: vec![req.req_id],
                     });
             }
@@ -177,7 +171,7 @@ impl SimEnv {
         req: &Request,
         fnid: FnId,
         nodeid: NodeId,
-        n2n_connection_count: Option<&Vec<Vec<usize>>>
+        n2n_connection_count: Option<&Vec<Vec<usize>>>,
     ) -> f32 {
         let get_connection_count = |n1: NodeId, n2: NodeId| -> usize {
             if let Some(n2n_connection_count) = n2n_connection_count.as_ref() {
@@ -200,15 +194,14 @@ impl SimEnv {
             if pnode == nodeid {
             } else {
                 transtime = transtime.max(
-                    pdata /
-                        (self.node_get_speed_btwn(pnode, nodeid) /
-                            (get_connection_count(pnode, nodeid) as f32))
+                    pdata
+                        / (self.node_get_speed_btwn(pnode, nodeid)
+                            / (get_connection_count(pnode, nodeid) as f32)),
                 );
             }
         }
-        let computetime =
-            (self.func(fnid).cpu * (self.node(nodeid).frame_run_count as f32)) /
-            self.node(nodeid).rsc_limit.cpu;
+        let computetime = (self.func(fnid).cpu * (self.node(nodeid).frame_run_count as f32))
+            / self.node(nodeid).rsc_limit.cpu;
 
         transtime + computetime
         // let run_speed=self.node(i).fn_containers.get(&fnid).unwrap().recent_handle_speed();

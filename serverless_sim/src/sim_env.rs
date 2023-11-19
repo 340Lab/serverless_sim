@@ -13,7 +13,7 @@ use crate::{
     config::Config,
     es::{self, ESScaler, ESState},
     fn_dag::{FnDAG, FnId, Func},
-    metric::Records,
+    metric::{OneFrameMetric, Records},
     node::{Node, NodeId},
     // parse_arg,
     request::{ReqId, Request},
@@ -57,6 +57,8 @@ pub struct SimEnv {
     pub cost: RefCell<f32>,
 
     pub scale_executor: RefCell<DefaultScaleExecutor>,
+
+    pub metric: RefCell<OneFrameMetric>,
 
     pub metric_record: RefCell<Records>,
 
@@ -111,6 +113,7 @@ impl SimEnv {
             fn_must_scale_up: HashSet::new().into(),
             distance2hpa: (0).into(),
             hpa_action: (0).into(),
+            metric: OneFrameMetric::new().into(),
         };
 
         newenv.init();
@@ -168,21 +171,25 @@ impl SimEnv {
         for n in self.nodes.borrow_mut().iter_mut() {
             n.last_frame_cpu = n.cpu;
             n.cpu = 0.0;
-            n.mem = n
+            *n.mem.borrow_mut() = n
                 .fn_containers
+                .borrow()
                 .iter()
                 .map(|(_, c)| c.container_basic_mem(self))
                 .sum();
 
             //有些变为运行状态 内存占用变大很正常
             assert!(
-                n.mem <= n.rsc_limit.mem,
+                n.mem() <= n.rsc_limit.mem,
                 "mem {} > limit {}",
-                n.mem,
+                n.mem(),
                 n.rsc_limit.mem
             );
         }
+        // metric
+        self.metric.borrow_mut().on_frame_begin();
 
+        // timer
         if let Some(timers) = self.timers.borrow_mut().remove(&self.current_frame()) {
             for mut timer in timers {
                 timer(self);
@@ -198,14 +205,14 @@ impl SimEnv {
         }
 
         for n in self.nodes.borrow_mut().iter_mut() {
-            for (_, c) in n.fn_containers.iter_mut() {
+            for (_, c) in n.fn_containers.borrow_mut().iter_mut() {
                 if c.this_frame_used {
                     c.this_frame_used = false;
                     c.used_times += 1;
                 }
             }
             let mut cost = self.cost.borrow_mut();
-            *cost += n.cpu * 0.00001 + n.mem * 0.00001;
+            *cost += n.cpu * 0.00001 + n.mem() * 0.00001;
         }
         // 自增 frame
         let mut cur_frame = self.current_frame.borrow_mut();

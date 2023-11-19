@@ -10,15 +10,18 @@ use crate::{
     actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
     config::Config,
-    es_ai::{self, AIScaler},
     es_faas_flow::FaasFlowScheduler,
-    es_fnsche::FnScheScaler,
+    // es_ai::{self, AIScaler},
+    // es_faas_flow::FaasFlowScheduler,
+    // es_fnsche::FnScheScaler,
     es_hpa::HpaESScaler,
-    es_lass::LassESScaler,
-    es_pass::PassScheduler,
+    // es_lass::LassESScaler,
     fn_dag::FnId,
     node::NodeId,
     request::ReqId,
+    scaler_no::ScalerNo,
+    sche_pass::PassScheduler,
+    sche_pos::PosScheduler,
     sche_rule_based::{RuleBasedScheduler, ScheduleRule},
     schedule::Scheduler,
     sim_env::SimEnv,
@@ -38,6 +41,8 @@ pub trait ESScaler {
         metric: &ContainerMetric,
         action: &ESActionWrapper,
     ) -> (f32, bool);
+
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
@@ -134,7 +139,7 @@ impl StageScaleDown {
         let mut idle_containers = Vec::new();
         let nodes = env.nodes.borrow();
         for node in nodes.iter() {
-            for (&fnid, container) in node.fn_containers.iter() {
+            for (&fnid, container) in node.fn_containers.borrow().iter() {
                 if container.is_idle() {
                     idle_containers.push((node.node_id(), fnid));
                 }
@@ -289,6 +294,8 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }));
     } else if config.es.sche_pass() {
         return Some(Box::new(PassScheduler::new()));
+    } else if config.es.sche_rule() {
+        return Some(Box::new(PosScheduler::new()));
     }
     None
 }
@@ -296,14 +303,19 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
 pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> {
     let es = &config.es;
 
-    if es.scale_lass() {
-        return Some(Box::new(LassESScaler::new()));
-    } else if es.sche_fnsche() {
-        return Some(Box::new(FnScheScaler::new()));
-    } else if es.scale_hpa() {
+    // if es.scale_lass() {
+    //     return Some(Box::new(LassESScaler::new()));
+    // } else if es.sche_fnsche() {
+    //     return Some(Box::new(FnScheScaler::new()));
+    // } else
+    if es.scale_hpa() {
         return Some(Box::new(HpaESScaler::new()));
-    } else if es.scale_ai() {
-        return Some(Box::new(AIScaler::new(config)));
+    }
+    // else if es.scale_ai() {
+    //     return Some(Box::new(AIScaler::new(config)));
+    // }
+    else if es.scale_up_no() {
+        return Some(Box::new(ScalerNo::new()));
     }
 
     None
@@ -410,21 +422,17 @@ impl SimEnv {
                     {
                         ef_state.trans_stage(self);
                     }
-                } else if self.config.es.sche_rule() {
-                    self.try_put_fn(false);
-                    ef_state.trans_stage(self);
-                } else if self.config.es.sche_rule_prewarm_succ() {
-                    self.try_put_fn(true);
-                    ef_state.trans_stage(self);
-                } else if self.config.es.sche_faas_flow()
-                    || self.config.es.sche_random()
-                    || self.config.es.sche_gofs()
-                    || self.config.es.sche_round_robin()
-                    || self.config.es.sche_load_least()
-                    || self.config.es.sche_pass()
-                {
-                    let mut spec = self.spec_scheduler.borrow_mut();
-                    spec.as_mut().unwrap().schedule_some(self);
+                }
+                // else if self.config.es.sche_rule() {
+                //     self.try_put_fn(false);
+                //     ef_state.trans_stage(self);
+                // } else if self.config.es.sche_rule_prewarm_succ() {
+                //     self.try_put_fn(true);
+                //     ef_state.trans_stage(self);
+                // }
+                else if let Some(spec_sche) = self.spec_scheduler.borrow_mut().as_mut() {
+                    // let mut spec = self.spec_scheduler.borrow_mut();
+                    spec_sche.schedule_some(self);
                     ef_state.trans_stage(self);
                 } else if self.config.es.sche_fnsche() {
                     // sche is done in scale stage
@@ -506,7 +514,7 @@ impl SimEnv {
                 fn_running_tasks += c.req_fn_state.len();
                 fn_avg_cpu +=
                     self.node(c.node_id).last_frame_cpu / self.node(c.node_id).rsc_limit.cpu;
-                fn_avg_mem_rate += self.node(c.node_id).mem / self.node(c.node_id).rsc_limit.mem;
+                fn_avg_mem_rate += self.node(c.node_id).mem() / self.node(c.node_id).rsc_limit.mem;
             });
             if fn_container_count > 0 {
                 fn_avg_cpu /= fn_container_count as f32;
