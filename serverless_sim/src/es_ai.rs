@@ -1,31 +1,45 @@
 use crate::{
-    es::{ ESState, StageScaleForFns, ActionEffectStage, ESScaler },
     actions::ESActionWrapper,
-    sim_env::SimEnv,
-    scale_executor::{ ScaleOption, ScaleExecutor },
     config::Config,
+    es::{ActionEffectStage, ESScaler, ESState, StageScaleForFns},
+    es_hpa::HpaESScaler,
+    fn_dag::FnId,
+    scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
+    scale_executor::{ScaleExecutor, ScaleOption},
+    sim_env::SimEnv,
 };
 
-pub struct AIScaler {}
+pub struct AIScaler {
+    hpa: HpaESScaler,
+    pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+}
 
 impl AIScaler {
     pub fn new(config: &Config) -> Self {
-        Self {}
+        Self {
+            hpa: HpaESScaler::new(),
+            scale_down_policy: Box::new(CarefulScaleDown::new()),
+        }
     }
 }
 
 impl ESScaler for AIScaler {
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
+        0
+    }
     fn scale_for_fn(
         &mut self,
         env: &SimEnv,
         fnid: crate::fn_dag::FnId,
         metric: &crate::algos::ContainerMetric,
-        action: &ESActionWrapper
+        action: &ESActionWrapper,
     ) -> (f32, bool) {
-        let raw_action = match action {
+        let raw_action = (match action {
             ESActionWrapper::Int(raw_action) => *raw_action,
-        };
-        let mut desired_container_cnt = (raw_action % 10) as usize;
+        }) as usize;
+        *env.hpa_action.borrow_mut() = self.hpa.action(env, fnid, metric);
+        *env.distance2hpa.borrow_mut() = raw_action.abs_diff(*env.hpa_action.borrow_mut());
+        let mut desired_container_cnt = raw_action % 10;
         let container_cnt = env.fn_container_cnt(fnid);
         let mut score_trans = 0.0;
 
@@ -34,11 +48,13 @@ impl ESScaler for AIScaler {
             desired_container_cnt = container_cnt;
         }
 
-        // no need to scale up
-        if metric.ready_2_schedule_fn_reqs.len() == 0 && desired_container_cnt > container_cnt {
-            desired_container_cnt = container_cnt;
-            score_trans -= 500.0;
-        }
+        // Maybe there's bigger optimization space
+        //
+        // // no need to scale up
+        // if metric.ready_2_schedule_fn_reqs.len() == 0 && desired_container_cnt > container_cnt {
+        //     desired_container_cnt = container_cnt;
+        //     score_trans -= 500.0;
+        // }
 
         // can't scale down to 0
         if metric.ready_2_schedule_fn_reqs.len() != 0 && desired_container_cnt == 0 {
@@ -54,13 +70,18 @@ impl ESScaler for AIScaler {
             env.fns.borrow().len()
         );
 
+        let desired_container_cnt =
+            self.scale_down_policy
+                .filter_desired(fnid, desired_container_cnt, container_cnt);
+
         if desired_container_cnt < container_cnt {
             // # scale down
             let scale = container_cnt - desired_container_cnt;
 
-            env.scale_executor
-                .borrow_mut()
-                .scale_down(env, ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale));
+            env.scale_executor.borrow_mut().scale_down(
+                env,
+                ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
+            );
         } else if desired_container_cnt > container_cnt {
             // # scale up
             let scale = desired_container_cnt - container_cnt;

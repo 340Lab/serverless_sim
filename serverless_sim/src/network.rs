@@ -1,26 +1,27 @@
-use axum::{ http::StatusCode, routing::post, Json, Router };
+use axum::{http::StatusCode, routing::post, Json, Router};
 use moka::sync::Cache;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    cmp::{ min },
-    fs::{ self, File },
-    io::{ Read },
-    sync::{ Arc, Mutex, RwLock },
+    cmp::min,
     collections::HashMap,
+    fs::{self, File},
+    io::Read,
+    sync::{Arc, Mutex, RwLock},
 };
 
-use crate::{ metric::Records, sim_env::SimEnv, config::Config };
+use crate::{
+    config::Config,
+    metric::{self, Records},
+    sim_env::SimEnv,
+};
 
 pub async fn start() {
     // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
-        // .route("/", get(root))
-        // `POST /users` goes to `create_user`
         .route("/step", post(step))
-        // .route("/step_float", post(step_float))
-        // .route("/step_batch", post(step_batch))
+        .route("/collect_seed_metrics", post(collect_seed_metrics))
+        .route("/get_seeds_metrics", post(get_seeds_metrics))
         .route("/reset", post(reset))
         // .route("/state_score", post(state_score))
         .route("/history_list", post(history_list))
@@ -29,9 +30,9 @@ pub async fn start() {
 
     // run our app with hyper, listening globally on port 3000
     // run it with hyper on localhost:3000
-    axum::Server
-        ::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service()).await
+    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+        .serve(app.into_make_service())
+        .await
         .unwrap();
 }
 
@@ -44,6 +45,7 @@ lazy_static! {
     /// This is an example for using doc comment attributes
     pub static ref SIM_ENVS: RwLock<HashMap<String,Mutex<SimEnv>>> = RwLock::new(HashMap::new());
     static ref HISTORY_CACHE: Cache<String,Arc<Records>> = Cache::new(100);
+    static ref COLLECT_SEED_METRICS_LOCK :tokio::sync::Mutex<()>= tokio::sync::Mutex::new(());
 }
 
 // async fn history() -> (StatusCode, Json<()>) {
@@ -80,7 +82,8 @@ async fn metric(Json(payload): Json<HistoryReq>) -> (StatusCode, Json<MetricResp
         if history.frames.len() == 0 {
             return 0.0;
         }
-        history.frames
+        history
+            .frames
             .iter()
             .map(|f| {
                 if vi < f.len() {
@@ -88,7 +91,8 @@ async fn metric(Json(payload): Json<HistoryReq>) -> (StatusCode, Json<MetricResp
                 }
                 0.0
             })
-            .sum::<f64>() / (history.frames.len() as f64)
+            .sum::<f64>()
+            / (history.frames.len() as f64)
     };
     // 0 frame,
     // 1 running_reqs,
@@ -167,7 +171,8 @@ async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
     let mut resp = HistoryListResp { list: vec![] };
 
     for path in paths {
-        resp.list.push(path.unwrap().file_name().into_string().unwrap());
+        resp.list
+            .push(path.unwrap().file_name().into_string().unwrap());
     }
 
     (StatusCode::OK, Json(resp))
@@ -181,13 +186,13 @@ struct HistoryListResp {
 
 async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
     log::info!("Reset sim env");
-    payload.check_valid();
+    // payload.check_valid();
     let key = payload.str();
     {
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
-            sim_env.metric_record.borrow().flush();
+            sim_env.metric_record.borrow().flush(&sim_env);
             *sim_env = SimEnv::new(payload);
         } else {
             drop(sim_envs);
@@ -231,10 +236,27 @@ async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
 //     (StatusCode::OK, Json(resp))
 // }
 
+async fn get_seeds_metrics(
+    Json(payload): Json<Vec<String>>,
+) -> (StatusCode, Json<HashMap<String, Vec<Vec<Value>>>>) {
+    let res = tokio::task::spawn_blocking(move || metric::get_seeds_metrics(payload.iter()))
+        .await
+        .unwrap();
+    (StatusCode::OK, Json(res))
+}
+
+async fn collect_seed_metrics() -> (StatusCode, Json<()>) {
+    let _hold = COLLECT_SEED_METRICS_LOCK.lock().await;
+    tokio::task::spawn_blocking(metric::group_records_by_seed)
+        .await
+        .unwrap();
+    (StatusCode::OK, ().into())
+}
+
 async fn step(
     // this argument tells axum to parse the request body
     // as JSON into a `CreateUser` type
-    Json(payload): Json<StepReq>
+    Json(payload): Json<StepReq>,
 ) -> (StatusCode, Json<StepResp>) {
     let key = payload.config.str();
     // log::info!("Step sim env");
@@ -249,7 +271,7 @@ async fn step(
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
-            let (score, state) = sim_env.step(payload.action);
+            let (score, state) = tokio::task::block_in_place(|| sim_env.step(payload.action));
 
             // insert your application logic here
             resp = StepResp {

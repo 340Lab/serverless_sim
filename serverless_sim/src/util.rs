@@ -109,6 +109,7 @@ pub mod graph {
         let mut path = vec![last_node.unwrap()];
         while let Some(prev) = early_start_time.get(&last_node.unwrap()).unwrap().1 {
             path.push(prev);
+            last_node = Some(prev);
         }
         path.reverse();
         path
@@ -186,11 +187,13 @@ impl DirectedGraph {
 }
 
 impl SimEnv {
-    pub fn util_rand_i(&self, min: usize, max: usize) -> usize {
+    /// in range of [min, max)
+    pub fn env_rand_i(&self, min: usize, max: usize) -> usize {
         let mut rng = self.rander.borrow_mut();
         rng.gen_range(min..max)
     }
-    pub fn util_rand_f(&self, min: f32, max: f32) -> f32 {
+    /// in range of [min, max)
+    pub fn env_rand_f(&self, min: f32, max: f32) -> f32 {
         let mut rng = self.rander.borrow_mut();
         rng.gen_range(min..max)
     }
@@ -222,7 +225,7 @@ mod tests {
         let sim1 = SimEnv::new(config.clone());
         let sim2 = SimEnv::new(config.clone());
         for _ in 0..1000 {
-            assert_eq!(sim1.util_rand_i(0, 100), sim2.util_rand_i(0, 100));
+            assert_eq!(sim1.env_rand_i(0, 100), sim2.env_rand_i(0, 100));
         }
     }
 

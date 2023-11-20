@@ -132,8 +132,14 @@ impl SimEnv {
         // } else {
         //     score -= self.cost_each_req();
         // }
-
-        score = self.cost_perform() - self.req_done_time_avg();
+        if self.config.es.fit_hpa.is_some() {
+            score = -(*self.distance2hpa.borrow() as f32);
+        } else {
+            if self.config.es.no_perform_cost_rate_score.is_none() {
+                score += self.cost_perform();
+            }
+            score -= self.req_done_time_avg();
+        }
         //  -
         // (
         //     self.requests

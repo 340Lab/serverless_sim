@@ -1,23 +1,24 @@
 use std::{
     cell::RefCell,
-    collections::{ BTreeMap, HashMap, HashSet },
-    time::{ SystemTime, UNIX_EPOCH, Duration },
+    collections::{BTreeMap, HashMap, HashSet},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use daggy::petgraph;
 use rand_pcg::Pcg64;
 use rand_seeder::Seeder;
 
 use crate::{
-    actions::{ ESActionWrapper },
-    fn_dag::{ FnDAG, FnId, Func },
-    metric::Records,
-    node::{ Node, NodeId },
-    // parse_arg,
-    request::{ ReqId, Request },
-    scale_executor::DefaultScaleExecutor,
-    es::{ ESState, self, ESScaler },
-    schedule::{ Scheduler },
+    actions::ESActionWrapper,
     config::Config,
+    es::{self, ESScaler, ESState},
+    fn_dag::{FnDAG, FnId, Func},
+    metric::{OneFrameMetric, Records},
+    node::{Node, NodeId},
+    // parse_arg,
+    request::{ReqId, Request},
+    scale_executor::DefaultScaleExecutor,
+    schedule::Scheduler,
 };
 
 pub struct SimEnv {
@@ -31,6 +32,8 @@ pub struct SimEnv {
 
     // 节点间网速图
     pub node2node_graph: RefCell<Vec<Vec<f32>>>,
+    // 节点间网速图
+    pub node2node_connection_count: RefCell<Vec<Vec<usize>>>,
 
     // databases=[]
 
@@ -55,6 +58,8 @@ pub struct SimEnv {
 
     pub scale_executor: RefCell<DefaultScaleExecutor>,
 
+    pub metric: RefCell<OneFrameMetric>,
+
     pub metric_record: RefCell<Records>,
 
     pub each_fn_watch_window: RefCell<usize>,
@@ -64,6 +69,15 @@ pub struct SimEnv {
     pub spec_scheduler: RefCell<Option<Box<dyn Scheduler + Send>>>,
 
     pub spec_ef_scaler: RefCell<Option<Box<dyn ESScaler + Send>>>,
+
+    // end time - tasks
+    pub timers: RefCell<HashMap<usize, Vec<Box<dyn FnMut(&SimEnv) + Send>>>>,
+
+    pub fn_must_scale_up: RefCell<HashSet<FnId>>,
+
+    pub distance2hpa: RefCell<usize>,
+
+    pub hpa_action: RefCell<usize>,
 }
 
 impl SimEnv {
@@ -75,6 +89,7 @@ impl SimEnv {
         let newenv = Self {
             nodes: RefCell::new(Vec::new()),
             node2node_graph: RefCell::new(Vec::new()),
+            node2node_connection_count: RefCell::new(Vec::new()),
             dags: RefCell::new(Vec::new()),
             fn_next_id: RefCell::new(0),
             current_frame: RefCell::new(0),
@@ -94,6 +109,11 @@ impl SimEnv {
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
 
             config,
+            timers: HashMap::new().into(),
+            fn_must_scale_up: HashSet::new().into(),
+            distance2hpa: (0).into(),
+            hpa_action: (0).into(),
+            metric: OneFrameMetric::new().into(),
         };
 
         newenv.init();
@@ -151,14 +171,32 @@ impl SimEnv {
         for n in self.nodes.borrow_mut().iter_mut() {
             n.last_frame_cpu = n.cpu;
             n.cpu = 0.0;
-            n.mem = n.fn_containers
+            *n.mem.borrow_mut() = n
+                .fn_containers
+                .borrow()
                 .iter()
                 .map(|(_, c)| c.container_basic_mem(self))
                 .sum();
 
             //有些变为运行状态 内存占用变大很正常
-            assert!(n.mem <= n.rsc_limit.mem, "mem {} > limit {}", n.mem, n.rsc_limit.mem);
+            assert!(
+                n.mem() <= n.rsc_limit.mem,
+                "mem {} > limit {}",
+                n.mem(),
+                n.rsc_limit.mem
+            );
         }
+        // metric
+        self.metric.borrow_mut().on_frame_begin();
+
+        // timer
+        if let Some(timers) = self.timers.borrow_mut().remove(&self.current_frame()) {
+            for mut timer in timers {
+                timer(self);
+            }
+        }
+
+        *self.distance2hpa.borrow_mut() = 0;
     }
 
     pub fn on_frame_end(&self) {
@@ -167,14 +205,14 @@ impl SimEnv {
         }
 
         for n in self.nodes.borrow_mut().iter_mut() {
-            for (_, c) in n.fn_containers.iter_mut() {
+            for (_, c) in n.fn_containers.borrow_mut().iter_mut() {
                 if c.this_frame_used {
                     c.this_frame_used = false;
                     c.used_times += 1;
                 }
             }
             let mut cost = self.cost.borrow_mut();
-            *cost += n.cpu * 0.00001 + n.mem * 0.00001;
+            *cost += n.cpu * 0.00001 + n.mem() * 0.00001;
         }
         // 自增 frame
         let mut cur_frame = self.current_frame.borrow_mut();

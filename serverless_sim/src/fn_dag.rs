@@ -1,13 +1,19 @@
-use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque } };
+use std::{
+    cell::{Ref, RefMut},
+    collections::{HashMap, HashSet, VecDeque},
+};
 
-use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
+use daggy::{
+    petgraph::visit::{Topo, Visitable},
+    Dag, NodeIndex, Walker,
+};
+use enum_as_inner::EnumAsInner;
 
 use crate::{
-    node::NodeId,
-    request::{ ReqId, Request },
+    node::{Node, NodeId},
+    request::{ReqId, Request},
     sim_env::SimEnv,
-    util,
-    CONTAINER_BASIC_MEM,
+    util, CONTAINER_BASIC_MEM,
 };
 
 pub type FnId = usize;
@@ -26,7 +32,8 @@ impl FnDAG {
     fn new(begin_fn: FnId, dag_i: DagId, env: &SimEnv) -> Self {
         let mut dag = Dag::new();
         let begin = dag.add_node(begin_fn);
-        env.func_mut(begin_fn).setup_after_insert_into_dag(dag_i, begin);
+        env.func_mut(begin_fn)
+            .setup_after_insert_into_dag(dag_i, begin);
 
         Self {
             dag_i,
@@ -47,18 +54,22 @@ impl FnDAG {
 
         let end_fn = env.fn_gen_rand_fn();
         let end_g_i = dag.dag_inner.add_node(end_fn);
-        env.func_mut(end_fn).setup_after_insert_into_dag(dag_i, end_g_i);
+        env.func_mut(end_fn)
+            .setup_after_insert_into_dag(dag_i, end_g_i);
 
         for _i in 0..map_cnt {
             let next = env.fn_gen_rand_fn();
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
                 env.fns.borrow()[begin_fn].out_put_size,
-                next
+                next,
             );
-            env.func_mut(next).setup_after_insert_into_dag(dag_i, next_i);
+            env.func_mut(next)
+                .setup_after_insert_into_dag(dag_i, next_i);
 
-            dag.dag_inner.add_edge(next_i, end_g_i, env.func(next).out_put_size).unwrap();
+            dag.dag_inner
+                .add_edge(next_i, end_g_i, env.func(next).out_put_size)
+                .unwrap();
         }
 
         dag
@@ -70,6 +81,11 @@ impl FnDAG {
 
     pub fn new_dag_walker(&self) -> Topo<NodeIndex, <FnDagInner as Visitable>::Map> {
         Topo::new(&self.dag_inner)
+    }
+
+    pub fn contains_fn(&self, env: &SimEnv, fnid: FnId) -> bool {
+        let gi = env.func(fnid).graph_i;
+        self.dag_inner.node_weight(gi).is_some() && self.dag_inner[gi] == fnid
     }
 }
 
@@ -104,9 +120,7 @@ impl Func {
     pub fn parent_fns(&self, env: &SimEnv) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.parents(self.graph_i);
-        ps.iter(&dag)
-            .map(|(_edge, graph_i)| dag[graph_i])
-            .collect()
+        ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
     }
 
     pub fn setup_after_insert_into_dag(&mut self, dag_i: DagId, graph_i: NodeIndex) {
@@ -119,16 +133,16 @@ impl Func {
     }
 }
 
+#[derive(EnumAsInner)]
 pub enum FnContainerState {
-    Starting {
-        left_frame: usize,
-    },
+    Starting { left_frame: usize },
     Running,
 }
 
 pub struct FnContainer {
+    pub node_id: NodeId,
     pub fn_id: FnId,
-    pub req_fn_state: HashMap<ReqId, FnRunningState>,
+    pub req_fn_state: HashMap<ReqId, RunningTask>,
     pub born_frame: usize,
     pub used_times: usize,
     pub this_frame_used: bool,
@@ -145,16 +159,23 @@ pub struct FnContainer {
 const WORKING_CNT_WINDOW: usize = 20;
 
 impl FnContainer {
+    pub fn mem_take(&self, env: &SimEnv) -> f32 {
+        match self.state() {
+            FnContainerState::Starting { .. } => env.func(self.fn_id).cold_start_container_mem_use,
+            FnContainerState::Running => env.func(self.fn_id).container_mem(),
+        }
+    }
+
     pub fn recent_handle_speed(&self) -> f32 {
         if self.recent_frmaes_done_cnt.len() == 0 {
             return 0.0;
         }
-        (
-            self.recent_frmaes_done_cnt
-                .iter()
-                .map(|v| *v)
-                .sum::<usize>() as f32
-        ) / (self.recent_frmaes_done_cnt.len() as f32)
+        (self
+            .recent_frmaes_done_cnt
+            .iter()
+            .map(|v| *v)
+            .sum::<usize>() as f32)
+            / (self.recent_frmaes_done_cnt.len() as f32)
     }
     pub fn busyness(&self) -> f32 {
         if self.recent_frames_working_cnt.len() == 0 {
@@ -169,7 +190,8 @@ impl FnContainer {
                 weight += 1;
                 v
             })
-            .sum::<f32>() / (self.recent_frames_working_cnt.len() as f32)
+            .sum::<f32>()
+            / (self.recent_frames_working_cnt.len() as f32)
     }
 
     pub fn recent_frame_is_idle(&self, mut frame_cnt: usize) -> bool {
@@ -200,8 +222,9 @@ impl FnContainer {
         }
     }
 
-    pub fn new(fn_id: FnId, sim_env: &SimEnv) -> Self {
+    pub fn new(fn_id: FnId, node_id: NodeId, sim_env: &SimEnv) -> Self {
         Self {
+            node_id,
             fn_id,
             req_fn_state: HashMap::default(),
             born_frame: sim_env.current_frame(),
@@ -225,7 +248,9 @@ impl FnContainer {
                     self.state = FnContainerState::Running;
                 }
             }
-            _ => { panic!("not starting") }
+            _ => {
+                panic!("not starting")
+            }
         }
     }
 
@@ -280,7 +305,7 @@ impl FnContainer {
     }
 }
 
-pub struct FnRunningState {
+pub struct RunningTask {
     /// nodeid - (need,recv)
     pub data_recv: HashMap<NodeId, (f32, f32)>,
 
@@ -288,7 +313,7 @@ pub struct FnRunningState {
     pub left_calc: f32,
 }
 
-impl FnRunningState {
+impl RunningTask {
     pub fn data_recv_done(&self) -> bool {
         let mut done = true;
         for (_, (need, recv)) in self.data_recv.iter() {
@@ -308,15 +333,22 @@ impl FnRunningState {
 impl SimEnv {
     fn fn_gen_rand_fn(&self) -> FnId {
         let id = self.fn_alloc_fn_id();
+        let (cpu, out_put_size) = if self.config.fntype_cpu() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
+        } else if self.config.fntype_data() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
+        } else {
+            panic!("not support fntype");
+        };
         self.fns.borrow_mut().push(Func {
             fn_id: id,
-            cpu: self.util_rand_f(0.3, 100.0),
-            mem: self.util_rand_f(100.0, 1000.0),
-            out_put_size: self.util_rand_f(0.1, 20.0),
+            cpu,
+            mem: self.env_rand_f(100.0, 1000.0),
+            out_put_size,
             nodes: HashSet::new(),
-            cold_start_container_mem_use: self.util_rand_f(100.0, 500.0),
-            cold_start_container_cpu_use: self.util_rand_f(0.1, 50.0),
-            cold_start_time: self.util_rand_i(5, 10),
+            cold_start_container_mem_use: self.env_rand_f(100.0, 500.0),
+            cold_start_container_cpu_use: self.env_rand_f(0.1, 50.0),
+            cold_start_time: self.env_rand_i(5, 10),
             dag_id: 0,
             graph_i: (0).into(),
         });
@@ -330,11 +362,23 @@ impl SimEnv {
         //     let dag = FnDAG::instance_map_reduce(dag_i, env, util::rand_i(2, 10));
         //     env.dags.borrow_mut().push(dag);
         // }
+        if self.config.dag_type_dag() {
+            for _ in 0..6 {
+                let mapcnt = env.env_rand_i(2, 5); //2-4
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
-        for _ in 0..10 {
-            let dag_i = env.dags.borrow().len();
-            let dag = FnDAG::instance_single_fn(dag_i, env);
-            env.dags.borrow_mut().push(dag);
+                env.dags.borrow_mut().push(dag);
+            }
+        } else if self.config.dag_type_single() {
+            for _ in 0..10 {
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_single_fn(dag_i, env);
+                env.dags.borrow_mut().push(dag);
+            }
+        } else {
+            panic!("not support dag type {}", self.config.dag_type);
         }
     }
 
@@ -351,7 +395,7 @@ impl SimEnv {
     //     dag.dag[dag.begin_fn_g_i] == fn_i
     // }
 
-    pub fn fn_new_fn_running_state(&self, req: &Request, fnid: FnId) -> FnRunningState {
+    pub fn fn_new_fn_running_state(&self, req: &Request, fnid: FnId) -> RunningTask {
         let env = self;
 
         let total_calc: f32 = env.func(fnid).cpu;
@@ -370,7 +414,7 @@ impl SimEnv {
                 })
                 .or_insert(env.fns.borrow()[p].out_put_size);
         }
-        FnRunningState {
+        RunningTask {
             data_recv: need_node_data
                 .iter()
                 .map(|(node_id, data)| (*node_id, (*data, 0.0)))
@@ -406,10 +450,7 @@ impl SimEnv {
 
     pub fn fn_container_cnt(&self, fnid: FnId) -> usize {
         let map = self.fn_2_nodes.borrow();
-        map.get(&fnid).map_or_else(
-            || 0,
-            |nodes| nodes.len()
-        )
+        map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
     }
 
     pub fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {
@@ -417,8 +458,18 @@ impl SimEnv {
         if let Some(nodes) = map.get(&fnid) {
             for node in nodes.iter() {
                 let node = self.node(*node);
-                f(node.container(fnid).unwrap());
+                f(&node.container(fnid).unwrap());
             }
         }
     }
+
+    // pub fn fn_running_containers_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
+    //     let mut nodes = HashSet::<NodeId>::new();
+    //     self.fn_containers_for_each(fnid, |c| {
+    //         if c.state().is_running() {
+    //             nodes.insert(c.node_id);
+    //         }
+    //     });
+    //     nodes
+    // }
 }

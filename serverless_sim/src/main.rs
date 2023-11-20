@@ -1,30 +1,36 @@
-use std::{ env::set_var, time::Duration };
+use std::{env::set_var, time::Duration};
 
 mod actions;
 mod algos;
+mod es;
 mod fn_dag;
 mod metric;
 mod network;
 mod node;
 mod output;
 mod request;
-mod sim_env;
 mod scale_executor;
 mod scaler;
+mod scaler_no;
 mod schedule;
 mod score;
+mod sim_env;
 mod state;
-mod es;
 mod util;
 // mod es_state;
-mod env_gc;
-mod es_faas_flow;
-mod es_ai;
-mod es_lass;
-mod es_fnsche;
-mod es_hpa;
-mod scale_down_policy;
 mod config;
+mod env_gc;
+// mod es_ai;
+mod es_faas_flow;
+// mod es_fnsche;
+mod scaler_hpa;
+// mod es_lass;
+mod scale_down_policy;
+mod scale_preloader;
+mod sche_pass;
+mod sche_pos;
+mod sche_rule_based;
+mod sim_timer;
 
 #[macro_use]
 extern crate lazy_static;
@@ -43,7 +49,7 @@ async fn main() {
 
 const SPEED_SIMILAR_THRESHOLD: f32 = 0.1;
 
-const REQUEST_GEN_FRAME_INTERVAL: usize = 30;
+const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
 
 const NODE_SCORE_CPU_WEIGHT: f32 = 0.5;
 

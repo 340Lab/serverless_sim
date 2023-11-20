@@ -1,21 +1,29 @@
-use std::{ cell::RefMut, collections::{ BTreeMap, HashMap, VecDeque }, hash::Hash };
-
-use enum_as_inner::EnumAsInner;
-
 use crate::{
-    sim_env::SimEnv,
-    request::ReqId,
-    fn_dag::FnId,
+    actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
-    node::NodeId,
-    actions::{ RawAction, ESActionWrapper },
-    schedule::{ Scheduler },
-    es_lass::LassESScaler,
-    es_fnsche::FnScheScaler,
-    es_faas_flow::FaasFlowScheduler,
-    es_hpa::HpaESScaler,
-    es_ai::{ self, AIScaler },
     config::Config,
+    es_faas_flow::FaasFlowScheduler,
+    // es_lass::LassESScaler,
+    fn_dag::FnId,
+    node::NodeId,
+    request::ReqId,
+    scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
+    // es_ai::{self, AIScaler},
+    // es_faas_flow::FaasFlowScheduler,
+    // es_fnsche::FnScheScaler,
+    scaler_hpa::HpaESScaler,
+    scaler_no::ScalerNo,
+    sche_pass::PassScheduler,
+    sche_pos::PosScheduler,
+    sche_rule_based::{RuleBasedScheduler, ScheduleRule},
+    schedule::Scheduler,
+    sim_env::SimEnv,
+};
+use enum_as_inner::EnumAsInner;
+use std::{
+    cell::RefMut,
+    collections::{BTreeMap, HashMap, VecDeque},
+    hash::Hash,
 };
 
 pub trait ActionEffectStage {
@@ -30,8 +38,12 @@ pub trait ESScaler {
         env: &SimEnv,
         fnid: FnId,
         metric: &ContainerMetric,
-        action: &ESActionWrapper
+        action: &ESActionWrapper,
     ) -> (f32, bool);
+
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
+
+    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader;
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
@@ -99,7 +111,12 @@ impl ActionEffectStage for StageSchedule {
     fn prepare_next(&mut self) -> bool {
         if self.ready_2_schedule.len() > 0 {
             let next: ReqId = *self.ready_2_schedule.iter().next().unwrap().0;
-            let next_fn: FnId = self.ready_2_schedule.get_mut(&next).unwrap().pop_front().unwrap();
+            let next_fn: FnId = self
+                .ready_2_schedule
+                .get_mut(&next)
+                .unwrap()
+                .pop_front()
+                .unwrap();
             self.next_2_schedule = (next, next_fn);
             if self.ready_2_schedule.get(&next).unwrap().len() == 0 {
                 self.ready_2_schedule.remove(&next);
@@ -123,7 +140,7 @@ impl StageScaleDown {
         let mut idle_containers = Vec::new();
         let nodes = env.nodes.borrow();
         for node in nodes.iter() {
-            for (&fnid, container) in node.fn_containers.iter() {
+            for (&fnid, container) in node.fn_containers.borrow().iter() {
                 if container.is_idle() {
                     idle_containers.push((node.node_id(), fnid));
                 }
@@ -189,12 +206,14 @@ impl ESState {
     }
     fn unwrap_aes_prepare_next(&mut self) -> bool {
         match self.stage {
-            EFStage::FrameBegin =>
-                panic!("FrameBegin stage should not call unwrap_aes_prepare_next"),
+            EFStage::FrameBegin => {
+                panic!("FrameBegin stage should not call unwrap_aes_prepare_next")
+            }
             EFStage::ScaleForFns(ref mut stage) => stage.prepare_next(),
             EFStage::Schedule(ref mut stage) => stage.prepare_next(),
-            EFStage::SimCompute =>
-                panic!("SimCompute stage should not call unwrap_aes_prepare_next"),
+            EFStage::SimCompute => {
+                panic!("SimCompute stage should not call unwrap_aes_prepare_next")
+            }
             EFStage::ScaleDown(ref mut stage) => stage.prepare_next(),
         }
     }
@@ -229,6 +248,12 @@ impl ESState {
                     // current_fn_to_scale: None,
                 });
                 if self.stage.as_scale_for_fns_mut().unwrap().prepare_next() {
+                    // pre load info of scheduler because scaler need to know the info of scheduler
+                    env.spec_scheduler
+                        .borrow_mut()
+                        .as_mut()
+                        .unwrap()
+                        .prepare_this_turn_will_schedule(env);
                     return true;
                 }
             } else if self.stage.is_scale_for_fns() {
@@ -242,9 +267,9 @@ impl ESState {
                 return false;
             } else if self.stage.is_sim_compute() {
                 self.stage = EFStage::FrameBegin; // AiEFStage::ScaleDown(StageScaleDown::new(env));
-                // if self.stage.as_scale_down_mut().unwrap().prepare_next() {
-                // return true;
-                // }
+                                                  // if self.stage.as_scale_down_mut().unwrap().prepare_next() {
+                                                  // return true;
+                                                  // }
             }
             //  else if self.stage.is_scale_down() {
             //     self.stage = AiEFStage::FrameBegin;
@@ -258,6 +283,26 @@ impl ESState {
 pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Send>> {
     if config.es.sche_faas_flow() {
         return Some(Box::new(FaasFlowScheduler::new()));
+    } else if config.es.sche_gofs() {
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::GOFS,
+        }));
+    } else if config.es.sche_load_least() {
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::LeastLoad,
+        }));
+    } else if config.es.sche_random() {
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::Random,
+        }));
+    } else if config.es.sche_round_robin() {
+        return Some(Box::new(RuleBasedScheduler {
+            rule: ScheduleRule::RoundRobin(9999),
+        }));
+    } else if config.es.sche_pass() {
+        return Some(Box::new(PassScheduler::new()));
+    } else if config.es.sche_rule() {
+        return Some(Box::new(PosScheduler::new()));
     }
     None
 }
@@ -265,14 +310,19 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
 pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> {
     let es = &config.es;
 
-    if es.scale_lass() {
-        return Some(Box::new(LassESScaler::new()));
-    } else if es.sche_fnsche() {
-        return Some(Box::new(FnScheScaler::new()));
-    } else if es.scale_hpa() {
-        return Some(Box::new(HpaESScaler::new()));
-    } else if es.scale_ai() {
-        return Some(Box::new(AIScaler::new(config)));
+    // if es.scale_lass() {
+    //     return Some(Box::new(LassESScaler::new()));
+    // } else if es.sche_fnsche() {
+    //     return Some(Box::new(FnScheScaler::new()));
+    // } else
+    if es.scale_hpa() {
+        return Some(Box::new(HpaESScaler::new(LeastTaskPreLoader::new())));
+    }
+    // else if es.scale_ai() {
+    //     return Some(Box::new(AIScaler::new(config)));
+    // }
+    else if es.scale_up_no() {
+        return Some(Box::new(ScalerNo::new()));
     }
 
     None
@@ -293,7 +343,9 @@ impl SimEnv {
             } else {
                 ret = false;
             }
-            stage.scheduled.push((reqid, fnid, Some(nodeid), raw_action));
+            stage
+                .scheduled
+                .push((reqid, fnid, Some(nodeid), raw_action));
         }
         ret
     }
@@ -309,14 +361,14 @@ impl SimEnv {
         let mut action_done = false;
         // 只有确定了下一个action，才会有可以返回的state
 
-        let config_es = || { &self.config.es };
+        let config_es = || &self.config.es;
 
         loop {
             if ef_state.stage.is_frame_begin() {
                 if (self.current_frame() == 0 && ef_state.computed) || self.current_frame() > 0 {
                     // log::info!("score: {} frame:{}", score, self.current_frame());
                     self.on_frame_end();
-                    log::info!("frame end");
+                    log::info!("frame {} end", self.current_frame());
                     if self.current_frame() > 1000 {
                         break;
                     }
@@ -341,7 +393,8 @@ impl SimEnv {
                     let stage = ef_state.stage.as_scale_for_fns_mut().unwrap();
                     // let fnid = stage.current_fnid.unwrap();
                     let &(fnid, ref metric) = stage.current_fn().unwrap();
-                    let (action_score_, action_done_) = self.spec_ef_scaler
+                    let (action_score_, action_done_) = self
+                        .spec_ef_scaler
                         .borrow_mut()
                         .as_mut()
                         .unwrap()
@@ -368,15 +421,25 @@ impl SimEnv {
                     if !self.step_schedule(action, ef_state.stage.as_schedule_mut().unwrap()) {
                         action_score -= 100.0;
                     }
-                    if !ef_state.stage.as_scale_for_fns_mut().unwrap().prepare_next() {
+                    if !ef_state
+                        .stage
+                        .as_scale_for_fns_mut()
+                        .unwrap()
+                        .prepare_next()
+                    {
                         ef_state.trans_stage(self);
                     }
-                } else if self.config.es.sche_rule() {
-                    self.try_put_fn();
-                    ef_state.trans_stage(self);
-                } else if self.config.es.sche_faas_flow() {
-                    let mut spec = self.spec_scheduler.borrow_mut();
-                    spec.as_mut().unwrap().schedule_some(self);
+                }
+                // else if self.config.es.sche_rule() {
+                //     self.try_put_fn(false);
+                //     ef_state.trans_stage(self);
+                // } else if self.config.es.sche_rule_prewarm_succ() {
+                //     self.try_put_fn(true);
+                //     ef_state.trans_stage(self);
+                // }
+                else if let Some(spec_sche) = self.spec_scheduler.borrow_mut().as_mut() {
+                    // let mut spec = self.spec_scheduler.borrow_mut();
+                    spec_sche.schedule_some(self);
                     ef_state.trans_stage(self);
                 } else if self.config.es.sche_fnsche() {
                     // sche is done in scale stage
@@ -453,12 +516,16 @@ impl SimEnv {
 
             let mut fn_running_tasks = 0;
             let mut fn_avg_cpu = 0.0;
+            let mut fn_avg_mem_rate = 0.0;
             self.fn_containers_for_each(fnid, |c| {
                 fn_running_tasks += c.req_fn_state.len();
-                fn_avg_cpu += c.cpu_use_rate();
+                fn_avg_cpu +=
+                    self.node(c.node_id).last_frame_cpu / self.node(c.node_id).rsc_limit.cpu;
+                fn_avg_mem_rate += self.node(c.node_id).mem() / self.node(c.node_id).rsc_limit.mem;
             });
             if fn_container_count > 0 {
                 fn_avg_cpu /= fn_container_count as f32;
+                fn_avg_mem_rate /= fn_container_count as f32;
             }
 
             let state = vec![
@@ -466,12 +533,18 @@ impl SimEnv {
                 fn_container_busy,
                 fn_container_count as f32,
                 fn_running_tasks as f32,
-                scale_stage.fn_metrics
+                scale_stage
+                    .fn_metrics
                     .iter()
                     .filter(|&&(fnid_, _)| fnid_ == fnid)
-                    .map(|(_, v)| { v.ready_2_schedule_fn_count() })
+                    .map(|(_, v)| v.ready_2_schedule_fn_count())
                     .sum::<usize>() as f32,
-                fn_avg_cpu
+                fn_avg_cpu,
+                fn_avg_mem_rate,
+                *self.hpa_action.borrow() as f32,
+                self.req_done_time_avg(),
+                self.cost_each_req(),
+                self.cost_perform(),
             ];
             log::info!("state: {:?}", state);
             state
@@ -490,6 +563,9 @@ impl SimEnv {
         ef_state.step_cnt += 1;
 
         // state should has prompt info for next action
-        (frame_score + action_score, serde_json::to_string(&state).unwrap())
+        (
+            frame_score + action_score,
+            serde_json::to_string(&state).unwrap(),
+        )
     }
 }
