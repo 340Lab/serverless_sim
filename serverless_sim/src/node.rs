@@ -132,9 +132,9 @@ impl Node {
     // pub fn container<'a>(&'a self, fnid: FnId) -> Option<&'a FnContainer> {
     //     self.fn_containers.get(&fnid)
     // }
-    pub fn load_container(&self, env: &SimEnv) {
-        let mut removed_pending = vec![];
-        for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
+
+    pub fn try_load_spec_container(&self, fnid: FnId, env: &SimEnv) {
+        if self.container(fnid).is_none() {
             // try cold start
             if self.mem_enough_for_container(&env.func(fnid)) {
                 let fncon = FnContainer::new(fnid, self.node_id(), env);
@@ -161,6 +161,14 @@ impl Node {
                 // self.nodes.borrow_mut()[node_id].mem +=
                 //     self.func(fn_id).cold_start_container_mem_use;
             }
+        }
+    }
+
+    pub fn load_container(&self, env: &SimEnv) {
+        let mut removed_pending = vec![];
+        for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
+            self.try_load_spec_container(fnid, env);
+
             if let Some(mut fncon) = self.container_mut(fnid) {
                 // add to container
                 fncon.req_fn_state.insert(

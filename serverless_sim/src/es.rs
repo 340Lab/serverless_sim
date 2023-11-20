@@ -1,30 +1,29 @@
-use std::{
-    cell::RefMut,
-    collections::{BTreeMap, HashMap, VecDeque},
-    hash::Hash,
-};
-
-use enum_as_inner::EnumAsInner;
-
 use crate::{
     actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
     config::Config,
     es_faas_flow::FaasFlowScheduler,
-    // es_ai::{self, AIScaler},
-    // es_faas_flow::FaasFlowScheduler,
-    // es_fnsche::FnScheScaler,
-    es_hpa::HpaESScaler,
     // es_lass::LassESScaler,
     fn_dag::FnId,
     node::NodeId,
     request::ReqId,
+    scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
+    // es_ai::{self, AIScaler},
+    // es_faas_flow::FaasFlowScheduler,
+    // es_fnsche::FnScheScaler,
+    scaler_hpa::HpaESScaler,
     scaler_no::ScalerNo,
     sche_pass::PassScheduler,
     sche_pos::PosScheduler,
     sche_rule_based::{RuleBasedScheduler, ScheduleRule},
     schedule::Scheduler,
     sim_env::SimEnv,
+};
+use enum_as_inner::EnumAsInner;
+use std::{
+    cell::RefMut,
+    collections::{BTreeMap, HashMap, VecDeque},
+    hash::Hash,
 };
 
 pub trait ActionEffectStage {
@@ -43,6 +42,8 @@ pub trait ESScaler {
     ) -> (f32, bool);
 
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
+
+    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader;
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
@@ -247,6 +248,12 @@ impl ESState {
                     // current_fn_to_scale: None,
                 });
                 if self.stage.as_scale_for_fns_mut().unwrap().prepare_next() {
+                    // pre load info of scheduler because scaler need to know the info of scheduler
+                    env.spec_scheduler
+                        .borrow_mut()
+                        .as_mut()
+                        .unwrap()
+                        .prepare_this_turn_will_schedule(env);
                     return true;
                 }
             } else if self.stage.is_scale_for_fns() {
@@ -309,7 +316,7 @@ pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> 
     //     return Some(Box::new(FnScheScaler::new()));
     // } else
     if es.scale_hpa() {
-        return Some(Box::new(HpaESScaler::new()));
+        return Some(Box::new(HpaESScaler::new(LeastTaskPreLoader::new())));
     }
     // else if es.scale_ai() {
     //     return Some(Box::new(AIScaler::new(config)));

@@ -218,4 +218,9 @@ impl Scheduler for PassScheduler {
         //         .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
         // }
     }
+
+    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {}
+    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
+        false
+    }
 }

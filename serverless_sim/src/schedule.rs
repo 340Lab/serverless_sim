@@ -14,6 +14,8 @@ use crate::{
 };
 
 pub trait Scheduler {
+    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv);
+    fn this_turn_will_schedule(&self, fnid: FnId) -> bool;
     fn schedule_some(&mut self, env: &SimEnv);
 }
 
@@ -234,6 +236,7 @@ impl SimEnv {
             let mut req = self.request_mut(reqid);
             req.fn_done(self, fnid, self.current_frame());
             if req.is_done(self) {
+                log::info!("req {} done", reqid);
                 drop(req);
                 self.on_request_done(reqid);
             }

@@ -1,10 +1,19 @@
-use crate::{es::ESScaler, fn_dag::FnId, sim_env::SimEnv};
+use crate::{
+    es::ESScaler,
+    fn_dag::FnId,
+    scale_preloader::{no::NoPreLoader, ScalePreLoader},
+    sim_env::SimEnv,
+};
 
-pub struct ScalerNo;
+pub struct ScalerNo {
+    preloader: NoPreLoader,
+}
 
 impl ScalerNo {
     pub fn new() -> Self {
-        ScalerNo {}
+        ScalerNo {
+            preloader: NoPreLoader {},
+        }
     }
 }
 
@@ -21,5 +30,9 @@ impl ESScaler for ScalerNo {
 
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         env.node_cnt()
+    }
+
+    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader {
+        &mut self.preloader
     }
 }

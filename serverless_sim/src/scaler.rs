@@ -1,4 +1,7 @@
-use std::{cell::Ref, collections::HashSet};
+use std::{
+    cell::{Ref, RefMut},
+    collections::HashSet,
+};
 
 use crate::{
     es::ESScaler,
@@ -8,6 +11,10 @@ use crate::{
 };
 
 impl SimEnv {
+    pub fn spec_scaler_mut<'a>(&'a self) -> RefMut<'a, Box<dyn ESScaler + Send>> {
+        let r = self.spec_ef_scaler.borrow_mut();
+        RefMut::map(r, |map| map.as_mut().unwrap())
+    }
     pub fn spec_scaler<'a>(&'a self) -> Ref<'a, Box<dyn ESScaler + Send>> {
         let r = self.spec_ef_scaler.borrow();
         Ref::map(r, |map| map.as_ref().unwrap())

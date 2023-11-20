@@ -17,6 +17,10 @@ pub struct RuleBasedScheduler {
 }
 
 impl Scheduler for RuleBasedScheduler {
+    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {}
+    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
+        false
+    }
     fn schedule_some(&mut self, env: &crate::sim_env::SimEnv) {
         for (_req_id, req) in env.requests.borrow_mut().iter_mut() {
             env.schedule_one_req_fns_by_rule(req, &mut self.rule);

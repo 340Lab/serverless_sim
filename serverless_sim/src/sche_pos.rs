@@ -1,8 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    fn_dag::FnId, node::NodeId, request::Request, scale_executor::ScaleExecutor,
-    schedule::Scheduler, sim_env::SimEnv,
+    fn_dag::FnId,
+    node::NodeId,
+    request::{ReqId, Request},
+    scale_executor::ScaleExecutor,
+    schedule::Scheduler,
+    sim_env::SimEnv,
 };
 
 pub struct PosScheduler {
@@ -10,21 +14,23 @@ pub struct PosScheduler {
 
     //
     // recent_schedule_node: Vec<NodeId>,
+    schealeable_fns: HashSet<FnId>,
 }
 
 impl PosScheduler {
     pub fn new() -> Self {
         Self {
             // recent_schedule_node: vec![],
+            schealeable_fns: HashSet::new(),
         }
     }
 }
 
 impl PosScheduler {
-    fn schedule_one_req_fns(&self, env: &SimEnv, req: &mut Request) {
+    fn collect_scheable_fns_for_req(&mut self, env: &SimEnv, req: &Request) {
         let dag_i = req.dag_i;
         let mut dag_walker = env.dag(dag_i).new_dag_walker();
-        let mut schedule_able_fns = vec![];
+        // let mut schedule_able_fns = vec![];
         'next_fn: while let Some(fngi) = dag_walker.next(&*env.dag_inner(dag_i)) {
             let fnid = env.dag_inner(dag_i)[fngi];
             if req.fn_node.contains_key(&fnid) {
@@ -43,9 +49,43 @@ impl PosScheduler {
             //     env.fn_running_containers_nodes(fnid).len() > 0
             {
                 // parents all done schedule able
-                schedule_able_fns.push(fnid);
+                // schedule_able_fns.push(fnid);
+                self.schealeable_fns.insert(fnid);
             }
         }
+    }
+    fn schedule_able_fns_for_req(&self, env: &SimEnv, req: &mut Request) -> Vec<FnId> {
+        let mut collect = vec![];
+        let dag_i = req.dag_i;
+        let mut dag_walker = env.dag(dag_i).new_dag_walker();
+        // let mut schedule_able_fns = vec![];
+        'next_fn: while let Some(fngi) = dag_walker.next(&*env.dag_inner(dag_i)) {
+            let fnid = env.dag_inner(dag_i)[fngi];
+            if req.fn_node.contains_key(&fnid) {
+                //scheduled
+                continue;
+            }
+            let parents = env.func(fnid).parent_fns(env);
+            for p in &parents {
+                // parent has't been scheduled
+                if !req.fn_node.contains_key(p) {
+                    continue 'next_fn;
+                }
+            }
+            // if
+            //     env.fn_2_nodes.borrow().contains_key(&fnid) &&
+            //     env.fn_running_containers_nodes(fnid).len() > 0
+            {
+                // parents all done schedule able
+                // schedule_able_fns.push(fnid);
+                collect.push(fnid);
+            }
+        }
+        collect
+    }
+    fn schedule_one_req_fns(&self, env: &SimEnv, req: &mut Request) {
+        let mut schedule_able_fns = self.schedule_able_fns_for_req(env, req);
+
         let mut node2node_connection_count = env.node2node_connection_count.borrow().clone();
         schedule_able_fns.sort_by(|&a, &b| {
             env.func(a)
@@ -58,27 +98,21 @@ impl PosScheduler {
             // 可以调度的节点数
             let mut scheable_node_count = env.spec_scaler().fn_available_count(fnid, env);
             if scheable_node_count == 0 {
-                scheable_node_count = 1;
+                log::warn!("scaler should ask scheduler for requirement and prepare enough nodes");
+                continue;
             }
-            // if !env.fn_2_nodes.borrow().contains_key(&fnid)
-            //     || env.fn_2_nodes.borrow().get(&fnid).unwrap().len() == 0
-            // {
-            //     if env.scale_executor.borrow_mut().scale_up(env, fnid, 1) == 1 {
-            //         let node = *env
-            //             .fn_2_nodes
-            //             .borrow()
-            //             .get(&fnid)
-            //             .unwrap()
-            //             .iter()
-            //             .next()
-            //             .unwrap();
-            //         env.schedule_reqfn_on_node(req, fnid, node);
-            //         continue;
-            //     }
+            // if scheable_node_count == 0 {
+            //     scheable_node_count = 1;
             // }
 
+            // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
+            let target_cnt = env.spec_scaler().fn_available_count(fnid, env);
+            env.spec_scaler_mut()
+                .preloader()
+                .pre_load(target_cnt, fnid, env);
+
             // 选择节点算法，首先选出包含当前函数容器的节点
-            let mut nodes_with_container: Vec<NodeId> = env
+            let nodes_with_container: Vec<NodeId> = env
                 .nodes()
                 .iter()
                 .filter(|n| n.container(fnid).is_some())
@@ -86,63 +120,9 @@ impl PosScheduler {
                 .collect();
 
             let nodes_with_container_cnt = nodes_with_container.len();
-            let node_parent_distance = |parent_fns: &Vec<FnId>, nodeid: NodeId| {
-                parent_fns
-                    .iter()
-                    .map(|&p| {
-                        if req.get_fn_node(p).unwrap() == nodeid {
-                            0.0
-                        } else {
-                            1.0
-                        }
-                    })
-                    .sum::<f32>()
-                    / parent_fns.len() as f32
-            };
-            let node_score = |parent_fns: &Vec<FnId>, nodeid: NodeId| {
-                1.0 / (env.node(nodeid).all_task_cnt() + 1) as f32
-                    + node_parent_distance(parent_fns, nodeid)
-            };
 
-            let nodes2select = if nodes_with_container.len() < scheable_node_count {
-                // 已有容器节点不够，需要选择被扩容节点
-                // 按照最小任务数去选择
-                let mut nodes = env
-                    .nodes()
-                    .iter()
-                    .filter(|n| n.container(fnid).is_none())
-                    .map(|n| n.node_id())
-                    .collect::<Vec<_>>();
-
-                let parent_fns = env.func(fnid).parent_fns(env);
-
-                if parent_fns.len() > 0 {
-                    nodes.sort_by(|&a, &b| {
-                        node_score(&parent_fns, a)
-                            .partial_cmp(&node_score(&parent_fns, b))
-                            .unwrap()
-                    });
-                    // score 大的先被pop
-                } else {
-                    // 按任务数排序，从小
-                    nodes.sort_by(|&a, &b| {
-                        env.node(a)
-                            .all_task_cnt()
-                            .partial_cmp(&env.node(b).all_task_cnt())
-                            .unwrap()
-                    });
-
-                    // 从大到小
-                    nodes.reverse();
-                }
-
-                while nodes_with_container.len() < scheable_node_count {
-                    nodes_with_container.push(nodes.pop().unwrap());
-                }
-                &nodes_with_container[0..scheable_node_count]
-            } else {
-                &nodes_with_container[0..scheable_node_count]
-            };
+            let nodes2select =
+                &nodes_with_container[0..env.spec_scaler().fn_available_count(fnid, env)];
 
             // let nodes = env.fn_running_containers_nodes(fnid);
             // if nodes.len() == 0 {
@@ -376,5 +356,15 @@ impl Scheduler for PosScheduler {
         for (_req_id, req) in env.requests.borrow_mut().iter_mut() {
             self.schedule_one_req_fns(env, req);
         }
+    }
+
+    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {
+        self.schealeable_fns.clear();
+        for (_req_id, req) in env.requests.borrow().iter() {
+            self.collect_scheable_fns_for_req(env, req);
+        }
+    }
+    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
+        self.schealeable_fns.contains(&fnid)
     }
 }
