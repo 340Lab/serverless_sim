@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
+    hash::{self, Hash, Hasher},
+};
 
 use daggy::{
     petgraph::visit::{EdgeRef, IntoEdgeReferences},
@@ -47,8 +50,10 @@ impl FaasFlowScheduler {
             let mut walker = dag.new_dag_walker();
             while let Some(fnode) = walker.next(&dag.dag_inner) {
                 let fnid = dag.dag_inner[fnode];
-                let node_id = thread_rng().gen_range(0..nodes_left_mem.len());
-                // let node_id = (0, nodes_left_mem.len());
+                let mut hasher = DefaultHasher::new();
+                fnid.hash(&mut hasher);
+                let node_id = hasher.finish() as usize % env.node_cnt(); //thread_rng().gen_range(0..nodes_left_mem.len());
+                                                                         // let node_id = (0, nodes_left_mem.len());
                 fn_poses.insert(fnid, node_id);
                 nodes_left_mem[node_id] -= env.func(fnid).container_mem();
             }

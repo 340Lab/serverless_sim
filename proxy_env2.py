@@ -105,7 +105,7 @@ class ProxyEnv2:
         allowed_sche = ["rule", "fnsche", "faasflow", "rule_prewarm_succ",
                         "round_robin", "random", "load_least", "gofs", "pass"]
         up_down_must_same = ["ai", "lass", "hpa", "faasflow", "fnsche"]
-        scale_sche_must_same = ["fnsche"]
+        non_scaler_sche = ["fnsche", "faasflow"]
 
         config = self.config
 
@@ -119,8 +119,8 @@ class ProxyEnv2:
 
         if config["es"]["up"] in up_down_must_same:
             assert config["es"]["up"] == config["es"]["down"]
-        if config["es"]["sche"] in scale_sche_must_same:
-            assert config["es"]["sche"] == config["es"]["up"]
+        if config["es"]["sche"] in non_scaler_sche:
+            assert "no" == config["es"]["up"]
 
     def __init__(self, do_change_seed, config, multi_agent=False):
         self.config = config

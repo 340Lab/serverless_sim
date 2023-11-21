@@ -2,7 +2,6 @@ use crate::{
     actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
     config::Config,
-    es_faas_flow::FaasFlowScheduler,
     // es_lass::LassESScaler,
     fn_dag::FnId,
     node::NodeId,
@@ -12,7 +11,10 @@ use crate::{
     // es_faas_flow::FaasFlowScheduler,
     // es_fnsche::FnScheScaler,
     scaler_hpa::HpaESScaler,
+    scaler_lass::LassESScaler,
     scaler_no::ScalerNo,
+    sche_faasflow::FaasFlowScheduler,
+    sche_fnsche::FnScheScheduler,
     sche_pass::PassScheduler,
     sche_pos::PosScheduler,
     sche_rule_based::{RuleBasedScheduler, ScheduleRule},
@@ -42,8 +44,6 @@ pub trait ESScaler {
     ) -> (f32, bool);
 
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
-
-    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader;
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
@@ -303,6 +303,8 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         return Some(Box::new(PassScheduler::new()));
     } else if config.es.sche_rule() {
         return Some(Box::new(PosScheduler::new()));
+    } else if config.es.sche_fnsche() {
+        return Some(Box::new(FnScheScheduler::new()));
     }
     None
 }
@@ -310,13 +312,14 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
 pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> {
     let es = &config.es;
 
-    // if es.scale_lass() {
-    //     return Some(Box::new(LassESScaler::new()));
+    if es.scale_lass() {
+        return Some(Box::new(LassESScaler::new()));
+    }
     // } else if es.sche_fnsche() {
     //     return Some(Box::new(FnScheScaler::new()));
     // } else
     if es.scale_hpa() {
-        return Some(Box::new(HpaESScaler::new(LeastTaskPreLoader::new())));
+        return Some(Box::new(HpaESScaler::new()));
     }
     // else if es.scale_ai() {
     //     return Some(Box::new(AIScaler::new(config)));

@@ -31,8 +31,4 @@ impl ESScaler for ScalerNo {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         env.node_cnt()
     }
-
-    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader {
-        &mut self.preloader
-    }
 }

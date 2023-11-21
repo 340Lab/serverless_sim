@@ -18,6 +18,7 @@ use crate::{
     // parse_arg,
     request::{ReqId, Request},
     scale_executor::DefaultScaleExecutor,
+    scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
     schedule::Scheduler,
 };
 
@@ -57,6 +58,8 @@ pub struct SimEnv {
     pub cost: RefCell<f32>,
 
     pub scale_executor: RefCell<DefaultScaleExecutor>,
+
+    pub scale_preloader: RefCell<Box<dyn ScalePreLoader>>,
 
     pub metric: RefCell<OneFrameMetric>,
 
@@ -114,6 +117,7 @@ impl SimEnv {
             distance2hpa: (0).into(),
             hpa_action: (0).into(),
             metric: OneFrameMetric::new().into(),
+            scale_preloader: RefCell::new(Box::new(LeastTaskPreLoader::new())),
         };
 
         newenv.init();
