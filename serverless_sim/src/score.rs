@@ -3,15 +3,15 @@ use crate::sim_env::SimEnv;
 impl SimEnv {
     /// req_done_avg 平均每个请求处理完的时间 越低越好
     pub fn req_done_time_avg(&self) -> f32 {
-        if
-            self.done_requests.borrow().len() == 0
-            //  &&
-            // self.requests.borrow().len() == 0
+        if self.done_requests.borrow().len() == 0
+        //  &&
+        // self.requests.borrow().len() == 0
         {
             return 0.0;
         }
 
-        let sum = self.done_requests
+        let sum = self
+            .done_requests
             .borrow()
             .iter()
             // .filter(|req| {
@@ -31,10 +31,10 @@ impl SimEnv {
         //     .map(|req| (self.current_frame() - req.1.begin_frame) as f32)
         //     .sum::<f32>();
 
-        sum /
-            (
-                self.done_requests.borrow().len() as f32 //  + self.requests.borrow().len()
-            )
+        sum / (
+            self.done_requests.borrow().len() as f32
+            //  + self.requests.borrow().len()
+        )
     }
 
     /// req_done_std 平均每个请求处理完的时间的标准差 越低越好
@@ -44,7 +44,8 @@ impl SimEnv {
         }
 
         let avg = self.req_done_time_avg();
-        let sum = self.done_requests
+        let sum = self
+            .done_requests
             .borrow()
             .iter()
             // .filter(|req| req.is_done(self))
@@ -55,7 +56,8 @@ impl SimEnv {
 
     /// req_done_90 90%的请求处理完的时间 越低越好
     pub fn req_done_time_avg_90p(&self) -> f32 {
-        let mut req_done_times = self.done_requests
+        let mut req_done_times = self
+            .done_requests
             .borrow()
             .iter()
             // .filter(|req| req.is_done(self))
@@ -133,7 +135,8 @@ impl SimEnv {
         //     score -= self.cost_each_req();
         // }
         if self.config.es.fit_hpa.is_some() {
-            score = -(*self.distance2hpa.borrow() as f32);
+            panic!("not support fit_hpa");
+            // score = -(*self.distance2hpa.borrow() as f32);
         } else {
             if self.config.es.no_perform_cost_rate_score.is_none() {
                 score += self.cost_perform();

@@ -7,6 +7,7 @@ use crate::{
     node::NodeId,
     request::ReqId,
     scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
+    scaler_ai::AIScaler,
     // es_ai::{self, AIScaler},
     // es_faas_flow::FaasFlowScheduler,
     // es_fnsche::FnScheScaler,
@@ -24,8 +25,7 @@ use crate::{
 use enum_as_inner::EnumAsInner;
 use std::{
     cell::RefMut,
-    collections::{BTreeMap, HashMap, VecDeque},
-    hash::Hash,
+    collections::{BTreeMap, VecDeque},
 };
 
 pub trait ActionEffectStage {
@@ -320,11 +320,9 @@ pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> 
     // } else
     if es.scale_hpa() {
         return Some(Box::new(HpaESScaler::new()));
-    }
-    // else if es.scale_ai() {
-    //     return Some(Box::new(AIScaler::new(config)));
-    // }
-    else if es.scale_up_no() {
+    } else if es.scale_ai() {
+        return Some(Box::new(AIScaler::new(config)));
+    } else if es.scale_up_no() {
         return Some(Box::new(ScalerNo::new()));
     }
 
@@ -544,7 +542,7 @@ impl SimEnv {
                     .sum::<usize>() as f32,
                 fn_avg_cpu,
                 fn_avg_mem_rate,
-                *self.hpa_action.borrow() as f32,
+                // *self.hpa_action.borrow() as f32,
                 self.req_done_time_avg(),
                 self.cost_each_req(),
                 self.cost_perform(),
