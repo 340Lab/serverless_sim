@@ -2,7 +2,7 @@ use crate::{
     actions::ESActionWrapper,
     config::Config,
     es::{ActionEffectStage, ESScaler, ESState, StageScaleForFns},
-    es_hpa::HpaESScaler,
+    // scaler_hpa::HpaESScaler,
     fn_dag::FnId,
     scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
     scale_executor::{ScaleExecutor, ScaleOption},
@@ -10,22 +10,24 @@ use crate::{
 };
 
 pub struct AIScaler {
-    hpa: HpaESScaler,
+    // hpa: HpaESScaler,
     pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+    fn_available_count: usize,
 }
 
 impl AIScaler {
     pub fn new(config: &Config) -> Self {
         Self {
-            hpa: HpaESScaler::new(),
+            // hpa: HpaESScaler::new(),
             scale_down_policy: Box::new(CarefulScaleDown::new()),
+            fn_available_count: 0,
         }
     }
 }
 
 impl ESScaler for AIScaler {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
-        0
+        self.fn_available_count
     }
     fn scale_for_fn(
         &mut self,
@@ -37,8 +39,8 @@ impl ESScaler for AIScaler {
         let raw_action = (match action {
             ESActionWrapper::Int(raw_action) => *raw_action,
         }) as usize;
-        *env.hpa_action.borrow_mut() = self.hpa.action(env, fnid, metric);
-        *env.distance2hpa.borrow_mut() = raw_action.abs_diff(*env.hpa_action.borrow_mut());
+        // *env.hpa_action.borrow_mut() = self.hpa.action(env, fnid, metric);
+        // *env.distance2hpa.borrow_mut() = raw_action.abs_diff(*env.hpa_action.borrow_mut());
         let mut desired_container_cnt = raw_action % 10;
         let container_cnt = env.fn_container_cnt(fnid);
         let mut score_trans = 0.0;
@@ -82,11 +84,13 @@ impl ESScaler for AIScaler {
                 env,
                 ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
             );
-        } else if desired_container_cnt > container_cnt {
-            // # scale up
-            let scale = desired_container_cnt - container_cnt;
-            env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
         }
+        // else if desired_container_cnt > container_cnt {
+        //     // # scale up
+        //     let scale = desired_container_cnt - container_cnt;
+        //     env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
+        // }
+        self.fn_available_count = desired_container_cnt;
         (score_trans, true)
     }
 }

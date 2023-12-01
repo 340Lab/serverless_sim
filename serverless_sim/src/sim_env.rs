@@ -77,10 +77,9 @@ pub struct SimEnv {
     pub timers: RefCell<HashMap<usize, Vec<Box<dyn FnMut(&SimEnv) + Send>>>>,
 
     pub fn_must_scale_up: RefCell<HashSet<FnId>>,
+    // pub distance2hpa: RefCell<usize>,
 
-    pub distance2hpa: RefCell<usize>,
-
-    pub hpa_action: RefCell<usize>,
+    // pub hpa_action: RefCell<usize>,
 }
 
 impl SimEnv {
@@ -114,8 +113,8 @@ impl SimEnv {
             config,
             timers: HashMap::new().into(),
             fn_must_scale_up: HashSet::new().into(),
-            distance2hpa: (0).into(),
-            hpa_action: (0).into(),
+            // distance2hpa: (0).into(),
+            // hpa_action: (0).into(),
             metric: OneFrameMetric::new().into(),
             scale_preloader: RefCell::new(Box::new(LeastTaskPreLoader::new())),
         };
@@ -200,7 +199,7 @@ impl SimEnv {
             }
         }
 
-        *self.distance2hpa.borrow_mut() = 0;
+        // *self.distance2hpa.borrow_mut() = 0;
     }
 
     pub fn on_frame_end(&self) {
