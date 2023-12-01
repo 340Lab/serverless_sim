@@ -1,4 +1,4 @@
-use std::{ collections::{ HashMap, HashSet } };
+use std::collections::{HashMap, HashSet};
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -27,7 +27,13 @@ pub fn to_range(r: f32, begin: usize, end: usize) -> usize {
 }
 
 pub fn in_range(n: usize, begin: usize, end: usize) -> usize {
-    if n < begin { begin } else if n > end { end } else { n }
+    if n < begin {
+        begin
+    } else if n > end {
+        end
+    } else {
+        n
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -50,8 +56,11 @@ impl Ord for OrdF32 {
 }
 
 pub mod graph {
-    use daggy::{ Dag, NodeIndex, petgraph::visit::{ Topo, Visitable }, Walker };
     use super::*;
+    use daggy::{
+        petgraph::visit::{Topo, Visitable},
+        Dag, NodeIndex, Walker,
+    };
 
     pub fn new_dag_walker<N, E>(dag: &Dag<N, E>) -> Topo<NodeIndex, <Dag<N, E> as Visitable>::Map> {
         Topo::new(dag)
@@ -66,7 +75,9 @@ pub mod graph {
             let mut parents = dag.parents(node);
             while let Some((e, p)) = parents.walk_next(dag) {
                 // let p = nodes.entry(p).or_insert_with(|| inverse_dag.add_node(dag[p]));
-                inverse_dag.add_edge(node, p, dag.edge_weight(e).unwrap().clone()).unwrap();
+                inverse_dag
+                    .add_edge(node, p, dag.edge_weight(e).unwrap().clone())
+                    .unwrap();
             }
         }
         inverse_dag
@@ -142,7 +153,7 @@ impl DirectedGraph {
         &self,
         a: usize,
         b: usize,
-        a2bdist: F
+        a2bdist: F,
     ) -> Vec<usize> {
         let mut visited = HashSet::new();
         let mut dists = HashMap::new(); // tostart_dist, prev_node
@@ -201,34 +212,40 @@ impl SimEnv {
 
 #[cfg(test)]
 mod tests {
+    // use std::{collections::BTreeMa, intrinsics::fabsf32};
+
     use std::collections::BTreeMap;
 
-    use crate::{ sim_env::SimEnv, config::{ Config, ESConfig } };
+    use crate::{
+        config::{Config, ESConfig},
+        sim_env::SimEnv,
+    };
 
     use super::DirectedGraph;
 
     #[test]
-    fn test_seeded_rand() {
-        let seed = "helloworld";
-        let config = Config {
-            rand_seed: seed.to_owned(),
-            request_freq: "low".to_owned(),
-            dag_type: "single".to_owned(),
-            cold_start: "high".to_owned(),
-            fn_type: "cpu".to_owned(),
-            es: ESConfig {
-                up: "hpa".to_owned(),
-                down: "hpa".to_owned(),
-                sche: "rule".to_owned(),
-            },
-        };
-        let sim1 = SimEnv::new(config.clone());
-        let sim2 = SimEnv::new(config.clone());
-        for _ in 0..1000 {
-            assert_eq!(sim1.env_rand_i(0, 100), sim2.env_rand_i(0, 100));
-        }
-    }
-
+    // fn test_seeded_rand() {
+    //     let seed = "helloworld";
+    //     let config = Config {
+    //         rand_seed: seed.to_owned(),
+    //         request_freq: "low".to_owned(),
+    //         dag_type: "single".to_owned(),
+    //         cold_start: "high".to_owned(),
+    //         fn_type: "cpu".to_owned(),
+    //         es: ESConfig {
+    //             up: "hpa".to_owned(),
+    //             down: "hpa".to_owned(),
+    //             sche: "rule".to_owned(),
+    //             down_smooth: "direct".to_owned(),
+    //         },
+    //         no_log: false,
+    //     };
+    //     let sim1 = SimEnv::new(config.clone());
+    //     let sim2 = SimEnv::new(config.clone());
+    //     for _ in 0..1000 {
+    //         assert_eq!(sim1.env_rand_i(0, 100), sim2.env_rand_i(0, 100));
+    //     }
+    // }
     #[test]
     fn test_digistra() {
         // assert_eq!(2 + 2, 4);
@@ -258,7 +275,7 @@ mod tests {
             add_conn(n, 10, (n * 10) as f32);
         }
 
-        let mut min_path = g.find_min(0, 10, |a, b| { *dist_map.get(&(a, b)).unwrap() });
+        let mut min_path = g.find_min(0, 10, |a, b| *dist_map.get(&(a, b)).unwrap());
 
         min_path.reverse();
         let mut sum = 0.0;

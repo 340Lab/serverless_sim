@@ -140,7 +140,7 @@ impl SimEnv {
         // #     self.databases.append(db)
 
         // # init dags
-        self.fn_gen_fn_dags();
+        self.fn_gen_fn_dags(self);
     }
 
     pub fn current_frame(&self) -> usize {

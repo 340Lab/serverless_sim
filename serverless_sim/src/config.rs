@@ -109,6 +109,25 @@ impl ESConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct APPConfig {
+    pub app_cnt: usize,
+    pub request_freq: String,
+    /// dag type: single, chain, dag
+    pub dag_type: String,
+    /// cold start: high, low, mix
+    pub cold_start: String,
+    /// cpu, memory,datasize
+    // pub fn_cpu: String,
+    // pub fn_mem: String,
+    // pub fn_data: String,
+    pub fn_cpu: f32,
+    pub fn_mem: f32,
+    pub fn_data: f32,
+    /// is time sensitive app=1
+    pub app_is_sens: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     /// for the different algos, should use the same seed
     pub rand_seed: String,
@@ -121,6 +140,7 @@ pub struct Config {
     /// cpu, data, mix
     pub fn_type: String,
     /// each stage control algorithm settings
+    pub app_types: Vec<APPConfig>,
     pub es: ESConfig,
     /// whether to log the resultz
     pub no_log: bool,

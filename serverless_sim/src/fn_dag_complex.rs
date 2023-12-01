@@ -10,7 +10,6 @@ use daggy::{
 use enum_as_inner::EnumAsInner;
 
 use crate::{
-    config::APPConfig,
     node::{Node, NodeId},
     request::{ReqId, Request},
     sim_env::SimEnv,
@@ -43,28 +42,23 @@ impl FnDAG {
         }
     }
 
-    pub fn instance_single_fn(appconfig: &APPConfig, dag_i: DagId, env: &SimEnv) -> FnDAG {
-        let begin_fn: FnId = env.fn_gen_rand_fn(appconfig);
+    pub fn instance_single_fn(dag_i: DagId, env: &SimEnv) -> FnDAG {
+        let begin_fn: FnId = env.fn_gen_rand_fn();
         let dag = FnDAG::new(begin_fn, dag_i, env);
         dag
     }
 
-    pub fn instance_map_reduce(
-        appconfig: &APPConfig,
-        dag_i: DagId,
-        env: &SimEnv,
-        map_cnt: usize,
-    ) -> FnDAG {
-        let begin_fn = env.fn_gen_rand_fn(appconfig);
+    pub fn instance_map_reduce(dag_i: DagId, env: &SimEnv, map_cnt: usize) -> FnDAG {
+        let begin_fn = env.fn_gen_rand_fn();
         let mut dag = FnDAG::new(begin_fn, dag_i, env);
 
-        let end_fn = env.fn_gen_rand_fn(appconfig);
+        let end_fn = env.fn_gen_rand_fn();
         let end_g_i = dag.dag_inner.add_node(end_fn);
         env.func_mut(end_fn)
             .setup_after_insert_into_dag(dag_i, end_g_i);
 
         for _i in 0..map_cnt {
-            let next = env.fn_gen_rand_fn(appconfig);
+            let next = env.fn_gen_rand_fn();
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
                 env.fns.borrow()[begin_fn].out_put_size,
@@ -80,6 +74,8 @@ impl FnDAG {
 
         dag
     }
+
+    pub fn instance_single_fn(dag_i: DagId, env: &SimEnv, map_cnt: usize) -> FnDAG {}
     // #[allow(dead_code)]
     // pub fn begin_fn(&self) -> FnId {
     //     self.dag[self.begin_fn_g_i]
@@ -337,25 +333,20 @@ impl RunningTask {
 }
 
 impl SimEnv {
-    fn fn_gen_rand_fn(&self, appconfig: &APPConfig) -> FnId {
-        // 将appconfig的值赋给它
-
+    fn fn_gen_rand_fn(&self) -> FnId {
         let id = self.fn_alloc_fn_id();
-
-        let cpu = appconfig.fn_cpu;
-
-        // let (cpu, out_put_size) = if self.config.fntype_cpu() {
-        //     (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
-        // } else if self.config.fntype_data() {
-        //     (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
-        // } else {
-        //     panic!("not support fntype");
-        // };
+        let (cpu, out_put_size) = if self.config.fntype_cpu() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
+        } else if self.config.fntype_data() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
+        } else {
+            panic!("not support fntype");
+        };
         self.fns.borrow_mut().push(Func {
             fn_id: id,
-            cpu: appconfig.fn_cpu,
+            cpu,
             mem: self.env_rand_f(100.0, 1000.0),
-            out_put_size: self.env_rand_f(0.1, 20.0),
+            out_put_size,
             nodes: HashSet::new(),
             cold_start_container_mem_use: self.env_rand_f(100.0, 500.0),
             cold_start_container_cpu_use: self.env_rand_f(0.1, 50.0),
@@ -366,62 +357,31 @@ impl SimEnv {
         id
     }
 
-    fn gen_dags_for_apptype(&self, apptype: &APPConfig, env: &SimEnv) {
-        for _ in 0..apptype.app_cnt {
-            match &*apptype.dag_type {
-                "single" => {
-                    let dag_i = self.dags.borrow().len();
-                    // (appconfig: &APPConfig, dag_i: DagId, env: &SimEnv)
-                    let dag = FnDAG::instance_single_fn(apptype, dag_i, env);
-                    self.dags.borrow_mut().push(dag);
-
-                    // let mapcnt = env.env_rand_i(2, 5); //2-4
-                    //         let dag_i = env.dags.borrow().len();
-                    //         let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
-                }
-                "chain" => {}
-                "branch" => {
-                    let mapcnt = self.env_rand_i(2, 5); //2-4
-                    let dag_i = self.dags.borrow().len();
-                    let dag = FnDAG::instance_map_reduce(apptype, dag_i, env, mapcnt);
-                    self.dags.borrow_mut().push(dag);
-                }
-                _ => {
-                    panic!("not support")
-                }
-            }
-        }
-    }
-
-    pub fn fn_gen_fn_dags(&self, env: &SimEnv) {
+    pub fn fn_gen_fn_dags(&self) {
         let env = self;
         // for _ in 0..10 {
         //     let dag_i = env.dags.borrow().len();
         //     let dag = FnDAG::instance_map_reduce(dag_i, env, util::rand_i(2, 10));
         //     env.dags.borrow_mut().push(dag);
         // }
-        for app in &self.config.app_types {
-            // (&self, apptype: &APPConfig, env: &SimEnv)
-            self.gen_dags_for_apptype(app, env);
-        }
-        // if self.config.dag_type_dag() {
-        //     for _ in 0..6 {
-        //         let mapcnt = env.env_rand_i(2, 5); //2-4
-        //         let dag_i = env.dags.borrow().len();
-        //         let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
-        //         log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
+        if self.config.dag_type_dag() {
+            for _ in 0..6 {
+                let mapcnt = env.env_rand_i(2, 5); //2-4
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
-        //         env.dags.borrow_mut().push(dag);
-        //     }
-        // } else if self.config.dag_type_single() {
-        //     for _ in 0..10 {
-        //         let dag_i = env.dags.borrow().len();
-        //         let dag = FnDAG::instance_single_fn(dag_i, env);
-        //         env.dags.borrow_mut().push(dag);
-        //     }
-        // } else {
-        //     panic!("not support dag type {}", self.config.dag_type);
-        // }
+                env.dags.borrow_mut().push(dag);
+            }
+        } else if self.config.dag_type_single() {
+            for _ in 0..10 {
+                let dag_i = env.dags.borrow().len();
+                let dag = FnDAG::instance_single_fn(dag_i, env);
+                env.dags.borrow_mut().push(dag);
+            }
+        } else {
+            panic!("not support dag type {}", self.config.dag_type);
+        }
     }
 
     fn fn_alloc_fn_id(&self) -> usize {
