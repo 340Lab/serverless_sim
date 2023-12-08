@@ -45,6 +45,9 @@ impl ESConfig {
         }
         false
     }
+    pub fn sche_time(&self) -> bool {
+        &*self.sche == "time"
+    }
     pub fn sche_rule_prewarm_succ(&self) -> bool {
         if &*self.sche == "rule_prewarm_succ" {
             return true;

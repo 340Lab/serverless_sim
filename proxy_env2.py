@@ -103,7 +103,7 @@ class ProxyEnv2:
         allowed_up = ["ai", "lass", "fnsche", "hpa", "faasflow", "no"]
         allowed_down = ["ai", "lass", "fnsche", "hpa", "faasflow", "no"]
         allowed_sche = ["rule", "fnsche", "faasflow", "rule_prewarm_succ",
-                        "round_robin", "random", "load_least", "gofs", "pass"]
+                        "round_robin", "random", "load_least", "gofs", "pass","time"]
         up_down_must_same = ["ai", "lass", "hpa", "faasflow", "fnsche"]
         non_scaler_sche = ["fnsche", "faasflow"]
 

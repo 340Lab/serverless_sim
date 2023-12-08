@@ -40,6 +40,7 @@ algos = [
     ["lass", "lass", "rule"],
     ["no", "no", "faasflow"],
     ["no", "no", "fnsche"],
+    ["no", "no", "time"],
 ]
 
 ts = []

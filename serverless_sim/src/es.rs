@@ -19,6 +19,7 @@ use crate::{
     sche_pass::PassScheduler,
     sche_pos::PosScheduler,
     sche_rule_based::{RuleBasedScheduler, ScheduleRule},
+    sche_time_aware::TimeScheduler,
     schedule::Scheduler,
     sim_env::SimEnv,
 };
@@ -305,6 +306,8 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         return Some(Box::new(PosScheduler::new()));
     } else if config.es.sche_fnsche() {
         return Some(Box::new(FnScheScheduler::new()));
+    } else if config.es.sche_time() {
+        return Some(Box::new(TimeScheduler::new()));
     }
     None
 }
