@@ -51,7 +51,7 @@ impl TimeScheduler {
     pub fn new() -> Self {
         Self {
             fn_trigger_time: HashMap::new(),
-            starve_threshold: 100,
+            starve_threshold: 10, //设置等待时间的阈值
         }
     }
 
@@ -148,7 +148,8 @@ impl TimeScheduler {
         for (reqid, fnid) in unstartve_tasks.iter() {
             let func = env.func(*fnid);
             // P = 函数的资源消耗量×(启动时间+函数执行时间(已知，故这设置了固定的CPU表示))
-            let t_exe = func.cpu / 100.0;
+            // let t_exe = func.cpu / 100.0;
+            let t_exe = func.cpu;
             let p = func.mem * (t_exe + func.cold_start_time as f32);
             tasks_prio.insert((*reqid, *fnid), p);
         }
@@ -174,7 +175,7 @@ impl TimeScheduler {
             // 选择任务数最小的节点依次分配给任务
             for nodeid in 0..env.nodes().len() {
                 let node = env.node(nodeid);
-                if func.cpu < node.cpu {
+                if func.mem < node.rsc_limit.mem {
                     if node.all_task_cnt() < least_task {
                         least_task = node.all_task_cnt();
                         least_task_id = nodeid;
