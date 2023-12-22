@@ -35,6 +35,8 @@ impl Scheduler for TimeScheduler {
     fn schedule_some(&mut self, env: &SimEnv) {
         let tasks = self.step_1_collct_all_task(env);
         let (starve, mut unstarve) = self.step_2_split_tasks(tasks, env);
+        log::info!("starve len {}", starve.len());
+        log::info!("unstarve len {}", unstarve.len());
         self.step_3_sort_unstarve_tasks(&mut unstarve, env);
         self.step_4_select_node_for_tasks(env, starve);
         self.step_4_select_node_for_tasks(env, unstarve);
@@ -165,10 +167,9 @@ impl TimeScheduler {
     // 4、为每一个task选择node Least Loaded:将请求派发到负载最低的Worker中
 
     fn step_4_select_node_for_tasks(&mut self, env: &SimEnv, tasks: Vec<(ReqId, FnId)>) {
-        let cur_nodes = env.nodes();
         for (reqid, fnid) in tasks {
             let mut least_task = 1000000;
-            let mut least_task_id = 0;
+            let mut least_task_id = None;
 
             let func = env.func(fnid);
             let mut req = env.request_mut(reqid);
@@ -178,12 +179,20 @@ impl TimeScheduler {
                 if func.mem < node.rsc_limit.mem {
                     if node.all_task_cnt() < least_task {
                         least_task = node.all_task_cnt();
-                        least_task_id = nodeid;
+                        least_task_id = Some(nodeid);
                     }
                 }
             }
-            if least_task_id != 0 {
+            if let Some(least_task_id) = least_task_id {
+                log::info!(
+                    "schedule_reqfn_on_node {} {} {}",
+                    reqid,
+                    fnid,
+                    least_task_id
+                );
                 env.schedule_reqfn_on_node(&mut req, fnid, least_task_id);
+            } else {
+                log::info!("schedule_reqfn_on_node didn't find node");
             }
         }
     }
