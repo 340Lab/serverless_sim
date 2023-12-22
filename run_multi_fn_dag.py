@@ -36,9 +36,9 @@ class Task:
 
 algos = [
     # ["hpa", "hpa", "rule"],
-    ["no", "no", "pass"],
+    # ["no", "no", "pass"],
     # ["lass", "lass", "rule"],
-    ["no", "no", "faasflow"],
+    # ["no", "no", "faasflow"],
     # ["no", "no", "fnsche"],
     ["no", "no", "time"],
 ]
