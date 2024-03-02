@@ -18,6 +18,7 @@ use crate::{
     // parse_arg,
     request::{ReqId, Request},
     scale_executor::DefaultScaleExecutor,
+    scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
     schedule::Scheduler,
 };
 
@@ -58,6 +59,8 @@ pub struct SimEnv {
 
     pub scale_executor: RefCell<DefaultScaleExecutor>,
 
+    pub scale_preloader: RefCell<Box<dyn ScalePreLoader>>,
+
     pub metric: RefCell<OneFrameMetric>,
 
     pub metric_record: RefCell<Records>,
@@ -74,10 +77,9 @@ pub struct SimEnv {
     pub timers: RefCell<HashMap<usize, Vec<Box<dyn FnMut(&SimEnv) + Send>>>>,
 
     pub fn_must_scale_up: RefCell<HashSet<FnId>>,
+    // pub distance2hpa: RefCell<usize>,
 
-    pub distance2hpa: RefCell<usize>,
-
-    pub hpa_action: RefCell<usize>,
+    // pub hpa_action: RefCell<usize>,
 }
 
 impl SimEnv {
@@ -111,9 +113,10 @@ impl SimEnv {
             config,
             timers: HashMap::new().into(),
             fn_must_scale_up: HashSet::new().into(),
-            distance2hpa: (0).into(),
-            hpa_action: (0).into(),
+            // distance2hpa: (0).into(),
+            // hpa_action: (0).into(),
             metric: OneFrameMetric::new().into(),
+            scale_preloader: RefCell::new(Box::new(LeastTaskPreLoader::new())),
         };
 
         newenv.init();
@@ -136,7 +139,7 @@ impl SimEnv {
         // #     self.databases.append(db)
 
         // # init dags
-        self.fn_gen_fn_dags();
+        self.fn_gen_fn_dags(self);
     }
 
     pub fn current_frame(&self) -> usize {
@@ -196,7 +199,7 @@ impl SimEnv {
             }
         }
 
-        *self.distance2hpa.borrow_mut() = 0;
+        // *self.distance2hpa.borrow_mut() = 0;
     }
 
     pub fn on_frame_end(&self) {

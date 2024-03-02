@@ -2,17 +2,20 @@ use crate::{
     actions::{ESActionWrapper, RawAction},
     algos::ContainerMetric,
     config::Config,
-    es_faas_flow::FaasFlowScheduler,
     // es_lass::LassESScaler,
     fn_dag::FnId,
     node::NodeId,
     request::ReqId,
     scale_preloader::{least_task::LeastTaskPreLoader, ScalePreLoader},
+    scaler_ai::AIScaler,
     // es_ai::{self, AIScaler},
     // es_faas_flow::FaasFlowScheduler,
     // es_fnsche::FnScheScaler,
     scaler_hpa::HpaESScaler,
+    scaler_lass::LassESScaler,
     scaler_no::ScalerNo,
+    sche_faasflow::FaasFlowScheduler,
+    sche_fnsche::FnScheScheduler,
     sche_pass::PassScheduler,
     sche_pos::PosScheduler,
     sche_rule_based::{RuleBasedScheduler, ScheduleRule},
@@ -22,8 +25,7 @@ use crate::{
 use enum_as_inner::EnumAsInner;
 use std::{
     cell::RefMut,
-    collections::{BTreeMap, HashMap, VecDeque},
-    hash::Hash,
+    collections::{BTreeMap, VecDeque},
 };
 
 pub trait ActionEffectStage {
@@ -42,8 +44,6 @@ pub trait ESScaler {
     ) -> (f32, bool);
 
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
-
-    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader;
 }
 #[derive(Debug)]
 pub struct StageScaleForFns {
@@ -303,6 +303,8 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         return Some(Box::new(PassScheduler::new()));
     } else if config.es.sche_rule() {
         return Some(Box::new(PosScheduler::new()));
+    } else if config.es.sche_fnsche() {
+        return Some(Box::new(FnScheScheduler::new()));
     }
     None
 }
@@ -310,18 +312,17 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
 pub fn prepare_spec_scaler(config: &Config) -> Option<Box<dyn ESScaler + Send>> {
     let es = &config.es;
 
-    // if es.scale_lass() {
-    //     return Some(Box::new(LassESScaler::new()));
+    if es.scale_lass() {
+        return Some(Box::new(LassESScaler::new()));
+    }
     // } else if es.sche_fnsche() {
     //     return Some(Box::new(FnScheScaler::new()));
     // } else
     if es.scale_hpa() {
-        return Some(Box::new(HpaESScaler::new(LeastTaskPreLoader::new())));
-    }
-    // else if es.scale_ai() {
-    //     return Some(Box::new(AIScaler::new(config)));
-    // }
-    else if es.scale_up_no() {
+        return Some(Box::new(HpaESScaler::new()));
+    } else if es.scale_ai() {
+        return Some(Box::new(AIScaler::new(config)));
+    } else if es.scale_up_no() {
         return Some(Box::new(ScalerNo::new()));
     }
 
@@ -541,7 +542,7 @@ impl SimEnv {
                     .sum::<usize>() as f32,
                 fn_avg_cpu,
                 fn_avg_mem_rate,
-                *self.hpa_action.borrow() as f32,
+                // *self.hpa_action.borrow() as f32,
                 self.req_done_time_avg(),
                 self.cost_each_req(),
                 self.cost_perform(),

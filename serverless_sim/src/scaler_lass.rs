@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     actions::ESActionWrapper,
     algos::ContainerMetric,
@@ -11,6 +13,7 @@ use crate::{
 pub struct LassESScaler {
     pub latency_required: f32,
     pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+    fn_sche_container_count: HashMap<FnId, usize>,
 }
 
 impl LassESScaler {
@@ -18,6 +21,7 @@ impl LassESScaler {
         Self {
             latency_required: 7.0,
             scale_down_policy: Box::new(CarefulScaleDown::new()),
+            fn_sche_container_count: HashMap::new(),
         }
     }
 }
@@ -26,7 +30,10 @@ impl LassESScaler {
 
 impl ESScaler for LassESScaler {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
-        0
+        self.fn_sche_container_count
+            .get(&fnid)
+            .map(|c| *c)
+            .unwrap_or(0)
     }
     fn scale_for_fn(
         &mut self,
@@ -70,10 +77,23 @@ impl ESScaler for LassESScaler {
                         as usize
                 }
             };
+
         let container_cnt = metric.container_count;
         desired_container_cnt =
             self.scale_down_policy
                 .filter_desired(fnid, desired_container_cnt, container_cnt);
+
+        if env
+            .spec_scheduler
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .this_turn_will_schedule(fnid)
+            && desired_container_cnt == 0
+        {
+            desired_container_cnt = 1;
+        }
+
         if desired_container_cnt < container_cnt {
             // # scale down
             let scale = container_cnt - desired_container_cnt;
@@ -83,6 +103,8 @@ impl ESScaler for LassESScaler {
                 ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
             );
         }
+        self.fn_sche_container_count
+            .insert(fnid, desired_container_cnt);
         // else {
         //     // # scale up
         //     let scale = desired_container_cnt - container_cnt;

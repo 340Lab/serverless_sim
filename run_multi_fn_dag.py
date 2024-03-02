@@ -7,7 +7,7 @@ class Task:
     def algo(self, up: str, down: str, sche: str):
         self.env = ProxyEnv2(False, {
             "rand_seed": "hello",
-            "request_freq": "middle",
+            "request_freq": "high",
             "dag_type": "dag",
             "cold_start": "high",
             "fn_type": "cpu",
@@ -36,10 +36,10 @@ class Task:
 
 algos = [
     ["hpa", "hpa", "rule"],
-    # ["no", "no", "pass"]
-    # ["lass","lass","rule"],
-    # ["fnsche","fnsche","fnsche"],
-    # ["no", "no", "faasflow"],
+    ["no", "no", "pass"],
+    ["lass", "lass", "rule"],
+    ["no", "no", "faasflow"],
+    ["no", "no", "fnsche"],
 ]
 
 ts = []

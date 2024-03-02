@@ -10,3 +10,5 @@ adaptive_trans
 adaptive-transformers-in-rl-master.zip
 log
 MAPPO_MPE
+run_different_req_freq.py
+run_multi_fn_dag.py

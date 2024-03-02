@@ -15,27 +15,22 @@ enum Target {
     CpuUseRate(f32),
 }
 
-pub struct HpaESScaler<PL: ScalePreLoader> {
+pub struct HpaESScaler {
     target: Target,
     // target_tolerance: determines how close the target/current
     //   resource ratio must be to 1.0 to skip scaling
     target_tolerance: f32,
     pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
     fn_sche_container_count: HashMap<FnId, usize>,
-    preloader: PL,
 }
 
-impl<PL: ScalePreLoader> HpaESScaler<PL> {
-    pub fn new(preloader: PL) -> Self
-    where
-        PL: ScalePreLoader,
-    {
+impl HpaESScaler {
+    pub fn new() -> Self {
         Self {
             target: Target::CpuUseRate(0.5),
             target_tolerance: 0.1,
             scale_down_policy: Box::new(CarefulScaleDown::new()),
             fn_sche_container_count: HashMap::new(),
-            preloader,
         }
     }
     pub fn action(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric) -> usize {
@@ -89,7 +84,7 @@ impl<PL: ScalePreLoader> HpaESScaler<PL> {
     }
 }
 
-impl<PL: ScalePreLoader> ESScaler for HpaESScaler<PL> {
+impl ESScaler for HpaESScaler {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         self.fn_sche_container_count
             .get(&fnid)
@@ -190,9 +185,5 @@ impl<PL: ScalePreLoader> ESScaler for HpaESScaler<PL> {
             }
         }
         (0.0, false)
-    }
-
-    fn preloader<'a>(&'a mut self) -> &'a mut dyn ScalePreLoader {
-        &mut self.preloader
     }
 }

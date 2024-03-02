@@ -19,19 +19,6 @@ https://arxiv.org/abs/1705.05363
 From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
-from proxy_env2 import ProxyEnv2
-from deep_rl_zoo import greedy_actors
-from deep_rl_zoo import gym_env
-from deep_rl_zoo import main_loop
-from deep_rl_zoo.schedule import LinearSchedule
-from deep_rl_zoo.checkpoint import PyTorchCheckpoint
-from deep_rl_zoo.ppo_icm import agent
-from deep_rl_zoo.networks.curiosity import IcmNatureConvNet
-from deep_rl_zoo.networks.policy import ActorCriticConvNet
-import copy
-import torch
-import numpy as np
-import multiprocessing
 from absl import app
 from absl import flags
 from absl import logging
@@ -41,62 +28,58 @@ import random
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
+import multiprocessing
+import numpy as np
+import torch
+import copy
 
 # pylint: disable=import-error
+from deep_rl_zoo.networks.policy import ActorCriticConvNet
+from deep_rl_zoo.networks.curiosity import IcmNatureConvNet
+from deep_rl_zoo.ppo_icm import agent
+from deep_rl_zoo.checkpoint import PyTorchCheckpoint
+from deep_rl_zoo.schedule import LinearSchedule
+from deep_rl_zoo import main_loop
+from deep_rl_zoo import gym_env
+from deep_rl_zoo import greedy_actors
+from proxy_env2 import ProxyEnv2
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('environment_name', 'Pong',
-                    'Atari name without NoFrameskip and version, like Breakout, Pong, Seaquest.')
-flags.DEFINE_integer('environment_height', 80,
-                     'Environment frame screen height.')
-flags.DEFINE_integer('environment_width', 80,
-                     'Environment frame screen width.')
+flags.DEFINE_string('environment_name', 'Pong', 'Atari name without NoFrameskip and version, like Breakout, Pong, Seaquest.')
+flags.DEFINE_integer('environment_height', 80, 'Environment frame screen height.')
+flags.DEFINE_integer('environment_width', 80, 'Environment frame screen width.')
 flags.DEFINE_integer('environment_frame_skip', 0, 'Number of frames to skip.')
-flags.DEFINE_integer('environment_frame_stack', 1,
-                     'Number of frames to stack.')
+flags.DEFINE_integer('environment_frame_stack', 1, 'Number of frames to stack.')
 flags.DEFINE_integer('num_actors', 1, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
-flags.DEFINE_float('max_grad_norm', 10.0,
-                   'Max gradients norm when do gradients clip.')
+flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
 flags.DEFINE_float('learning_rate', 0.00045, 'Learning rate.')
-flags.DEFINE_float('icm_learning_rate', 0.00025,
-                   'Learning rate for ICM module.')
+flags.DEFINE_float('icm_learning_rate', 0.00025, 'Learning rate for ICM module.')
 
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
-flags.DEFINE_float('gae_lambda', 0.95,
-                   'Lambda for the GAE general advantage estimator.')
+flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
 flags.DEFINE_float('entropy_coef', 0.001, 'Coefficient for the entropy loss.')
 flags.DEFINE_float('value_coef', 0.5, 'Coefficient for the state-value loss.')
-flags.DEFINE_float('clip_epsilon_begin_value', 0.12,
-                   'PPO clip epsilon begin value.')
-flags.DEFINE_float('clip_epsilon_end_value', 0.02,
-                   'PPO clip epsilon final value.')
+flags.DEFINE_float('clip_epsilon_begin_value', 0.12, 'PPO clip epsilon begin value.')
+flags.DEFINE_float('clip_epsilon_end_value', 0.02, 'PPO clip epsilon final value.')
 
-flags.DEFINE_float('intrinsic_lambda', 0.1,
-                   'Scaling factor for intrinsic reward when calculate using equation 6.')
-flags.DEFINE_float(
-    'icm_beta', 0.2, 'Weights inverse model loss against the forward model loss in ICM module.')
-flags.DEFINE_float('policy_loss_coef', 1.0,
-                   'Weights policy loss against the the ICM module loss.')
+flags.DEFINE_float('intrinsic_lambda', 0.1, 'Scaling factor for intrinsic reward when calculate using equation 6.')
+flags.DEFINE_float('icm_beta', 0.2, 'Weights inverse model loss against the forward model loss in ICM module.')
+flags.DEFINE_float('policy_loss_coef', 1.0, 'Weights policy loss against the the ICM module loss.')
 
-flags.DEFINE_integer('unroll_length', 128,
-                     'Collect N transitions (cross episodes) before send to learner, per actor.')
+flags.DEFINE_integer('unroll_length', 128, 'Collect N transitions (cross episodes) before send to learner, per actor.')
 flags.DEFINE_integer('update_k', 4, 'Run update k times when do learning.')
 flags.DEFINE_integer('num_iterations', 100, 'Number of iterations to run.')
 flags.DEFINE_integer(
-    'num_train_steps', int(
-        5e5), 'Number of training steps (environment steps or frames) to run per iteration, per actor.'
+    'num_train_steps', int(5e5), 'Number of training steps (environment steps or frames) to run per iteration, per actor.'
 )
 flags.DEFINE_integer(
-    'num_eval_steps', int(
-        0), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
+    'num_eval_steps', int(0), 'Number of evaluation steps (environment steps or frames) to run per iteration.'
 )
-flags.DEFINE_integer('max_episode_steps', 1,
-                     'Maximum steps (before frame skip) per episode.')
+flags.DEFINE_integer('max_episode_steps', 1, 'Maximum steps (before frame skip) per episode.')
 flags.DEFINE_integer('seed', 1, 'Runtime seed.')
-flags.DEFINE_bool('use_tensorboard', True,
-                  'Use Tensorboard to monitor statistics, default on.')
+flags.DEFINE_bool('use_tensorboard', True, 'Use Tensorboard to monitor statistics, default on.')
 flags.DEFINE_bool('actors_on_gpu', True, 'Run actors on GPU, default on.')
 flags.DEFINE_integer(
     'debug_screenshots_interval',
@@ -104,17 +87,14 @@ flags.DEFINE_integer(
     'Take screenshots every N episodes and log to Tensorboard, default 0 no screenshots.',
 )
 flags.DEFINE_string('tag', '', 'Add tag to Tensorboard log file.')
-flags.DEFINE_string('results_csv_path',
-                    './logs/ppo_icm_atari_results.csv', 'Path for CSV log file.')
-flags.DEFINE_string('checkpoint_dir', './checkpoints',
-                    'Path for checkpoint directory.')
+flags.DEFINE_string('results_csv_path', './logs/ppo_icm_atari_results.csv', 'Path for CSV log file.')
+flags.DEFINE_string('checkpoint_dir', './checkpoints', 'Path for checkpoint directory.')
 
 
 def main(argv):
     """Trains PPO-ICM agent on Atari."""
     del argv
-    runtime_device = torch.device(
-        'cuda' if torch.cuda.is_available() else 'cpu')
+    runtime_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Runs PPO-ICM agent on {runtime_device}')
     np.random.seed(FLAGS.seed)
     torch.manual_seed(FLAGS.seed)
@@ -122,25 +102,25 @@ def main(argv):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    random_state = np.random.RandomState(
-        FLAGS.seed)  # pylint: disable=no-member
+    random_state = np.random.RandomState(FLAGS.seed)  # pylint: disable=no-member
 
+    
     def new_env():
-        return ProxyEnv2(True, {
-            "rand_seed": "hello",
-            "request_freq": "middle",
-            "dag_type": "dag",
-            "cold_start": "high",
-            "fn_type": "cpu",
+        return ProxyEnv2(True,{
+            "rand_seed":"hello",
+            "request_freq":"middle",
+            "dag_type":"dag",
+            "cold_start":"high",
+            "fn_type":"cpu",
             "es": {
-                "up": "ai",
-                "down": "ai",
-                "sche": "rule",
-                "down_smooth": "direct",
-                "ai_type": "ppo",
-                # "fit_hpa":"",
+                "up":"ai",
+                "down":"ai",
+                "sche":"rule",
+                "down_smooth":"direct",
+                "ai_type":"ppo",
+                "fit_hpa":"",
                 # "no_perform_cost_rate_score":""
-            },
+            },    
         })
 
     # eval_env = environment_builder()
@@ -157,19 +137,15 @@ def main(argv):
     # Test environment and state shape.
     obs = actor_envs[0].reset()
     assert isinstance(obs, np.ndarray)
-    assert obs.shape == (FLAGS.environment_frame_stack,
-                         FLAGS.environment_height, FLAGS.environment_width)
+    assert obs.shape == (FLAGS.environment_frame_stack, FLAGS.environment_height, FLAGS.environment_width)
 
     # Create policy network, master will optimize this network
-    policy_network = ActorCriticConvNet(
-        state_dim=state_dim, action_dim=action_dim)
-    policy_optimizer = torch.optim.Adam(
-        policy_network.parameters(), lr=FLAGS.learning_rate)
+    policy_network = ActorCriticConvNet(state_dim=state_dim, action_dim=action_dim)
+    policy_optimizer = torch.optim.Adam(policy_network.parameters(), lr=FLAGS.learning_rate)
 
     # ICM module
     icm_network = IcmNatureConvNet(state_dim=state_dim, action_dim=action_dim)
-    icm_optimizer = torch.optim.Adam(
-        icm_network.parameters(), lr=FLAGS.icm_learning_rate)
+    icm_optimizer = torch.optim.Adam(icm_network.parameters(), lr=FLAGS.icm_learning_rate)
 
     # Test network output.
     s = torch.from_numpy(obs[None, ...]).float()
@@ -180,8 +156,7 @@ def main(argv):
     clip_epsilon_scheduler = LinearSchedule(
         begin_t=0,
         end_t=int(
-            (FLAGS.num_iterations * int(FLAGS.num_train_steps *
-             FLAGS.num_actors)) / FLAGS.unroll_length
+            (FLAGS.num_iterations * int(FLAGS.num_train_steps * FLAGS.num_actors)) / FLAGS.unroll_length
         ),  # Learner step_t is often faster than worker
         begin_value=FLAGS.clip_epsilon_begin_value,
         end_value=FLAGS.clip_epsilon_end_value,
@@ -221,8 +196,7 @@ def main(argv):
     # Evenly distribute the actors to all available GPUs
     if torch.cuda.is_available() and FLAGS.actors_on_gpu:
         num_gpus = torch.cuda.device_count()
-        actor_devices = [torch.device(
-            f'cuda:{i % num_gpus}') for i in range(FLAGS.num_actors)]
+        actor_devices = [torch.device(f'cuda:{i % num_gpus}') for i in range(FLAGS.num_actors)]
 
     actors = [
         agent.Actor(
@@ -249,7 +223,7 @@ def main(argv):
     )
     checkpoint.register_pair(('policy_network', policy_network))
     checkpoint.register_pair(('icm_network', icm_network))
-
+    
     # checkpoint.restore("./checkpoints/ppo_icm_v3/PPO-ICM_Pong_3.ckpt")
     # policy_network.eval()
     # icm_network.eval()

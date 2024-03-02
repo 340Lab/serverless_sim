@@ -1,6 +1,8 @@
+# Lark doc (Project Design and RoadMap)
+[https://fvd360f8oos.feishu.cn/docx/Q3c6dJG5Go3ov6xXofZcGp43nfb](https://fvd360f8oos.feishu.cn/docx/Q3c6dJG5Go3ov6xXofZcGp43nfb)
+
 # Environment
-## Pylibs
-pip install -r requirements.txt
+
 ## Rust
 rustup default 1.67
 pip install maturin
@@ -8,22 +10,23 @@ python -m venv modelenv
 source .env/bin/activate
 maturin develop
 
-## CUDA
+## Pylibs (Just for RL Scaler)
+pip install -r requirements.txt
+
+## CUDA (Just for RL Scaler)
 https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
 
-## Some Abbreviations
-
-ES: each stage, the main stages are frame_begin, scale, schedule, sim_compute, analyze, frame_end.
 
 # Start sim server
 cd serverless_sim
 ```
-cargo run ai-scaler lazy-scale-from-zero 2>&1 | tee log
-cargo run hpa-scaler lazy-scale-from-zero 2>&1 | tee log
+cargo run
 ```
 
-# Run HPA simulation
-python3 -m run_hpa
+# Tests
 
-# Run RL simulation
-python3 -m run_ddqn
+1. Copy a test script from scripts_examples to root dir and run it.
+
+2. Run collect_seed_metrics.py, check result in `serverless_sim/records/seed_xxx.json`.
+
+3. Start and analyze on serverless_sim_ui.

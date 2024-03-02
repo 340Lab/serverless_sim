@@ -5,7 +5,7 @@ use crate::{
     node::NodeId,
     request::{ReqId, Request},
     scale_executor::ScaleExecutor,
-    schedule::Scheduler,
+    schedule::{schedule_helper, Scheduler},
     sim_env::SimEnv,
 };
 
@@ -54,37 +54,13 @@ impl PosScheduler {
             }
         }
     }
-    fn schedule_able_fns_for_req(&self, env: &SimEnv, req: &mut Request) -> Vec<FnId> {
-        let mut collect = vec![];
-        let dag_i = req.dag_i;
-        let mut dag_walker = env.dag(dag_i).new_dag_walker();
-        // let mut schedule_able_fns = vec![];
-        'next_fn: while let Some(fngi) = dag_walker.next(&*env.dag_inner(dag_i)) {
-            let fnid = env.dag_inner(dag_i)[fngi];
-            if req.fn_node.contains_key(&fnid) {
-                //scheduled
-                continue;
-            }
-            let parents = env.func(fnid).parent_fns(env);
-            for p in &parents {
-                // parent has't been scheduled
-                if !req.fn_node.contains_key(p) {
-                    continue 'next_fn;
-                }
-            }
-            // if
-            //     env.fn_2_nodes.borrow().contains_key(&fnid) &&
-            //     env.fn_running_containers_nodes(fnid).len() > 0
-            {
-                // parents all done schedule able
-                // schedule_able_fns.push(fnid);
-                collect.push(fnid);
-            }
-        }
-        collect
-    }
+
     fn schedule_one_req_fns(&self, env: &SimEnv, req: &mut Request) {
-        let mut schedule_able_fns = self.schedule_able_fns_for_req(env, req);
+        let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
+            req,
+            env,
+            schedule_helper::CollectTaskConfig::PreAllSched,
+        );
 
         let mut node2node_connection_count = env.node2node_connection_count.borrow().clone();
         schedule_able_fns.sort_by(|&a, &b| {
@@ -107,8 +83,8 @@ impl PosScheduler {
 
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
             let target_cnt = env.spec_scaler().fn_available_count(fnid, env);
-            env.spec_scaler_mut()
-                .preloader()
+            env.scale_preloader
+                .borrow_mut()
                 .pre_load(target_cnt, fnid, env);
 
             // 选择节点算法，首先选出包含当前函数容器的节点

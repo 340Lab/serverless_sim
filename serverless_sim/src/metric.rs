@@ -191,6 +191,7 @@ impl RecordFile {
             dag_type: "".to_owned(),
             cold_start: "".to_owned(),
             fn_type: "".to_owned(),
+            app_types: vec![],
             no_log: false,
             es: ESConfig {
                 up: "".to_owned(),
@@ -202,6 +203,7 @@ impl RecordFile {
                 fit_hpa: None,
             },
         };
+
         for config_part in front_utc.split(".") {
             match idx {
                 0 => {

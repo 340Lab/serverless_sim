@@ -14,9 +14,70 @@ use crate::{
 };
 
 pub trait Scheduler {
+    /// For scaler to get some schdule info.
+    /// Not needed for non-scaler scheduler.
     fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv);
+    /// For scaler to get some schdule info.
+    /// Not needed for non-scaler scheduler.
     fn this_turn_will_schedule(&self, fnid: FnId) -> bool;
     fn schedule_some(&mut self, env: &SimEnv);
+}
+
+pub mod schedule_helper {
+    use crate::{fn_dag::FnId, request::Request, sim_env::SimEnv};
+    pub enum CollectTaskConfig {
+        All,
+        PreAllDone,
+        PreAllSched,
+    }
+
+    pub fn collect_task_to_sche(
+        req: &Request,
+        env: &SimEnv,
+        config: CollectTaskConfig,
+    ) -> Vec<FnId> {
+        let mut collect = vec![];
+        let dag_i = req.dag_i;
+        let mut dag_walker = env.dag(dag_i).new_dag_walker();
+        // let mut schedule_able_fns = vec![];
+        'next_fn: while let Some(fngi) = dag_walker.next(&*env.dag_inner(dag_i)) {
+            let fnid = env.dag_inner(dag_i)[fngi];
+            if req.fn_node.contains_key(&fnid) {
+                //scheduled
+                continue;
+            }
+            let parents = env.func(fnid).parent_fns(env);
+            for p in &parents {
+                match config {
+                    CollectTaskConfig::PreAllDone => {
+                        if !req.done_fns.contains(p) {
+                            continue 'next_fn;
+                        }
+                    }
+                    CollectTaskConfig::PreAllSched => {
+                        if !req.fn_node.contains_key(p) {
+                            continue 'next_fn;
+                        }
+                    }
+                    CollectTaskConfig::All => {
+                        // do nothing
+                    }
+                }
+            }
+            if req.fn_node.contains_key(&fnid) {
+                continue;
+            }
+            // if
+            //     env.fn_2_nodes.borrow().contains_key(&fnid) &&
+            //     env.fn_running_containers_nodes(fnid).len() > 0
+            {
+                // parents all done schedule able
+                // schedule_able_fns.push(fnid);
+                collect.push(fnid);
+            }
+        }
+        collect
+    }
 }
 
 #[derive(Clone, Debug)]
