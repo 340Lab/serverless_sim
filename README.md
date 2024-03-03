@@ -4,11 +4,11 @@
 # Environment
 
 ## Rust
+```
+// Switch to tested default version
+
 rustup default 1.67
-pip install maturin
-python -m venv modelenv
-source .env/bin/activate
-maturin develop
+```
 
 ## Pylibs (Just for RL Scaler)
 pip install -r requirements.txt
