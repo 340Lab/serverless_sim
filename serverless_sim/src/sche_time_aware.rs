@@ -176,7 +176,7 @@ impl TimeScheduler {
             // 选择任务数最小的节点依次分配给任务
             for nodeid in 0..env.nodes().len() {
                 let node = env.node(nodeid);
-                if func.mem < node.rsc_limit.mem {
+                if func.mem < node.left_mem() + 500.0 {
                     if node.all_task_cnt() < least_task {
                         least_task = node.all_task_cnt();
                         least_task_id = Some(nodeid);
