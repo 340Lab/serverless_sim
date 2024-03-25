@@ -166,14 +166,15 @@ struct HistoryResp {
 
 async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
     log::info!("Get history list");
-    let paths = fs::read_dir("./records").unwrap();
 
     let mut resp = HistoryListResp { list: vec![] };
 
-    for path in paths {
-        resp.list
-            .push(path.unwrap().file_name().into_string().unwrap());
-    }
+    if let Ok(paths) = fs::read_dir("./records"){
+        for path in paths {
+            resp.list
+                .push(path.unwrap().file_name().into_string().unwrap());
+        }
+    };
 
     (StatusCode::OK, Json(resp))
 }
