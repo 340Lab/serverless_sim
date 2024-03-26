@@ -1,3 +1,12 @@
+import os
+
+CUR_FPATH = os.path.abspath(__file__)
+CUR_FDIR = os.path.dirname(CUR_FPATH)
+
+# chdir to the directory of this script
+os.chdir(CUR_FDIR)
+
+
 from proxy_env2 import ProxyEnv2
 import threading
 dag_types = ["dag"]
