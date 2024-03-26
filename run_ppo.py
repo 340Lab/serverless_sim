@@ -19,6 +19,14 @@ https://arxiv.org/abs/1705.05363
 From the paper "Proximal Policy Optimization Algorithms"
 https://arxiv.org/abs/1707.06347.
 """
+import os
+
+CUR_FPATH = os.path.abspath(__file__)
+CUR_FDIR = os.path.dirname(CUR_FPATH)
+
+# chdir to the directory of this script
+os.chdir(CUR_FDIR)
+
 from proxy_env2 import ProxyEnv2
 from deep_rl_zoo import greedy_actors
 from deep_rl_zoo import gym_env
