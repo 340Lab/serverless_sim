@@ -148,7 +148,7 @@ pub struct FnContainer {
     pub born_frame: usize,
     pub used_times: usize,
     pub this_frame_used: bool,
-    pub recent_frmaes_done_cnt: VecDeque<usize>,
+    pub recent_frames_done_cnt: VecDeque<usize>,
     pub recent_frames_working_cnt: VecDeque<usize>,
 
     /// cpu 利用率
@@ -169,15 +169,15 @@ impl FnContainer {
     }
 
     pub fn recent_handle_speed(&self) -> f32 {
-        if self.recent_frmaes_done_cnt.len() == 0 {
+        if self.recent_frames_done_cnt.len() == 0 {
             return 0.0;
         }
         (self
-            .recent_frmaes_done_cnt
+            .recent_frames_done_cnt
             .iter()
             .map(|v| *v)
             .sum::<usize>() as f32)
-            / (self.recent_frmaes_done_cnt.len() as f32)
+            / (self.recent_frames_done_cnt.len() as f32)
     }
     pub fn busyness(&self) -> f32 {
         if self.recent_frames_working_cnt.len() == 0 {
@@ -214,9 +214,9 @@ impl FnContainer {
         //     "container record at frame: {} done cnt:{done_cnt} working cnt:{working_cnt}",
         //     sim_env.current_frame()
         // );
-        self.recent_frmaes_done_cnt.push_back(done_cnt);
-        while self.recent_frmaes_done_cnt.len() > *sim_env.each_fn_watch_window.borrow() {
-            self.recent_frmaes_done_cnt.pop_front();
+        self.recent_frames_done_cnt.push_back(done_cnt);
+        while self.recent_frames_done_cnt.len() > *sim_env.each_fn_watch_window.borrow() {
+            self.recent_frames_done_cnt.pop_front();
         }
         self.recent_frames_working_cnt.push_back(working_cnt);
         while self.recent_frames_working_cnt.len() > WORKING_CNT_WINDOW {
@@ -236,7 +236,7 @@ impl FnContainer {
             state: FnContainerState::Starting {
                 left_frame: sim_env.func(fn_id).cold_start_time,
             },
-            recent_frmaes_done_cnt: VecDeque::new(),
+            recent_frames_done_cnt: VecDeque::new(),
             recent_frames_working_cnt: VecDeque::new(),
         }
     }
