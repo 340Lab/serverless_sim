@@ -334,20 +334,18 @@ impl RunningTask {
 impl SimEnv {
     fn fn_gen_rand_fn(&self) -> FnId {
         let id = self.fn_alloc_fn_id();
-        let cpu = if self.config.fntype_cpu() {
-            self.env_rand_f(10.0, 100.0)
-        } 
-        else if self.config.fntype_data() {
-            self.env_rand_f(10.0, 100.0)
-        } 
-        else {
+        let (cpu, out_put_size) = if self.config.fntype_cpu() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
+        } else if self.config.fntype_data() {
+            (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
+        } else {
             panic!("not support fntype");
         };
         self.fns.borrow_mut().push(Func {
             fn_id: id,
             cpu,
             mem: self.env_rand_f(100.0, 1000.0),
-            out_put_size: self.env_rand_f(0.1, 20.0),
+            out_put_size,
             nodes: HashSet::new(),
             cold_start_container_mem_use: self.env_rand_f(100.0, 500.0),
             cold_start_container_cpu_use: self.env_rand_f(0.1, 50.0),
