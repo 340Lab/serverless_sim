@@ -9,12 +9,13 @@ use std::{
     io::Read,
     sync::{Arc, Mutex, RwLock},
 };
-
+use crate::apis::{ApiHandler,GetNetworkTopoReq,GetNetworkTopoResp};
 use crate::{
     config::Config,
     metric::{self, Records},
     sim_env::SimEnv,
 };
+use async_trait::async_trait;
 
 pub async fn start() {
     // build our application with a route
@@ -47,6 +48,20 @@ lazy_static! {
     static ref HISTORY_CACHE: Cache<String,Arc<Records>> = Cache::new(100);
     static ref COLLECT_SEED_METRICS_LOCK :tokio::sync::Mutex<()>= tokio::sync::Mutex::new(());
 }
+
+
+pub struct ApiHandlerImpl;
+
+#[async_trait]
+impl ApiHandler for ApiHandlerImpl {
+
+    async fn handle_get_network_topo(&self, req: GetNetworkTopoReq) -> GetNetworkTopoResp {
+        GetNetworkTopoResp::Exist {
+            topo: vec![vec![1, 2, 3], vec![4, 5, 6]],
+        }
+    }
+}
+
 
 // async fn history() -> (StatusCode, Json<()>) {
 //     log::info!("Get history");

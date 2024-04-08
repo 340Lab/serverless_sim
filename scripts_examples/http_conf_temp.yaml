@@ -1,0 +1,27 @@
+backend:
+    dir: "../serverless_sim/src"
+    lan: "rs"
+    header: "use crate::network::ApiHandlerImpl;"
+
+frontend:
+    dir: "../serverless_sim_ui/src"
+    lan: "ts"
+    header: 'import axios from "axios"'
+    http_call: 'await axios.post("/api/{}", req)' # {} will be replaced by the api name
+
+api_list:
+    get_network_topo:
+        req: 
+            env_id : "String"
+            a: "Int"
+            b: "Float"
+            c: "Bool"
+            d: ["Array", "Int"]
+            e: ["Array", ["Array", "Int"]]
+
+        resp_dispatch:
+            Exist: 
+                topo: ["Array",["Array", "Int"]]
+            NotFound:
+                msg: "String" 
+    
