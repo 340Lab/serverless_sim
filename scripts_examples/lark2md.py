@@ -33,8 +33,12 @@ def os_system_sure(command):
 
 
 ### config
-APP_ID=""
-APP_SECRET=""
+import sys
+if len(sys.argv) != 3:
+    print("请提供 APP_ID 和 APP_SECRET 参数")
+    exit(1)
+APP_ID=sys.argv[1]
+APP_SECRET=sys.argv[2]
 TOKEN="Q3c6dJG5Go3ov6xXofZcGp43nfb"
 import lark_oapi as lark
 from lark_oapi.api.drive.v1 import *
@@ -245,15 +249,22 @@ def docx_to_markdown(docx_file, markdown_file,finder):
             elif fontsize>=160000:
                 ret= f"##### {paragraph.text}"
         index=finder.index(paragraph.text)
-        if index!=None:
-            ret=f"{index}. {ret}"
 
         if len(paragraph.hyperlinks)>0:
             ret=f"[{ret}]({paragraph.hyperlinks[0].address})"
 
+        if index!=None:
+            ret=f"{index}- {ret}"
+
         return ret+"\n\n"
 
     
+    def content_with_indent(text,indent):
+        if indent==None:
+            return text
+        return "    "+indent+text.replace("\n","\n"+indent+"    ")
+
+
     def docx_to_markdown(docx_name, markdown_name,finder):
         doc = Document(docx_name)
 
@@ -264,6 +275,7 @@ def docx_to_markdown(docx_file, markdown_file,finder):
         # logger.info(f"文档打开完成{doc}")
 
         with open(markdown_name, 'w', encoding='utf-8') as md_file:
+            last_indent=""
             last_paragraph_was_table = False
             table_serial_number = 0
             for element in doc.element.body.iterchildren():
@@ -272,9 +284,10 @@ def docx_to_markdown(docx_file, markdown_file,finder):
                 if isinstance(element, CT_Tbl):
                     table_serial_number += 1
                     table = table_to_markdown(table_serial_number, doc)
-                    md_file.write(table + '\n\n')
+                    md_file.write(content_with_indent(table,last_indent)+ '\n\n')
                     last_paragraph_was_table = True
                     # logger.debug(f"Table: Converted.")
+                    last_indent=None
                 elif isinstance(element, CT_P):
                     paragraph = Paragraph(element, doc)
                     # 图像判断
@@ -302,6 +315,7 @@ def docx_to_markdown(docx_file, markdown_file,finder):
 
 
                     md_file.write(para_font_2_md(paragraph,finder))
+                    last_indent=finder.index(paragraph.text)
                     last_paragraph_was_table = False
                 else:
                     print("unknown element",element)
@@ -323,6 +337,10 @@ my_doc = docx.Document("download.docx")
 
 # coerce to JSON using the standard options
 my_doc_as_json = simplify(my_doc)
+
+# with open("target.json", "w") as f:
+#     f.write(json.dumps(my_doc_as_json, indent=4))
+
 class IndexFinder():
     index_map={}
 
@@ -332,7 +350,14 @@ class IndexFinder():
     def para_with_index(self,para):
         if "style" in para and "numPr" in para["style"]:
             # print(self.para_text(para),para)
-            self.index_map[self.para_text(para)]=para["style"]["numPr"]["numId"]
+            left=para["style"]["indent"]["left"]
+            space=""
+            if left>1000:
+                space="        "
+            elif left>400:
+                space="    "
+
+            self.index_map[self.para_text(para)]=space
 
     def __init__(self,jsondict):
         for para in jsondict["VALUE"][0]["VALUE"]:

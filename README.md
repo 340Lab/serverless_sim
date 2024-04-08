@@ -31,29 +31,29 @@ pip install -r requirements.txt
 
 ## 4. Get started
 
-1. Open project in serverless_sim directory, run following command and make sure the server's running
+- Open project in serverless_sim directory, run following command and make sure the server's running
 
-``` Plaintext
-cargo run
- ```
+    ``` Plaintext
+    cargo run
+     ```
 
-[2. Run the test script in root dir (run_different_req_freq.py). Records will be generated in serverless_sim/records](https://github.com/340Lab/serverless_sim/blob/main/run_different_req_freq.py)
+- [Run the test script in root dir (run_different_req_freq.py). Records will be generated in serverless_sim/records](https://github.com/340Lab/serverless_sim/blob/main/run_different_req_freq.py)
 
-3. Run collect_seed_metrics.py, check result in serverless_sim/records/seed_xxx.json.
+- Run collect_seed_metrics.py, check result in serverless_sim/records/seed_xxx.json.
 
-4. Start frontend ui
+- Start frontend ui
 
-5. Open the ui project in serverless_sim_ui
+    - Open the ui project in serverless_sim_ui
 
-6. Use pnpm or yarn to start the frontend.
+    - Use pnpm or yarn to start the frontend.
 
-``` YAML
-// if didn't install
-yarn install
-
-// run
-yarn run dev
- ```
+        ``` YAML
+        // if didn't install
+        yarn install
+        
+        // run
+        yarn run dev
+         ```
 
 ## 5. Arch & Flow
 
