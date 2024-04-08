@@ -7,7 +7,7 @@ frontend:
     dir: "../serverless_sim_ui/src"
     lan: "ts"
     header: 'import axios from "axios"'
-    http_call: 'await axios.post("/api/{}", req)' # {} will be replaced by the api name
+    http_call: 'await axios.post("/api/{}", req)'
 
 api_list:
     get_network_topo:
