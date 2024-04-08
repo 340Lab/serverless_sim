@@ -1,156 +1,167 @@
 <template>
   <div class="network-topology">
     <h1>网络拓扑图</h1>
-<!--    @mousedown="startDragging"：当鼠标在容器上按下时触发 startDragging 方法，用于开始拖动操作。-->
-<!--    @mousemove="dragging"：当鼠标在容器上移动时触发 dragging 方法，用于实时更新拖动节点的位置。-->
-<!--    @mouseup="stopDragging"：当鼠标在容器上释放时触发 stopDragging 方法，用于结束拖动操作。-->
-<!--    @mouseleave="stopDragging"：当鼠标移出容器时触发 stopDragging 方法，同样用于结束拖动操作。-->
-<!--    {{nodes}}-->
-    <div
-        class="topology-container"
-        @mousedown="startDragging"
-        @mousemove="dragging"
-        @mouseup="stopDragging"
-        @mouseleave="stopDragging"
-    >
-      <!--循环显示所有节点（.node），每个节点的位置根据其数据模型中的x和y坐标动态设置-->
-      <div
-          v-for="(node, index) in nodes"
-          :key="index"
-          :style="{ top: node.y + 'px', left: node.x + 'px', transform: 'translate(-50%, -50%)', zIndex: node.zIndex }"
-          class="node"
-          ref="nodes"
-          @mousedown="startNodeDragging(index)"
-          @mouseup="stopNodeDragging"
-      >
+    <div class="topology-container" @mousedown="startDragging" @mousemove="dragging" @mouseup="stopDragging"
+      @mouseleave="stopDragging">
+      <svg class="connection-lines">
+        <g v-for="(link, key) in links" :key="key">
+          <line :x1="nodes[link.source[0]].x" :y1="nodes[link.source[0]].y" :x2="nodes[link.source[1]].x"
+            :y2="nodes[link.source[1]].y" stroke="red" />
+          <rect :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2 - 40"
+            :y="(nodes[link.source[0]].y + nodes[link.source[1]].y) / 2 + 10" width="80" height="20" fill="white"
+            stroke="black" stroke-width="1" />
+          <!--          <text :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2"-->
+          <!--                :y="(nodes[link.source[0]].y + nodes[link.source[1]].y) / 2 + 25" text-anchor="middle" @click="showEditBandwidthPopup">修改带宽</text>-->
+
+        </g>
+        <text v-for="(link, key) in links" :key="'text_' + key"
+          :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2"
+          :y="(nodes[link.source[0]].y + nodes[link.source[1]].y) / 2">{{ link.bandwidth }}</text>
+      </svg>
+      <div v-for="(link, key) in links" :key="'edit-bandwidth-' + key" class="edit-bandwidth" :style="{
+      left: ((nodes[link.source[0]].x + nodes[link.source[1]].x) / 2 - 40) + 'px',
+      top: ((nodes[link.source[0]].y + nodes[link.source[1]].y) / 2 + 10) + 'px'
+    }" :v-show="!editingBandwidth" @click="showEditBandwidthPopup(key)">
+        修改带宽
+      </div>
+      <div v-for="(node, index) in nodes" :key="index"
+        :style="{ top: node.y + 'px', left: node.x + 'px', transform: 'translate(-50%, -50%)', zIndex: node.zIndex }"
+        class="node" ref="nodes" @mousedown="startNodeDragging(index)" @mouseup="stopNodeDragging">
         {{ node.id }}
+        <button @click="removeNode(index)" class="remove-node-btn">删除</button>
       </div>
     </div>
-    <svg class="connection-lines">
-<!--        画连线-->
-      <line
-          v-for="(link, index) in links"
-          :key="index"
-          :x1="link.source.x"
-          :y1="link.source.y"
-          :x2="link.target.x"
-          :y2="link.target.y"
-          :stroke="link.color"
-          stroke-width="2"
-      />
-    </svg>
-  </div>
 
+    <button @click="addNode" class="add-node-btn">添加节点</button>
+  </div>
+  <el-dialog title="修改带宽" v-model="editingBandwidth" width="50%">
+    <p>请输入带宽：</p>
+    <input type="number" v-model="editedBandwidth">
+    <div slot="footer">
+      <el-button @click="editingBandwidth = false">取消</el-button>
+      <el-button type="primary" @click="confirmEdit">确认</el-button>
+    </div>
+  </el-dialog>
 </template>
 
 <script>
-import { request } from "@/request";
-import {UINode} from "@/network_topo";
+import { UINode } from "@/network_topo";
+import { UILink } from "@/network_topo";
 
 export default {
   data() {
     return {
       nodes: [],
-      links: [],
+      links: {},
       draggingNode: null,
       offset: { x: 0, y: 0 },
+      editingBandwidth: false,
+      editedBandwidth: null,
+      selectedLinkId: null,
     };
-  },
-  mounted() {
-    // 从后端获取节点拓扑图数据
-    const prepare=((data) => {
-      // 生成节点数据
-      this.nodes = data.nodes.map((node) => ({
-        id: node.node_id,
-        x: Math.random() * 500, // 随机生成 x 坐标
-        y: Math.random() * 500, // 随机生成 y 坐标
-        zIndex: 0, // 设置节点层级
-      }));
-
-      // 生成连接线数据
-      this.links = [];
-      data.nodes.forEach((node1, index1) => {
-        data.nodes.forEach((node2, index2) => {
-          if (index1 < index2) {
-            const bandwidth = node1.bandwidth[node2.node_id];
-            if (bandwidth > 0) {
-              this.links.push({
-                source: { x: this.nodes[index1].x, y: this.nodes[index1].y },
-                target: { x: this.nodes[index2].x, y: this.nodes[index2].y },
-                bandwidth: bandwidth,
-                color: "black", // 设置连接线颜色
-              });
-            }
-          }
-        });
-      });
-    });
-    this.nodes.push(new UINode(200,300,6,0));
-    this.nodes.push(new UINode(50,50,12,1));
-    this.nodes.push(new UINode(100,150,5,2));
-    this.nodes.push(new UINode(70,80,9,3));
-
   },
   methods: {
     startDragging(event) {
-      // 记录拖动起始点的偏移量
       this.offset.x = event.pageX;
       this.offset.y = event.pageY;
     },
     dragging(event) {
-      console.log("dragging ",this.draggingNode)
-      // 判断是否在拖动中
       if (this.draggingNode !== null) {
-        const newX = event.pageX - this.offset.x + this.nodes[this.draggingNode].x;
-        const newY = event.pageY - this.offset.y + this.nodes[this.draggingNode].y;
-        // 更新节点位置
+        let newX = event.pageX - this.offset.x + this.nodes[this.draggingNode].x;
+        let newY = event.pageY - this.offset.y + this.nodes[this.draggingNode].y;
+        if (newX < 0) { newX = 0 }
+        if (newY < 0) { newY = 0 }
+        if (newX > 600) { newX = 600 }
+        if (newY > 400) { newY = 400 }
         this.nodes[this.draggingNode].x = newX;
         this.nodes[this.draggingNode].y = newY;
-        // 更新偏移量
         this.offset.x = event.pageX;
         this.offset.y = event.pageY;
       }
     },
     stopDragging() {
-      // 结束拖动
       this.draggingNode = null;
     },
     startNodeDragging(index) {
-      // 开始拖动节点
       this.draggingNode = index;
-      // 提高节点层级，使其显示在最前面
       this.nodes[index].zIndex = 1;
     },
-    nodeDragging(event, index) {
-      // 节点拖动过程中的处理
-      // event.stopPropagation();
-    },
     stopNodeDragging() {
-      // 结束节点拖动
       if (this.draggingNode !== null) {
-        // 恢复节点层级
         this.nodes[this.draggingNode].zIndex = 0;
       }
       this.draggingNode = null;
+    },
+    removeNode(index) {
+      // 从 nodes 数组中删除指定索引的节点
+      this.nodes.splice(index, 1);
+      // 从 links 对象中删除与该节点相关的所有链接
+      Object.keys(this.links).forEach((key) => {
+        const link = this.links[key];
+        // 如果链接的起始节点或目标节点索引等于被删除节点的索引，则删除该链接
+        if (link.source[0] === index || link.source[1] === index) {
+          delete this.links[key];
+        } else {
+          // 更新链接的目标节点索引，以反映节点删除后的新索引
+          const source0 = link.source[0] > index ? link.source[0] - 1 : link.source[0];
+          const source1 = link.source[1] > index ? link.source[1] - 1 : link.source[1];
+          link['source'] = [source0, source1]
+        }
+      });
+    },
+    addNode() {
+      const newNode = new UINode(Math.random() * 500, Math.random() * 500, 0, this.nodes.length);
+      if (newNode.x < 0) { newNode.x = 0 }
+      if (newNode.y < 0) { newNode.y = 0 }
+      if (newNode.x > 600) { newNode.x = 600 }
+      if (newNode.y > 400) { newNode.y = 400 }
+      this.nodes.push(newNode);
+      this.connectNodes(this.nodes.length - 1);
+    },
+    connectNodes(nodeIndex) {
+      for (let i = 0; i < this.nodes.length; i++) {
+        if (i !== nodeIndex) {
+          const key = Math.min(nodeIndex, i) + '_' + Math.max(nodeIndex, i);
+          if (!(key in this.links)) {
+            const newLink = new UILink([nodeIndex, i], 0);
+            this.links[key] = newLink
+          }
+        }
+      }
+    },
+    showEditBandwidthPopup(linkId) {
+      console.log("showEditBandwidthPopup", linkId);
+      this.selectedLinkId = linkId;
+      this.editingBandwidth = true;
+    },
+    confirmEdit() {
+      if (this.selectedLinkId !== null && this.editedBandwidth !== null) {
+        this.links[this.selectedLinkId].bandwidth = this.editedBandwidth;
+        this.editingBandwidth = false;
+        this.editedBandwidth = null;
+        this.selectedLinkId = null;
+      }
     },
   },
 };
 </script>
 
-<style>
+<style scoped>
 .network-topology {
   padding: 20px;
 }
+
 .topology-container {
   position: relative;
   width: 600px;
   height: 400px;
   border: 1px solid #ccc;
 }
+
 .node {
   position: absolute;
-  width: 40px;
-  height: 40px;
+  width: 80px;
+  height: 80px;
   background-color: #2196F3;
   border-radius: 50%;
   display: flex;
@@ -158,14 +169,41 @@ export default {
   align-items: center;
   color: white;
   font-size: 16px;
-  cursor: move; /* 允许拖动 */
+  cursor: move;
 }
+
 .connection-lines {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+}
+
+.remove-node-btn {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.add-node-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.edit-bandwidth {
+  position: absolute;
+  width: 80px;
+  height: 20px;
+  background-color: white;
+  border: 1px solid black;
+  text-align: center;
+  line-height: 20px;
+  cursor: pointer;
 }
 </style>
