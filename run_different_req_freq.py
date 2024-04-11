@@ -6,7 +6,7 @@ CUR_FDIR = os.path.dirname(CUR_FPATH)
 # chdir to the directory of this script
 os.chdir(CUR_FDIR)
 
-req_freqs=["low","middle","high"]
+req_freqs=["low"]
 
 import threading
 from proxy_env2 import ProxyEnv2
@@ -43,7 +43,7 @@ class Task:
 
 algos=[
     ["hpa","hpa","rule"],
-    ["hpa","hpa","pass"],
+    # ["hpa","hpa","pass"],
     # ["lass","lass","rule"],
     # ["fnsche","fnsche","fnsche"],
     # ["faasflow","faasflow","faasflow"],

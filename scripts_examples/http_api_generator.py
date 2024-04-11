@@ -67,22 +67,27 @@ def gen_type_rs(type):
 
 def gen_struct_ts(struct_name,desc):
     content=""
-    for key, value in desc.items():
-        content+=f"        public {key}:{gen_type_ts(value)},\n"
-    content=content[:-1]
+    if desc!=None:
+        for key, value in desc.items():
+            content+=f"        public {key}:{gen_type_ts(value)},\n"
+        content=content[:-1]
     return f"""
-class {struct_name} {{
+export class {struct_name} {{
     constructor(
 {content}
     ){{}}
 }}
 """
 
-def gen_struct_body_rs(desc):
+def gen_struct_body_rs(desc, with_pub):
     content=""
-    for key, value in desc.items():
-        content+=f"        {key}:{gen_type_rs(value)},\n"
-    content=content[:-1]
+    if desc!=None:
+        pub=""
+        if with_pub:
+            pub="pub "
+        for key, value in desc.items():
+            content+=f"       {pub}{key}:{gen_type_rs(value)},\n"
+        content=content[:-1]
     return f"""{{
 {content}
 }}"""
@@ -90,7 +95,7 @@ def gen_struct_body_rs(desc):
 def gen_struct_rs(struct_name,desc):
     return f"""
 #[derive(Debug, Serialize, Deserialize)]
-pub struct {struct_name} {gen_struct_body_rs(desc)}
+pub struct {struct_name} {gen_struct_body_rs(desc,True)}
 """
 
 #######################################
@@ -115,9 +120,11 @@ def gen_dispatch_ts(name,desc):
         
 
     content+=f"""
-class {name}{{
-    kernel: any
-    private id: number=0
+export class {name}{{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {{}}
     {"".join(dispatch_fns)}
 }}
 """
@@ -136,7 +143,7 @@ def gen_dispatch_rs(name,desc):
     idx=1
     for key, desc in desc.items():
         # content+=gen_struct_rs(name+key,value)
-        dispatch_types+=f"    {key}{gen_struct_body_rs(desc)},\n"
+        dispatch_types+=f"    {key}{gen_struct_body_rs(desc,False)},\n"
         dispatch_arms+=f"    {name}::{key}{{..}}=>{idx},\n"
         dispatch_fns.append(f"""
     fn {big_camel_2_snake(key)}(&self)->Option<&{name+key}> {{
@@ -162,11 +169,11 @@ impl {name} {{
             {dispatch_arms}
         }}
     }}
-    pub fn serialize(&self)->String {{
+    pub fn serialize(&self)->Value {{
         json!({{
             "id": self.id(),
             "kernel": serde_json::to_value(self).unwrap(),
-        }}).to_string()
+        }})
     }}
 }}
 """
@@ -180,16 +187,23 @@ def gen_front_ts():
         reqtype=big_camel(api_name)+"Req"
         resptype=big_camel(api_name)+"Resp"
 
-        req_struct=gen_struct_ts(reqtype,api["req"])
+        req_struct=""
+        fn_arg=""
+        fn_arg2=""
+        if api["req"]!=None:
+            req_struct=gen_struct_ts(reqtype,api["req"])
+            fn_arg=f"req:{reqtype}"
+            fn_arg2="req"
 
         resp_content=gen_dispatch_ts(resptype,api["resp_dispatch"])
         
         apis+=f"""
 {resp_content}
 {req_struct}
-class ApiCaller {{
-    async {api_name}(req:{reqtype}):Promise<{resptype}>{{
-        return {FRONTEND["http_call"].format(api_name)}
+export namespace apis {{
+    export async function {api_name}({fn_arg}):Promise<{resptype}>{{
+        let res:any = {FRONTEND["http_call"].format(api_name,fn_arg2)}
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
     }}
 }}
 
@@ -205,7 +219,7 @@ class ApiCaller {{
 
 def gen_back_rs():
     apis=f"""
-use serde_json::json;
+use serde_json::{{json,Value}};
 use serde::{{Serialize, Deserialize}};
 use axum::{{http::StatusCode, routing::post, Json, Router}};
 use async_trait::async_trait;
@@ -217,17 +231,25 @@ use async_trait::async_trait;
         reqtype=big_camel(api_name)+"Req"
         resptype=big_camel(api_name)+"Resp"
 
-        req_struct=gen_struct_rs(reqtype,api["req"])
+        req_struct=""
+        fn_req_arg=""
+        fn_req_arg2=""
+        trait_arg=""
+        if api["req"]!=None:
+            req_struct=gen_struct_rs(reqtype,api["req"])
+            fn_req_arg=f"Json(req):Json<{reqtype}>"
+            fn_req_arg2="req"
+            trait_arg=f"req:{reqtype}"
 
         resp_content=gen_dispatch_rs(resptype,api["resp_dispatch"])
 
         handle_traits.append(f"""
-    async fn handle_{api_name}(&self, req:{reqtype})->{resptype};
+    async fn handle_{api_name}(&self, {trait_arg})->{resptype};
             """)
-        
+
         api_registers.append(f"""
-    async fn {api_name}(Json(req):Json<{reqtype}>)-> (StatusCode, Json<{resptype}>){{
-        (StatusCode::OK, Json(ApiHandlerImpl.handle_get_network_topo(req).await))
+    async fn {api_name}({fn_req_arg})-> (StatusCode, Json<Value>){{
+        (StatusCode::OK, Json(ApiHandlerImpl.handle_{api_name}({fn_req_arg2}).await.serialize()))
     }}
     router=router
         .route("/{api_name}", post({api_name}));

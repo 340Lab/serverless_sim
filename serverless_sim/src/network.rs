@@ -1,5 +1,6 @@
-use crate::apis::{ApiHandler, GetNetworkTopoReq, GetNetworkTopoResp};
+use crate::apis::{ApiHandler, GetEnvIdResp, GetNetworkTopoReq, GetNetworkTopoResp};
 use crate::{
+    apis,
     config::Config,
     metric::{self, Records},
     sim_env::SimEnv,
@@ -19,7 +20,7 @@ use std::{
 
 pub async fn start() {
     // build our application with a route
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/step", post(step))
         .route("/collect_seed_metrics", post(collect_seed_metrics))
         .route("/get_seeds_metrics", post(get_seeds_metrics))
@@ -28,7 +29,7 @@ pub async fn start() {
         .route("/history_list", post(history_list))
         .route("/history", post(history))
         .route("/meteic", post(metric));
-
+    app = apis::add_routers(app);
     // run our app with hyper, listening globally on port 3000
     // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
@@ -54,8 +55,56 @@ pub struct ApiHandlerImpl;
 #[async_trait]
 impl ApiHandler for ApiHandlerImpl {
     async fn handle_get_network_topo(&self, req: GetNetworkTopoReq) -> GetNetworkTopoResp {
-        GetNetworkTopoResp::Exist {
-            topo: vec![vec![1, 2, 3], vec![4, 5, 6]],
+        let env_ids_response = self.handle_get_env_id().await;
+        if let GetEnvIdResp::Exist { env_id } = env_ids_response {
+            if let Some(first_env_id) = env_id.first() {
+                let sim_envs = match SIM_ENVS.read() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        return GetNetworkTopoResp::NotFound {
+                            msg: "Lock acquisition failed".to_string(),
+                        }
+                    }
+                };
+                return match sim_envs.get(first_env_id) {
+                    Some(env_mutex) => {
+                        let env = env_mutex.lock().unwrap();
+                        let node_count = env.node_cnt();
+                        let mut topo = Vec::with_capacity(node_count);
+                        for i in 0..node_count {
+                            let mut row = Vec::with_capacity(node_count);
+                            for j in 0..node_count {
+                                let speed = if i == j {
+                                    0.0
+                                } else {
+                                    f64::from(env.node_get_speed_btwn(i, j))
+                                };
+                                row.push(speed);
+                            }
+                            topo.push(row);
+                        }
+                        GetNetworkTopoResp::Exist { topo }
+                    }
+                    None => GetNetworkTopoResp::NotFound {
+                        msg: "Environment not found".to_string(),
+                    },
+                };
+            }
+        }
+        GetNetworkTopoResp::NotFound {
+            msg: "No valid environment IDs available".to_string(),
+        }
+    }
+
+    async fn handle_get_env_id(&self) -> GetEnvIdResp {
+        let read_guard = SIM_ENVS.read().unwrap();
+        let env_ids: Vec<String> = read_guard.keys().cloned().collect();
+        if env_ids.is_empty() {
+            GetEnvIdResp::NotFound {
+                msg: "No environments found".to_string(),
+            }
+        } else {
+            GetEnvIdResp::Exist { env_id: env_ids }
         }
     }
 }

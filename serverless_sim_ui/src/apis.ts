@@ -2,21 +2,23 @@ import axios from "axios"
 
 
 
-class GetNetworkTopoRespExist {
+export class GetNetworkTopoRespExist {
     constructor(
         public topo:number[][],
     ){}
 }
 
-class GetNetworkTopoRespNotFound {
+export class GetNetworkTopoRespNotFound {
     constructor(
         public msg:string,
     ){}
 }
 
-class GetNetworkTopoResp{
-    kernel: any
-    private id: number=0
+export class GetNetworkTopoResp{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {}
     
     exist():undefined| GetNetworkTopoRespExist{
         if(this.id==1){
@@ -35,20 +37,61 @@ class GetNetworkTopoResp{
 }
 
 
-class GetNetworkTopoReq {
+export class GetNetworkTopoReq {
     constructor(
         public env_id:string,
-        public a:number,
-        public b:number,
-        public c:boolean,
-        public d:number[],
-        public e:number[][],
     ){}
 }
 
-class ApiCaller {
-    async get_network_topo(req:GetNetworkTopoReq):Promise<GetNetworkTopoResp>{
-        return await axios.post("/api/get_network_topo", req)
+export namespace apis {
+    export async function get_network_topo(req:GetNetworkTopoReq):Promise<GetNetworkTopoResp>{
+        let res:any = await axios.post("/api/get_network_topo", req)
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
+    }
+}
+
+
+
+
+export class GetEnvIdRespExist {
+    constructor(
+        public env_id:string[],
+    ){}
+}
+
+export class GetEnvIdRespNotFound {
+    constructor(
+        public msg:string,
+    ){}
+}
+
+export class GetEnvIdResp{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {}
+    
+    exist():undefined| GetEnvIdRespExist{
+        if(this.id==1){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+    not_found():undefined| GetEnvIdRespNotFound{
+        if(this.id==2){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+}
+
+
+export namespace apis {
+    export async function get_env_id():Promise<GetEnvIdResp>{
+        let res:any = await axios.post("/api/get_env_id", )
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
     }
 }
 

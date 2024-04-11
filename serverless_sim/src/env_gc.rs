@@ -29,7 +29,7 @@ pub fn start_gc() {
                     sim_envs.remove(&key);
                 }
             }
-            thread::sleep(Duration::from_millis(30));
+            thread::sleep(Duration::from_millis(10));
         }
     });
 }
