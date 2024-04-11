@@ -9,7 +9,6 @@ use crate::{
     fn_dag::{FnContainer, FnContainerState, FnId},
     node::{Node, NodeId},
     request::{ReqId, Request},
-    scale_executor::ScaleExecutor,
     sim_env::SimEnv,
 };
 
@@ -127,7 +126,7 @@ impl SimEnv {
         let each_path_bandwith = total_bandwith / (a2b.path_cnt() as f32);
 
         let updata_trans = |from: NodeId, to: NodeId, t: &TransPath| {
-            let mut env_nodes = self.nodes.borrow_mut();
+            let mut env_nodes = self.core.nodes_mut();
             let mut container = env_nodes[to]
                 .container_mut(t.fn_id)
                 .unwrap_or_else(|| panic!("node {} has no fn container for fn {}", to, t.fn_id));
@@ -169,8 +168,8 @@ impl SimEnv {
         //   两边一定有一个网速更快，那么选择慢的；然后快的那边可以把带宽分给其他的传输路径
         //
         let mut node2node_trans: NodeTransMap = HashMap::new();
-        for x in 0..self.nodes.borrow().len() {
-            for y in 0..self.nodes.borrow().len() {
+        for x in 0..self.core.nodes().len() {
+            for y in 0..self.core.nodes().len() {
                 if x != y {
                     node2node_trans.insert(
                         (x, y),
@@ -184,7 +183,7 @@ impl SimEnv {
         }
 
         // go through all the fn task scheduled on node, and collect the transfer paths
-        for node in self.nodes.borrow_mut().iter_mut() {
+        for node in self.core.nodes_mut().iter_mut() {
             let node_id = node.node_id();
             for (fnid, fn_container) in node.fn_containers.borrow_mut().iter_mut() {
                 for (req_id, fnrun) in &mut fn_container.req_fn_state {
@@ -214,7 +213,7 @@ impl SimEnv {
             }
         }
         // go through all the transfer paths, and simulate the transfer
-        let nodes_cnt = self.nodes.borrow().len();
+        let nodes_cnt = self.nodes().len();
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
                 if x > y {
@@ -352,7 +351,7 @@ impl SimEnv {
     }
 
     fn sim_computes(&self) {
-        for n in self.nodes.borrow_mut().iter_mut() {
+        for n in self.nodes_mut().iter_mut() {
             // collect the done receive data tasks
             if let Some((req_fns_2_run, _starting_container_cnt, cpu_for_one_task)) =
                 self.sim_compute_collect_compute_data(n)

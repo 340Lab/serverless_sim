@@ -116,10 +116,10 @@ impl Records {
     }
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
-        frame[FRAME_IDX_FRAME] = (*sim_env.current_frame.borrow()).into();
+        frame[FRAME_IDX_FRAME] = (*sim_env.core.current_frame()).into();
         frame[FRAME_IDX_RUNNING_REQS] = sim_env
-            .requests
-            .borrow()
+            .core
+            .requests()
             .iter()
             .map(|(reqid, req)| {
                 serde_json::json!({
@@ -131,8 +131,8 @@ impl Records {
             .collect::<Vec<_>>()
             .into();
         frame[FRAME_IDX_NODES] = sim_env
-            .nodes
-            .borrow()
+            .core
+            .nodes()
             .iter()
             .map(|node| {
                 serde_json::json!( {
@@ -148,12 +148,12 @@ impl Records {
         frame[FRAME_IDX_REQ_DONE_TIME_AVG_90P] = sim_env.req_done_time_avg_90p().into();
         frame[FRAME_IDX_COST] = sim_env.cost_each_req().into();
         frame[FRAME_IDX_SCORE] = sim_env.score().into();
-        frame[FRAME_IDX_DONE_REQ_COUNT] = sim_env.metric.borrow().done_request_count.into();
+        frame[FRAME_IDX_DONE_REQ_COUNT] = sim_env.help.metric().done_request_count.into();
 
         self.frames.push(frame);
     }
     pub fn flush(&self, env: &SimEnv) {
-        if env.config.no_log {
+        if env.help.config().no_log {
             return;
         }
         if self.frames.len() > 9 {

@@ -143,8 +143,8 @@ impl Node {
                 // log::info!("expand fn: {fn_id} to node: {node_id}");
                 // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
                 let node_id = self.node_id();
-                env.fn_2_nodes
-                    .borrow_mut()
+                env.core
+                    .fn_2_nodes_mut()
                     .entry(fnid)
                     .and_modify(|v| {
                         v.insert(node_id);
@@ -189,9 +189,9 @@ impl SimEnv {
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id);
             // let node_i = nodecnt;
-            env.nodes.borrow_mut().push(node);
+            env.core.nodes_mut().push(node);
 
-            let nodecnt: usize = env.nodes.borrow().len();
+            let nodecnt: usize = env.core.nodes().len();
 
             for i in 0..nodecnt - 1 {
                 let randspeed = env.env_rand_f(8000.0, 10000.0);
@@ -201,13 +201,13 @@ impl SimEnv {
 
         // # init nodes graph
         let dim = NODE_CNT;
-        *self.node2node_connection_count.borrow_mut() = vec![vec![0; dim]; dim];
-        *self.node2node_graph.borrow_mut() = vec![vec![0.0; dim]; dim];
+        *self.core.node2node_connection_count_mut() = vec![vec![0; dim]; dim];
+        *self.core.node2node_graph_mut() = vec![vec![0.0; dim]; dim];
         for i in 0..dim {
             _init_one_node(self, i);
         }
 
-        log::info!("node speed graph: {:?}", self.node2node_graph.borrow());
+        log::info!("node speed graph: {:?}", self.core.node2node_graph());
     }
 
     /// 设置节点间网速
@@ -215,7 +215,7 @@ impl SimEnv {
     fn node_set_speed_btwn(&self, n1: usize, n2: usize, speed: f32) {
         assert!(n1 != n2);
         fn _set_speed_btwn(env: &SimEnv, nbig: usize, nsmall: usize, speed: f32) {
-            env.node2node_graph.borrow_mut()[nbig][nsmall] = speed;
+            env.core.node2node_graph_mut()[nbig][nsmall] = speed;
         }
         if n1 > n2 {
             _set_speed_btwn(self, n1, n2, speed);
@@ -228,7 +228,7 @@ impl SimEnv {
     /// - speed: MB/s
     pub fn node_get_speed_btwn(&self, n1: NodeId, n2: NodeId) -> f32 {
         let _get_speed_btwn =
-            |nbig: usize, nsmall: usize| self.node2node_graph.borrow()[nbig][nsmall];
+            |nbig: usize, nsmall: usize| self.core.node2node_graph()[nbig][nsmall];
         if n1 > n2 {
             _get_speed_btwn(n1, n2)
         } else {
@@ -238,7 +238,7 @@ impl SimEnv {
 
     //获取计算速度最慢的节点
     pub fn node_get_lowest(&self) -> NodeId {
-        let nodes = self.nodes.borrow();
+        let nodes = self.core.nodes();
         let res = nodes
             .iter()
             .min_by(|x, y| x.cpu.partial_cmp(&y.cpu).unwrap())
@@ -250,8 +250,8 @@ impl SimEnv {
     pub fn node_btw_get_lowest(&self) -> f32 {
         let mut low_btw = None;
 
-        for i in 0..self.nodes.borrow().len() {
-            for j in i + 1..self.nodes.borrow().len() {
+        for i in 0..self.core.nodes().len() {
+            for j in i + 1..self.core.nodes().len() {
                 let btw = self.node_get_speed_btwn(i, j);
                 if let Some(low_btw_) = low_btw.take() {
                     low_btw = Some(btw.min(low_btw_));
@@ -266,7 +266,7 @@ impl SimEnv {
 
     pub fn node_set_connection_count_between(&self, n1: NodeId, n2: NodeId, count: usize) {
         let _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
-            self.node2node_connection_count.borrow_mut()[nbig][nsmall] = count;
+            self.core.node2node_connection_count_mut()[nbig][nsmall] = count;
         };
         if n1 > n2 {
             _set_connection_count_between(n1, n2, count);
@@ -277,7 +277,7 @@ impl SimEnv {
 
     pub fn node_get_connection_count_between(&self, n1: NodeId, n2: NodeId) -> usize {
         let _get_connection_count_between =
-            |nbig: usize, nsmall: usize| self.node2node_connection_count.borrow()[nbig][nsmall];
+            |nbig: usize, nsmall: usize| self.core.node2node_connection_count()[nbig][nsmall];
         if n1 > n2 {
             _get_connection_count_between(n1, n2)
         } else {
@@ -317,25 +317,25 @@ impl SimEnv {
     }
 
     pub fn node_cnt(&self) -> usize {
-        self.nodes.borrow().len()
+        self.core.nodes().len()
     }
 
     pub fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
-        self.nodes.borrow()
+        self.core.nodes()
     }
 
     pub fn nodes_mut<'a>(&'a self) -> RefMut<'a, Vec<Node>> {
-        self.nodes.borrow_mut()
+        self.core.nodes_mut()
     }
 
     pub fn node<'a>(&'a self, i: NodeId) -> Ref<'a, Node> {
-        let b = self.nodes.borrow();
+        let b = self.nodes();
 
         Ref::map(b, |vec| &vec[i])
     }
 
     pub fn node_mut<'a>(&'a self, i: NodeId) -> RefMut<'a, Node> {
-        let b = self.nodes.borrow_mut();
+        let b = self.nodes_mut();
 
         RefMut::map(b, |vec| &mut vec[i])
     }

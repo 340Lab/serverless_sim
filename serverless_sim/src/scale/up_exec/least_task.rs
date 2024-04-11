@@ -1,16 +1,16 @@
-use super::ScalePreLoader;
+use super::ScaleUpExec;
 use crate::{fn_dag::FnId, sim_env::SimEnv};
 
-pub struct LeastTaskPreLoader;
+pub struct LeastTaskScaleUpExec;
 
-impl LeastTaskPreLoader {
+impl LeastTaskScaleUpExec {
     pub fn new() -> Self {
-        LeastTaskPreLoader {}
+        LeastTaskScaleUpExec {}
     }
 }
 
-impl ScalePreLoader for LeastTaskPreLoader {
-    fn pre_load(&self, target_cnt: usize, fnid: FnId, env: &SimEnv) {
+impl ScaleUpExec for LeastTaskScaleUpExec {
+    fn exec_scale_up(&self, target_cnt: usize, fnid: FnId, env: &SimEnv) {
         let mut nodes_no_container = env
             .nodes()
             .iter()

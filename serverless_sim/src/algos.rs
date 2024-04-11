@@ -28,8 +28,8 @@ impl SimEnv {
         &self,
         fns_ready_2_schedule: &HashMap<FnId, ContainerMetric>,
     ) -> Vec<(FnId, ContainerMetric)> {
-        self.fns
-            .borrow()
+        self.core
+            .fns()
             .iter()
             .filter(|f| !fns_ready_2_schedule.contains_key(&f.fn_id))
             .map(|f| {
@@ -37,7 +37,7 @@ impl SimEnv {
                     f.fn_id,
                     ContainerMetric {
                         container_count: self.fn_container_cnt(f.fn_id),
-                        scheduled_fn_count: self.fn_2_nodes.borrow().get(&f.fn_id).map_or_else(
+                        scheduled_fn_count: self.core.fn_2_nodes().get(&f.fn_id).map_or_else(
                             || 0,
                             |nodes| {
                                 nodes
@@ -58,7 +58,7 @@ impl SimEnv {
         let env = self;
         let mut collect_map: BTreeMap<ReqId, VecDeque<FnId>> = BTreeMap::new();
         // 对于已经进来的请求，scale up 已经没有前驱的fns
-        for (&reqid, req) in env.requests.borrow().iter() {
+        for (&reqid, req) in env.core.requests().iter() {
             let req_dag = env.dag(req.dag_i);
             let mut walker = req_dag.new_dag_walker();
             'outer: while let Some(f) = walker.next(&req_dag.dag_inner) {
@@ -100,7 +100,7 @@ impl SimEnv {
         let env = self;
         let mut collect_map: HashMap<FnId, ContainerMetric> = HashMap::new();
         // 对于已经进来的请求，scale up 已经没有前驱的fns
-        for (_reqid, req) in env.requests.borrow().iter() {
+        for (_reqid, req) in env.core.requests().iter() {
             let req_dag = env.dag(req.dag_i);
             let mut walker = req_dag.new_dag_walker();
             'outer: while let Some(f) = walker.next(&req_dag.dag_inner) {
@@ -126,11 +126,11 @@ impl SimEnv {
                     })
                     .or_insert(ContainerMetric {
                         container_count: env
-                            .fn_2_nodes
-                            .borrow()
+                            .core
+                            .fn_2_nodes()
                             .get(&fnid)
                             .map_or_else(|| 0, |nodes| nodes.len()),
-                        scheduled_fn_count: env.fn_2_nodes.borrow().get(&fnid).map_or_else(
+                        scheduled_fn_count: env.core.fn_2_nodes().get(&fnid).map_or_else(
                             || 0,
                             |nodes| {
                                 nodes

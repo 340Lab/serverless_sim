@@ -1,18 +1,18 @@
-use std::collections::{ HashMap, VecDeque };
+use std::collections::{HashMap, VecDeque};
 
 use crate::fn_dag::FnId;
 
-pub trait ScaleDownPolicy {
+pub trait ScaleDownFilter {
     fn filter_desired(&mut self, fnid: FnId, desired: usize, current: usize) -> usize;
 }
 
-pub struct CarefulScaleDown {
+pub struct CarefulScaleDownFilter {
     history_desired_container_cnt: HashMap<FnId, VecDeque<usize>>,
 }
 
-impl CarefulScaleDown {
+impl CarefulScaleDownFilter {
     pub fn new() -> Self {
-        CarefulScaleDown {
+        CarefulScaleDownFilter {
             history_desired_container_cnt: HashMap::new(),
         }
     }
@@ -24,7 +24,8 @@ impl CarefulScaleDown {
         }
     }
     fn record_history(&mut self, fnid: FnId, desired: usize) {
-        let history = self.history_desired_container_cnt
+        let history = self
+            .history_desired_container_cnt
             .entry(fnid)
             .or_insert_with(|| VecDeque::new());
         history.push_back(desired);
@@ -34,10 +35,14 @@ impl CarefulScaleDown {
     }
 }
 
-impl ScaleDownPolicy for CarefulScaleDown {
+impl ScaleDownFilter for CarefulScaleDownFilter {
     fn filter_desired(&mut self, fnid: FnId, desired: usize, current: usize) -> usize {
         if desired < current {
-            let ret = if self.smaller_than_history(fnid, desired) { desired } else { current };
+            let ret = if self.smaller_than_history(fnid, desired) {
+                desired
+            } else {
+                current
+            };
             self.record_history(fnid, desired);
             ret
         } else {

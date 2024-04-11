@@ -128,7 +128,7 @@ impl SimEnv {
     // }
     fn state_fns(&self) -> Vec<SerialFunc> {
         let mut fns = vec![];
-        for f in self.fns.borrow().iter() {
+        for f in self.core.fns().iter() {
             fns.push(SerialFunc {
                 fn_id: f.fn_id,
                 cpu: f.cpu,
@@ -138,8 +138,8 @@ impl SimEnv {
         fns
     }
     fn state_dags(&self) -> Vec<SerialDag> {
-        let mut dags = vec![];
-        for (i, d) in self.dags.borrow().iter().enumerate() {
+        let mut dags: Vec<SerialDag> = vec![];
+        for (i, d) in self.core.dags().iter().enumerate() {
             let mut dag_topo_walker = Topo::new(&d.dag_inner);
             let mut fn_id_2_index = BTreeMap::new();
             while let Some(gnode) = dag_topo_walker.next(&d.dag_inner) {
@@ -155,7 +155,7 @@ impl SimEnv {
     }
     fn state_requests(&self) -> Vec<SerialRequest> {
         let mut reqs = vec![];
-        for (_req_id, req) in self.requests.borrow().iter() {
+        for (_req_id, req) in self.core.requests().iter() {
             let dag_fn_2_node = req.fn_node.iter().map(|(fid, nid)| (*fid, *nid)).collect();
             reqs.push(SerialRequest {
                 req_id: req.req_id,
@@ -176,7 +176,7 @@ impl SimEnv {
 
     fn state_done_requests(&self) -> Vec<SerialDoneRequest> {
         let mut done_reqs = vec![];
-        for req in self.done_requests.borrow().iter() {
+        for req in self.core.done_requests().iter() {
             done_reqs.push(SerialDoneRequest {
                 req_id: req.req_id,
                 dag_id: req.dag_i,
@@ -188,7 +188,7 @@ impl SimEnv {
     }
 
     pub fn state_nodes(&self) -> Vec<SerialNode> {
-        let nodes = self.nodes.borrow();
+        let nodes = self.core.nodes();
         let mut serial_nodes = vec![];
         for n in nodes.iter() {
             let mut running_req_fns = vec![];
@@ -306,9 +306,7 @@ impl SimEnv {
             nodes: self.state_nodes(),
             cur_frame: self.current_frame(),
             req_done_time_avg: self.req_done_time_avg(),
-            // req_done_time_std: self.req_done_time_std(),
-            // req_done_time_avg_90p: self.req_done_time_avg_90p(),
-            cost: *self.cost.borrow(),
+            cost: *self.help.cost(),
         }
     }
 }
