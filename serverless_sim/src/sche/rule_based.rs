@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rand::Rng;
 
-use crate::{fn_dag::FnId, node::NodeId, request::Request, schedule::Scheduler, sim_env::SimEnv};
+use crate::{fn_dag::FnId, node::NodeId, request::Request, sim_env::SimEnv, sim_run::Scheduler};
 
 pub enum ScheduleRule {
     // last node
@@ -22,7 +22,7 @@ impl Scheduler for RuleBasedScheduler {
         false
     }
     fn schedule_some(&mut self, env: &crate::sim_env::SimEnv) {
-        for (_req_id, req) in env.requests.borrow_mut().iter_mut() {
+        for (_req_id, req) in env.core.requests_mut().iter_mut() {
             env.schedule_one_req_fns_by_rule(req, &mut self.rule);
         }
     }

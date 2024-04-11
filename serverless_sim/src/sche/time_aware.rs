@@ -10,12 +10,11 @@ use crate::{
     fn_dag::{DagId, FnId},
     node::NodeId,
     request::{ReqId, Request},
-    scale_executor::{ScaleExecutor, ScaleOption},
-    schedule::{
+    sim_env::SimEnv,
+    sim_run::{
         schedule_helper::{collect_task_to_sche, CollectTaskConfig},
         Scheduler,
     },
-    sim_env::SimEnv,
     util,
 };
 
@@ -60,7 +59,7 @@ impl TimeScheduler {
     fn step_1_collct_all_task(&mut self, env: &SimEnv) -> Vec<(ReqId, FnId)> {
         // 1、collect前驱已经执行完，当前函数未被调度的
         let mut tasks: Vec<(ReqId, FnId)> = vec![];
-        for (reqid, r) in env.requests.borrow().iter() {
+        for (reqid, r) in env.core.requests().iter() {
             let ts = collect_task_to_sche(&r, env, CollectTaskConfig::PreAllDone);
             tasks.append(
                 &mut ts
@@ -117,7 +116,7 @@ impl TimeScheduler {
             }
             // 计算函数的等待时间
             let mut wait_time =
-                *env.current_frame.borrow() - self.fn_trigger_time.get(&(reqid, fnid)).unwrap();
+                *env.core.current_frame() - self.fn_trigger_time.get(&(reqid, fnid)).unwrap();
 
             // 拿出超时任务
             if wait_time > self.starve_threshold {
@@ -129,9 +128,9 @@ impl TimeScheduler {
         // 计算函数等待的优先级队列Qstarve
         startve_tasks.sort_by(|(reqid1, fnid1), (reqid2, fnid2)| {
             let mut time1 =
-                *env.current_frame.borrow() - self.fn_trigger_time.get(&(*reqid1, *fnid1)).unwrap();
+                *env.core.current_frame() - self.fn_trigger_time.get(&(*reqid1, *fnid1)).unwrap();
             let mut time2 =
-                *env.current_frame.borrow() - self.fn_trigger_time.get(&(*reqid2, *fnid2)).unwrap();
+                *env.core.current_frame() - self.fn_trigger_time.get(&(*reqid2, *fnid2)).unwrap();
             // 降序排
             time2.cmp(&time1)
         });

@@ -10,9 +10,8 @@ use crate::{
     fn_dag::{DagId, FnId},
     node::NodeId,
     request::{ReqId, Request},
-    scale_executor::{ScaleExecutor, ScaleOption},
-    schedule::Scheduler,
     sim_env::SimEnv,
+    sim_run::Scheduler,
     util,
 };
 
@@ -92,7 +91,7 @@ impl PassScheduler {
         env: &SimEnv,
     ) {
         let func = env.func(func_id);
-        let nodes = env.nodes.borrow();
+        let nodes = env.core.nodes();
 
         let func_pres_id = func.parent_fns(env);
         log::info!("func {} pres {:?}", func_id, func_pres_id);
@@ -197,7 +196,7 @@ impl PassScheduler {
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for PassScheduler {
     fn schedule_some(&mut self, env: &SimEnv) {
-        for (_, req) in env.requests.borrow_mut().iter_mut() {
+        for (_, req) in env.core.requests_mut().iter_mut() {
             if req.fn_node.len() == 0 {
                 self.schedule_for_one_req(req, env);
             }

@@ -3,12 +3,10 @@ use std::collections::HashMap;
 use crate::{
     actions::ESActionWrapper,
     algos::ContainerMetric,
-    es::ESScaler,
     fn_dag::FnId,
     node::NodeId,
-    scale_executor::{ScaleExecutor, ScaleOption},
-    schedule::{schedule_helper, Scheduler},
     sim_env::SimEnv,
+    sim_run::{schedule_helper, Scheduler},
 };
 
 pub struct FnScheScheduler {
@@ -47,7 +45,7 @@ impl Scheduler for FnScheScheduler {
     }
 
     fn schedule_some(&mut self, env: &SimEnv) {
-        for (_req_id, req) in env.requests.borrow_mut().iter_mut() {
+        for (_req_id, req) in env.core.requests_mut().iter_mut() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
                 env,

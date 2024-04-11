@@ -1,33 +1,56 @@
+pub mod ai;
+pub mod down_filter;
+pub mod hpa;
+pub mod lass;
+pub mod no;
+
 use std::{
     cell::{Ref, RefMut},
     collections::HashSet,
 };
 
 use crate::{
-    es::ESScaler,
+    actions::ESActionWrapper,
+    algos::ContainerMetric,
     fn_dag::{FnContainer, FnContainerState, FnId},
     node::NodeId,
     sim_env::SimEnv,
 };
 
+pub trait ScaleNum {
+    /// return (action, action_is_done)
+    /// - action_is_done: need prepare next state and wait for new action
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnv,
+        fnid: FnId,
+        metric: &ContainerMetric,
+        action: &ESActionWrapper,
+    ) -> (f32, bool);
+
+    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
+}
+
 impl SimEnv {
-    pub fn spec_scaler_mut<'a>(&'a self) -> RefMut<'a, Box<dyn ESScaler + Send>> {
-        let r = self.spec_ef_scaler.borrow_mut();
+    pub fn spec_scaler_mut<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleNum + Send>> {
+        let r = self.mechanisms.spec_scale_num_mut();
         RefMut::map(r, |map| map.as_mut().unwrap())
     }
-    pub fn spec_scaler<'a>(&'a self) -> Ref<'a, Box<dyn ESScaler + Send>> {
-        let r = self.spec_ef_scaler.borrow();
+
+    pub fn spec_scaler<'a>(&'a self) -> Ref<'a, Box<dyn ScaleNum + Send>> {
+        let r = self.mechanisms.spec_scale_num();
         Ref::map(r, |map| map.as_ref().unwrap())
     }
+
     pub fn set_scale_down_result(&self, fnid: FnId, nodeid: NodeId) {
         // log::info!("scale down fn {fnid} from node {nodeid}");
-        let cont = self.nodes.borrow_mut()[nodeid]
+        let cont = self.core.nodes_mut()[nodeid]
             .fn_containers
             .borrow_mut()
             .remove(&fnid)
             .unwrap();
-        self.fn_2_nodes
-            .borrow_mut()
+        self.core
+            .fn_2_nodes_mut()
             .get_mut(&fnid)
             .unwrap()
             .remove(&nodeid);

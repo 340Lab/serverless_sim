@@ -1,3 +1,10 @@
+use crate::apis::{ApiHandler, GetNetworkTopoReq, GetNetworkTopoResp};
+use crate::{
+    config::Config,
+    metric::{self, Records},
+    sim_env::SimEnv,
+};
+use async_trait::async_trait;
 use axum::{http::StatusCode, routing::post, Json, Router};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
@@ -9,13 +16,6 @@ use std::{
     io::Read,
     sync::{Arc, Mutex, RwLock},
 };
-use crate::apis::{ApiHandler,GetNetworkTopoReq,GetNetworkTopoResp};
-use crate::{
-    config::Config,
-    metric::{self, Records},
-    sim_env::SimEnv,
-};
-use async_trait::async_trait;
 
 pub async fn start() {
     // build our application with a route
@@ -49,19 +49,16 @@ lazy_static! {
     static ref COLLECT_SEED_METRICS_LOCK :tokio::sync::Mutex<()>= tokio::sync::Mutex::new(());
 }
 
-
 pub struct ApiHandlerImpl;
 
 #[async_trait]
 impl ApiHandler for ApiHandlerImpl {
-
     async fn handle_get_network_topo(&self, req: GetNetworkTopoReq) -> GetNetworkTopoResp {
         GetNetworkTopoResp::Exist {
             topo: vec![vec![1, 2, 3], vec![4, 5, 6]],
         }
     }
 }
-
 
 // async fn history() -> (StatusCode, Json<()>) {
 //     log::info!("Get history");
@@ -184,7 +181,7 @@ async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
 
     let mut resp = HistoryListResp { list: vec![] };
 
-    if let Ok(paths) = fs::read_dir("./records"){
+    if let Ok(paths) = fs::read_dir("./records") {
         for path in paths {
             resp.list
                 .push(path.unwrap().file_name().into_string().unwrap());
@@ -208,7 +205,7 @@ async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
         let sim_envs = SIM_ENVS.read().unwrap();
         if let Some(sim_env) = sim_envs.get(&key) {
             let mut sim_env = sim_env.lock().unwrap();
-            sim_env.metric_record.borrow().flush(&sim_env);
+            sim_env.help.metric_record().flush(&sim_env);
             *sim_env = SimEnv::new(payload);
         } else {
             drop(sim_envs);

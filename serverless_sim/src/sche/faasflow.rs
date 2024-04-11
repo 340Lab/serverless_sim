@@ -1,22 +1,20 @@
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap, HashSet},
-    hash::{self, Hash, Hasher},
+use crate::{
+    fn_dag::FnId,
+    node::NodeId,
+    request::{ReqId, Request},
+    scale::down_exec::{ScaleDownExec, ScaleOption},
+    sim_env::SimEnv,
+    sim_run::Scheduler,
+    util,
 };
-
 use daggy::{
     petgraph::visit::{EdgeRef, IntoEdgeReferences},
     EdgeIndex,
 };
 use rand::{thread_rng, Rng};
-
-use crate::{
-    fn_dag::FnId,
-    node::NodeId,
-    request::{ReqId, Request},
-    scale_executor::{ScaleExecutor, ScaleOption},
-    schedule::Scheduler,
-    sim_env::SimEnv,
-    util,
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
+    hash::{self, Hash, Hasher},
 };
 
 struct RequestSchedulePlan {
@@ -37,9 +35,8 @@ impl FaasFlowScheduler {
 
     fn schedule_one_req(&mut self, req: &mut Request, env: &SimEnv) {
         log::info!("faasflow start generate schedule for req {}", req.req_id);
-        let mut nodes_left_mem = env
-            .nodes
-            .borrow()
+        let mut nodes_left_mem = env.core
+            .nodes()
             .iter()
             .map(|n| n.left_mem_for_place_container())
             .collect::<Vec<_>>();
@@ -177,13 +174,13 @@ impl FaasFlowScheduler {
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for FaasFlowScheduler {
     fn schedule_some(&mut self, env: &SimEnv) {
-        for (_, req) in env.requests.borrow_mut().iter_mut() {
+        for (_, req) in env.core.requests_mut().iter_mut() {
             self.schedule_for_one_req(req, env);
         }
 
         let mut to_scale_down = vec![];
         // 回收空闲container
-        for n in env.nodes.borrow().iter() {
+        for n in env.core.nodes().iter() {
             for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
                     to_scale_down.push((n.node_id(), c.fn_id));
@@ -191,9 +188,8 @@ impl Scheduler for FaasFlowScheduler {
             }
         }
         for (n, f) in to_scale_down {
-            env.scale_executor
-                .borrow_mut()
-                .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
+            env.mechanisms.scale_executor_mut()
+                .exec_scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
         }
     }
 
