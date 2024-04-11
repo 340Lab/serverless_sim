@@ -10,9 +10,6 @@
           <rect :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2 - 40"
             :y="(nodes[link.source[0]].y + nodes[link.source[1]].y) / 2 + 10" width="80" height="20" fill="white"
             stroke="black" stroke-width="1" />
-          <!--          <text :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2"-->
-          <!--                :y="(nodes[link.source[0]].y + nodes[link.source[1]].y) / 2 + 25" text-anchor="middle" @click="showEditBandwidthPopup">修改带宽</text>-->
-
         </g>
         <text v-for="(link, key) in links" :key="'text_' + key"
           :x="(nodes[link.source[0]].x + nodes[link.source[1]].x) / 2"
@@ -47,6 +44,7 @@
 <script>
 import { UINode } from "@/network_topo";
 import { UILink } from "@/network_topo";
+import {apis, GetNetworkTopoReq} from "@/apis";
 
 export default {
   data() {
@@ -60,6 +58,44 @@ export default {
       selectedLinkId: null,
     };
   },
+  async mounted() {
+    // try {
+      // 首先调用 get_env_id 来获取环境 ID
+      const envIdResponse = await apis.get_env_id();
+      console.log("get_env_id response:", envIdResponse);
+
+    // 检查是否存在有效的环境 ID
+      let exist=envIdResponse.exist();
+      if (exist) {
+        const firstEnvId = exist.env_id[0];  // 使用数组中的第一个环境 ID
+        console.log("Using first environment ID:", firstEnvId);
+
+        // 使用获取到的环境 ID 请求网络拓扑数据
+        const topoResponse = await apis.get_network_topo(new GetNetworkTopoReq(firstEnvId));
+        console.log("get_network_topo response:", topoResponse);
+
+        // 检查响应状态并处理网络拓扑数据
+        if (topoResponse.exist()) {
+          let topo_exist=topoResponse.exist()
+          this.nodes = topo_exist.topo.map((_, index) => new UINode(index * 100, index * 100, 0, index));
+          this.links = {};
+          topo_exist.topo.forEach((row, source) => {
+            row.forEach((bandwidth, target) => {
+              if (bandwidth > 0) {
+                this.links.push(new UILink([source, target], bandwidth));
+              }
+            });
+          });
+        } else {
+          console.error('Failed to fetch network topology:',topoResponse.not_found());
+        }
+      } else {
+        console.error('No environments available:', envIdResponse.not_found());
+      }
+  },
+    // } catch (error) {
+    //   console.error("Error fetching environment IDs or topology:", error);
+    // }
   methods: {
     startDragging(event) {
       this.offset.x = event.pageX;
@@ -113,8 +149,8 @@ export default {
       const newNode = new UINode(Math.random() * 500, Math.random() * 500, 0, this.nodes.length);
       if (newNode.x < 0) { newNode.x = 0 }
       if (newNode.y < 0) { newNode.y = 0 }
-      if (newNode.x > 600) { newNode.x = 600 }
-      if (newNode.y > 400) { newNode.y = 400 }
+      if (newNode.x > 1300) { newNode.x = 1300 }
+      if (newNode.y > 600) { newNode.y = 600 }
       this.nodes.push(newNode);
       this.connectNodes(this.nodes.length - 1);
     },
@@ -130,9 +166,11 @@ export default {
       }
     },
     showEditBandwidthPopup(linkId) {
-      console.log("showEditBandwidthPopup", linkId);
+      // console.log("showEditBandwidthPopup", linkId);
+      // console.log("Current editingBandwidth status:", this.editingBandwidth);
       this.selectedLinkId = linkId;
       this.editingBandwidth = true;
+      // console.log("Current editingBandwidth status:", this.editingBandwidth);
     },
     confirmEdit() {
       if (this.selectedLinkId !== null && this.editedBandwidth !== null) {
@@ -153,8 +191,8 @@ export default {
 
 .topology-container {
   position: relative;
-  width: 600px;
-  height: 400px;
+  width: 1300px;
+  height: 600px;
   border: 1px solid #ccc;
 }
 

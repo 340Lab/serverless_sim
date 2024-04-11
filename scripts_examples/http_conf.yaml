@@ -7,21 +7,24 @@ frontend:
     dir: "../serverless_sim_ui/src"
     lan: "ts"
     header: 'import axios from "axios"'
-    http_call: 'await axios.post("/api/{}", req)'
+    http_call: 'await axios.post("/api/{}", {})'
 
 api_list:
     get_network_topo:
         req: 
             env_id : "String"
-            a: "Int"
-            b: "Float"
-            c: "Bool"
-            d: ["Array", "Int"]
-            e: ["Array", ["Array", "Int"]]
 
         resp_dispatch:
             Exist: 
-                topo: ["Array",["Array", "Int"]]
+                topo: ["Array",["Array", "Float"]]
             NotFound:
                 msg: "String" 
-    
+
+    get_env_id:
+        req:
+
+        resp_dispatch:
+            Exist:
+                env_id: ["Array", "String"]
+            NotFound:
+                msg: "String"

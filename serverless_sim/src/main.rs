@@ -31,7 +31,7 @@ async fn main() {
     env_logger::init();
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
-    env_gc::start_gc();
+    // env_gc::start_gc();
     // parse_arg::parse_arg();
     network::start().await;
 }
@@ -44,7 +44,7 @@ const NODE_SCORE_CPU_WEIGHT: f32 = 0.5;
 
 const NODE_SCORE_MEM_WEIGHT: f32 = 0.5;
 
-const NODE_CNT: usize = 30;
+const NODE_CNT: usize = 10;
 
 const CONTAINER_BASIC_MEM: f32 = 199.0;
 
