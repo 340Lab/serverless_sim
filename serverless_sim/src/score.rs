@@ -90,7 +90,8 @@ impl SimEnv {
     //         .map(|node| node.mem)
     //         .sum::<f32>() / (self.nodes.borrow().len() as f32)
     // }
-
+    
+    // 已完成请求的平均成本 越低越好
     pub fn cost_each_req(&self) -> f32 {
         if self.core.done_requests().len() == 0 {
             return 0.0;
@@ -98,6 +99,7 @@ impl SimEnv {
         *self.help.cost() / (self.core.done_requests().len() as f32)
     }
 
+    // 性能成本比：数值越大表示在给定成本下处理请求的速度越快，性能越好
     pub fn cost_perform(&self) -> f32 {
         let cost = self.cost_each_req();
         if cost < 0.0001 {
@@ -111,6 +113,7 @@ impl SimEnv {
         1.0 / req_avg_time / cost
     }
 
+    // 计算仿真环境的整体评分，衡量不同调度和扩缩容策略以及参数设置下的系统性能优劣
     pub fn score(&self) -> f32 {
         // let req_done_time_avg = self.req_done_time_avg();
         // let req_done_time_std = self.req_done_time_std();

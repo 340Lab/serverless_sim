@@ -191,6 +191,7 @@ pub struct SimEnv {
 }
 
 impl SimEnv {
+    // 构造函数，接收一个 Config 参数，用于初始化模拟环境的各项属性
     pub fn new(config: Config) -> Self {
         let start = SystemTime::now();
         let recent_use_time = start.duration_since(UNIX_EPOCH).unwrap();
@@ -236,6 +237,7 @@ impl SimEnv {
         newenv
     }
 
+    // 初始化方法，进一步设置仿真环境的状态
     fn init(&self) {
         self.node_init_node_graph();
         // # # init databases
@@ -255,6 +257,7 @@ impl SimEnv {
         self.fn_gen_fn_dags(self);
     }
 
+    // 获取当前模拟帧数
     pub fn current_frame(&self) -> usize {
         *self.core.current_frame.borrow()
     }
@@ -272,17 +275,20 @@ impl SimEnv {
     //     }
     // }
 
+    // 更新最近使用时间，以避免模拟环境被 gc 被清理
     pub fn avoid_gc(&mut self) {
         let start = SystemTime::now();
         self.recent_use_time = start.duration_since(UNIX_EPOCH).unwrap();
     }
 
+    // 根据给定的 raw_action，执行仿真环境的一个时间步，返回 score 和 state
     pub fn step(&mut self, raw_action: u32) -> (f32, String) {
         // update to current time
         self.avoid_gc();
         self.step_es(ESActionWrapper::Int(raw_action))
     }
 
+    // 在模拟一帧开始时调用，更新节点状态、清空已完成请求、重置性能指标等
     pub fn on_frame_begin(&self) {
         for n in self.core.nodes_mut().iter_mut() {
             n.last_frame_cpu = n.cpu;
@@ -315,6 +321,7 @@ impl SimEnv {
         // *self.distance2hpa.borrow_mut() = 0;
     }
 
+    // 在模拟一帧结束时调用，更新节点成本和本帧使用过的容器的使用次数，增加帧数
     pub fn on_frame_end(&self) {
         for (_req_i, req) in self.core.requests_mut().iter_mut() {
             req.cur_frame_done.clear();

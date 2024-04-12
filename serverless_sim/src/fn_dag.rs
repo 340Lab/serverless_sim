@@ -37,7 +37,7 @@ impl FnDAG {
             .setup_after_insert_into_dag(dag_i, begin);
 
         Self {
-            dag_i,
+            dag_i, 
             begin_fn_g_i: begin,
             dag_inner: dag,
         }
@@ -136,7 +136,9 @@ impl Func {
 
 #[derive(EnumAsInner)]
 pub enum FnContainerState {
+    // 创建
     Starting { left_frame: usize },
+    // 运行
     Running,
 }
 

@@ -28,11 +28,15 @@ extern crate lazy_static;
 
 #[tokio::main]
 async fn main() {
+    // 指定要记录的日志级别
     set_var("RUST_LOG", "debug,error,warn,info");
+    // 遇到 panic 时自动打印回溯信息
     set_var("RUST_BACKTRACE", "1");
+    // 读取之前设置的 RUST_LOG 环境变量, 初始化 env_logger 日志记录器
     env_logger::init();
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
+    // 启动垃圾回收（Garbage Collection, GC）机制
     env_gc::start_gc();
     ModuleESConf::new().export_module_file();
     // parse_arg::parse_arg();

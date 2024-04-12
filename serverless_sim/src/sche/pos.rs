@@ -70,7 +70,8 @@ impl PosScheduler {
                 .reverse()
         });
         for &fnid in &schedule_able_fns {
-            // 可以调度的节点数
+            // 可以调度的节点数 ???
+            // 可以调度的容器数量 ???
             let mut scheable_node_count = env.spec_scaler().fn_available_count(fnid, env);
             if scheable_node_count == 0 {
                 log::warn!("scaler should ask scheduler for requirement and prepare enough nodes");

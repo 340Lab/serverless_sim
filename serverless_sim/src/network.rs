@@ -44,6 +44,7 @@ pub async fn start() {
 //     "Hello, World!"
 // }
 
+// 用于定义全局静态变量，这些变量在首次访问时才进行初始化，且初始化过程只执行一次。
 lazy_static! {
     /// This is an example for using doc comment attributes
     pub static ref SIM_ENVS: RwLock<HashMap<String,Mutex<SimEnv>>> = RwLock::new(HashMap::new());
