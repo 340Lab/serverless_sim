@@ -134,34 +134,9 @@ impl SimEnv {
         // } else {
         //     score -= self.cost_each_req();
         // }
-        if self.help.config().es.fit_hpa.is_some() {
-            panic!("not support fit_hpa");
-            // score = -(*self.distance2hpa.borrow() as f32);
-        } else {
-            if self.help.config().es.no_perform_cost_rate_score.is_none() {
-                score += self.cost_perform();
-            }
-            score -= self.req_done_time_avg();
-        }
-        //  -
-        // (
-        //     self.requests
-        //         .borrow()
-        //         .iter()
-        //         .map(|(_, r)| { self.current_frame() - r.begin_frame })
-        //         .sum::<usize>() as f32
-        // )
 
-        // Don't left too much requests
-        // score -= self.real_time.requests().len() as f32;
+        score -= self.req_done_time_avg();
 
-        //-self.req_done_time_avg() //越小越好
-        // - self.req_done_time_std()//越小越好
-        // - self.req_done_time_avg_90p()//越小越好
-        // + self.score_req_move_on_avg() // 越大越好
-        // - self.node_avg_mem()/500.0 // 越小越好
-        // - self.cost_each_req() // 越小越好
-        // + self.cost_perform()*10.0
         score
     }
 }

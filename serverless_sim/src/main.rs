@@ -1,5 +1,3 @@
-use std::{env::set_var, time::Duration};
-
 mod actions;
 mod algos;
 mod apis;
@@ -7,6 +5,7 @@ mod config;
 mod env_gc;
 mod es;
 mod fn_dag;
+mod mechanism;
 mod metric;
 mod network;
 mod node;
@@ -21,6 +20,9 @@ mod sim_timer;
 mod state;
 mod util;
 
+use config::ModuleESConf;
+use std::{env::set_var, time::Duration};
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -31,7 +33,8 @@ async fn main() {
     env_logger::init();
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
-    // env_gc::start_gc();
+    env_gc::start_gc();
+    ModuleESConf::new().export_module_file();
     // parse_arg::parse_arg();
     network::start().await;
 }

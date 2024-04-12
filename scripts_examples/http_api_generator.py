@@ -43,6 +43,8 @@ def gen_type_ts(type):
             return "number"
         elif type=="Bool":
             return "boolean"
+        elif type=="Any":
+            return "any"
         else:
             exit(f"unknown type {type}")
 def gen_type_rs(type):
@@ -60,6 +62,8 @@ def gen_type_rs(type):
             return "f64"
         elif type=="Bool":
             return "bool"
+        elif type=="Any":
+            return "Value"
         else:
             exit(f"unknown type {type}")
 

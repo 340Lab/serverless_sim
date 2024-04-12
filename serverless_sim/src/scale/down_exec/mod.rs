@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     fn_dag::FnId,
     node::{Node, NodeId},
     sim_env::SimEnv,
@@ -6,11 +7,27 @@ use crate::{
 };
 
 // 原 ScaleExecutor
-pub trait ScaleDownExec {
+pub trait ScaleDownExec: Send {
     fn exec_scale_down(&mut self, sim_env: &SimEnv, opt: ScaleOption);
 
     // /// return success scale up cnt
     // fn scale_up(&mut self, sim_env: &SimEnv, fnid: FnId, scale_cnt: usize) -> usize;
+}
+
+pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
+
+pub fn new_scale_down_exec(c: &Config) -> Option<Box<dyn ScaleDownExec>> {
+    let es = &c.es;
+    let (scale_down_exec_name, scale_down_exec_attr) = es.scale_down_exec_conf();
+
+    match &*scale_down_exec_name {
+        "default" => {
+            return Some(Box::new(DefaultScaleDownExec));
+        }
+        _ => {
+            return None;
+        }
+    }
 }
 
 #[allow(dead_code)]

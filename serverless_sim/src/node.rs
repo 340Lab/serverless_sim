@@ -207,7 +207,7 @@ impl SimEnv {
             _init_one_node(self, i);
         }
 
-        log::info!("node speed graph: {:?}", self.core.node2node_graph());
+        log::info!("node bandwidth graph: {:?}", self.core.node2node_graph());
     }
 
     /// 设置节点间网速

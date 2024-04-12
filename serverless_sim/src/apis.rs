@@ -72,12 +72,92 @@ impl GetEnvIdResp {
 
 
 
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ResetResp{
+    Success{
+       env_id:String,
+},
+    InvalidConfig{
+       msg:String,
+},
+
+}
+
+impl ResetResp {
+    fn id(&self)->u32 {
+        match self {
+                ResetResp::Success{..}=>1,
+    ResetResp::InvalidConfig{..}=>2,
+
+        }
+    }
+    pub fn serialize(&self)->Value {
+        json!({
+            "id": self.id(),
+            "kernel": serde_json::to_value(self).unwrap(),
+        })
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResetReq {
+       pub config:Value,
+}
+
+
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StepResp{
+    Success{
+       state:String,
+       score:f64,
+       stop:bool,
+       info:String,
+},
+    EnvNotFound{
+       msg:String,
+},
+
+}
+
+impl StepResp {
+    fn id(&self)->u32 {
+        match self {
+                StepResp::Success{..}=>1,
+    StepResp::EnvNotFound{..}=>2,
+
+        }
+    }
+    pub fn serialize(&self)->Value {
+        json!({
+            "id": self.id(),
+            "kernel": serde_json::to_value(self).unwrap(),
+        })
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StepReq {
+       pub env_id:String,
+       pub action:i32,
+}
+
+
 #[async_trait]
 pub trait ApiHandler {
     
     async fn handle_get_network_topo(&self, req:GetNetworkTopoReq)->GetNetworkTopoResp;
             
     async fn handle_get_env_id(&self, )->GetEnvIdResp;
+            
+    async fn handle_reset(&self, req:ResetReq)->ResetResp;
+            
+    async fn handle_step(&self, req:StepReq)->StepResp;
             
 }
 
@@ -96,6 +176,18 @@ pub fn add_routers(mut router:Router)->Router
     }
     router=router
         .route("/get_env_id", post(get_env_id));
+                             
+    async fn reset(Json(req):Json<ResetReq>)-> (StatusCode, Json<Value>){
+        (StatusCode::OK, Json(ApiHandlerImpl.handle_reset(req).await.serialize()))
+    }
+    router=router
+        .route("/reset", post(reset));
+                             
+    async fn step(Json(req):Json<StepReq>)-> (StatusCode, Json<Value>){
+        (StatusCode::OK, Json(ApiHandlerImpl.handle_step(req).await.serialize()))
+    }
+    router=router
+        .route("/step", post(step));
                              
     
     router

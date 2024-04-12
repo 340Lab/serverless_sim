@@ -96,3 +96,109 @@ export namespace apis {
 }
 
 
+
+
+export class ResetRespSuccess {
+    constructor(
+        public env_id:string,
+    ){}
+}
+
+export class ResetRespInvalidConfig {
+    constructor(
+        public msg:string,
+    ){}
+}
+
+export class ResetResp{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {}
+    
+    success():undefined| ResetRespSuccess{
+        if(this.id==1){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+    invalid_config():undefined| ResetRespInvalidConfig{
+        if(this.id==2){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+}
+
+
+export class ResetReq {
+    constructor(
+        public config:any,
+    ){}
+}
+
+export namespace apis {
+    export async function reset(req:ResetReq):Promise<ResetResp>{
+        let res:any = await axios.post("/api/reset", req)
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
+    }
+}
+
+
+
+
+export class StepRespSuccess {
+    constructor(
+        public state:string,
+        public score:number,
+        public stop:boolean,
+        public info:string,
+    ){}
+}
+
+export class StepRespEnvNotFound {
+    constructor(
+        public msg:string,
+    ){}
+}
+
+export class StepResp{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {}
+    
+    success():undefined| StepRespSuccess{
+        if(this.id==1){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+    env_not_found():undefined| StepRespEnvNotFound{
+        if(this.id==2){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+}
+
+
+export class StepReq {
+    constructor(
+        public env_id:string,
+        public action:number,
+    ){}
+}
+
+export namespace apis {
+    export async function step(req:StepReq):Promise<StepResp>{
+        let res:any = await axios.post("/api/step", req)
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
+    }
+}
+
+
