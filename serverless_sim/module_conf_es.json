@@ -1,9 +1,9 @@
 {
   "scale_num": {
-    "no": null,
-    "lass": null,
     "hpa": null,
-    "ai": null
+    "lass": null,
+    "ai": null,
+    "no": null
   },
   "scale_down_exec": {
     "default": null

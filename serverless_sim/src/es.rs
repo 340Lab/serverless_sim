@@ -15,12 +15,14 @@ use std::{
     collections::{BTreeMap, VecDeque},
 };
 
+// 确定当前阶段是否准备好进行下一个 action 的处理
 pub trait ActionEffectStage {
     fn prepare_next(&mut self) -> bool;
 }
 
 #[derive(Debug)]
 pub struct StageScaleForFns {
+    // 当前正在处理的函数在 fn_metrics 中的索引
     current_index: Option<usize>,
     // pub fn_need_schedule: HashMap<FnId, ContainerMetric>,
     pub fn_metrics: Vec<(FnId, ContainerMetric)>,
@@ -44,7 +46,8 @@ impl ActionEffectStage for StageScaleForFns {
         } else {
             self.current_index = Some(0);
         }
-
+        
+        // 所有函数已处理完毕
         if self.current_index.unwrap() >= self.fn_metrics.len() {
             return false;
         }
@@ -63,10 +66,14 @@ impl ActionEffectStage for StageScaleForFns {
     }
 }
 
+// 负责请求调度的阶段
 #[derive(Debug)]
 pub struct StageSchedule {
+    // 与该请求关联的待调度函数ID, 每个请求可能有多个待调度的函数
     ready_2_schedule: BTreeMap<ReqId, VecDeque<FnId>>,
+    // 下一个将要调度的请求及其关联的函数
     pub next_2_schedule: (ReqId, FnId),
+    // 已调度的请求信息, 记录了请求已调度到哪个函数以及可能的执行节点（如果已知）和相关动作
     pub scheduled: Vec<(ReqId, FnId, Option<NodeId>, RawAction)>,
 }
 
@@ -102,10 +109,14 @@ impl ActionEffectStage for StageSchedule {
     }
 }
 
+// 闲置容器缩放阶段
 #[derive(Debug)]
 pub struct StageScaleDown {
+    // 某个节点上的某个函数对应的容器处于闲置状态 
     pub idle_containers: Vec<(NodeId, FnId)>,
+    // 当前正在处理的闲置容器在 idle_containers 中的索引
     pub cur_idle_container_idx: isize,
+    // 记录了已缩放的容器信息
     pub records: Vec<(NodeId, FnId, RawAction)>,
 }
 
@@ -128,6 +139,7 @@ impl StageScaleDown {
         };
         new
     }
+    // 按照当前索引获取闲置容器信息
     pub fn cur_container(&self) -> Option<(NodeId, FnId)> {
         if self.cur_idle_container_idx >= 0 {
             Some(self.idle_containers[self.cur_idle_container_idx as usize])
@@ -144,6 +156,7 @@ impl ActionEffectStage for StageScaleDown {
     }
 }
 
+// Each Frame Stage
 #[derive(EnumAsInner, Debug)]
 pub enum EFStage {
     FrameBegin,
@@ -165,9 +178,13 @@ impl EFStage {
     }
 }
 
+// 存储仿真环境的当前状态
 pub struct ESState {
+    // 已执行步数
     pub step_cnt: usize,
+    // 当前帧所处阶段
     pub stage: EFStage,
+    // 当前帧计算状态
     pub computed: bool,
 }
 impl ESState {
@@ -178,6 +195,7 @@ impl ESState {
             step_cnt: 0,
         }
     }
+    // 根据当前的阶段，调用相应的 prepare_next()
     fn unwrap_aes_prepare_next(&mut self) -> bool {
         match self.stage {
             EFStage::FrameBegin => {
@@ -201,6 +219,7 @@ impl ESState {
         }
     }
     // return true if arrive next action_effect_stage
+    // 进入下一阶段
     pub fn trans_stage(&mut self, env: &SimEnv) -> bool {
         loop {
             if self.stage.is_frame_begin() {
@@ -256,6 +275,7 @@ impl ESState {
 
 impl SimEnv {
     // return false if schedule failed
+    // 根据用户提供的raw_action执行一次调度操作
     fn step_schedule(&self, raw_action: u32, stage: &mut StageSchedule) -> bool {
         let mut ret = true;
         let (reqid, fnid) = stage.next_2_schedule;
@@ -263,6 +283,7 @@ impl SimEnv {
             stage.scheduled.push((reqid, fnid, None, raw_action));
         } else {
             let nodeid = raw_action as usize;
+            // 节点上存在该函数的容器
             if self.node(nodeid).container(fnid).is_some() {
                 assert!(self.request_mut(reqid).req_id == reqid, "reqid not match");
                 self.schedule_reqfn_on_node(&mut self.request_mut(reqid), fnid, nodeid);
@@ -289,18 +310,22 @@ impl SimEnv {
 
         loop {
             if ef_state.stage.is_frame_begin() {
+                // 当前帧结束
                 if (self.current_frame() == 0 && ef_state.computed) || self.current_frame() > 0 {
                     // log::info!("score: {} frame:{}", score, self.current_frame());
                     self.on_frame_end();
                     log::info!("frame {} end", self.current_frame());
+                    // 模拟超过1000帧时退出循环
                     if self.current_frame() > 1000 {
                         break;
                     }
                 }
                 log::info!("frame begin");
+                // 开启新帧
                 self.on_frame_begin();
 
-                //没有正在调度的请求了，分配一个正在调度的请求
+                // 没有正在调度的请求了，分配一个正在调度的请求
+                // 生成新的请求，更新 ef_state 以进入下一阶段
                 self.req_sim_gen_requests();
                 ef_state.trans_stage(self);
             } else if ef_state.stage.is_scale_for_fns() {
@@ -336,7 +361,9 @@ impl SimEnv {
                     panic!("no schedule method");
                 }
                 //当前stage score
-            } else if ef_state.stage.is_sim_compute() {
+            } 
+            // 进行模拟计算（如运行容器任务），更新frame_score为当前帧得分，记录模拟指标，标记计算完成，并转至下一阶段
+            else if ef_state.stage.is_sim_compute() {
                 log::info!("sim compute");
                 ef_state.computed = true;
                 self.sim_run();
@@ -348,7 +375,7 @@ impl SimEnv {
         }
 
         // fnid    container_busy    container_count    fn running tasks
-        //
+        // 构建状态信息
         let state = if ef_state.stage.is_scale_for_fns() {
             let scale_stage = ef_state.stage.as_scale_for_fns().unwrap();
 

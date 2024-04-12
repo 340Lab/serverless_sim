@@ -14,7 +14,9 @@ use crate::{
 pub type NodeId = usize;
 
 pub struct NodeRscLimit {
+    // 节点cpu上限
     pub cpu: f32,
+    // 节点mem上限
     pub mem: f32,
 }
 
@@ -32,8 +34,10 @@ pub struct Node {
     // #资源限制：cpu, mem
     pub rsc_limit: NodeRscLimit,
 
+    // 待处理的任务
     pending_tasks: RefCell<BTreeSet<(ReqId, FnId)>>,
 
+    // 节点上已有的函数容器
     pub fn_containers: RefCell<HashMap<FnId, FnContainer>>,
 
     // 使用了的cpu
@@ -42,12 +46,14 @@ pub struct Node {
     // 使用了的内存
     pub mem: RefCell<f32>,
 
+    // 上一帧使用的cpu
     pub last_frame_cpu: f32,
 
     pub frame_run_count: usize,
 }
 
 impl Node {
+    // 返回已使用的mem量
     pub fn mem(&self) -> f32 {
         *self.mem.borrow()
     }
@@ -66,15 +72,23 @@ impl Node {
             pending_tasks: BTreeSet::new().into(),
         }
     }
+
+    // 增加任务
     pub fn add_task(&self, req_id: ReqId, fn_id: FnId) {
         self.pending_tasks.borrow_mut().insert((req_id, fn_id));
     }
+
+    // 返回剩余的mem量
     pub fn left_mem(&self) -> f32 {
         self.rsc_limit.mem - self.mem()
     }
+
+    // 返回剩余的可用于部署容器的mem量
     pub fn left_mem_for_place_container(&self) -> f32 {
         self.rsc_limit.mem - self.mem() - NODE_LEFT_MEM_THRESHOLD
     }
+
+    // 判断剩余的可用于部署容器的mem量是否足够部署特定函数的容器
     pub fn mem_enough_for_container(&self, func: &Func) -> bool {
         self.left_mem_for_place_container() > func.cold_start_container_mem_use
             && self.left_mem_for_place_container() > func.container_mem()
@@ -83,20 +97,30 @@ impl Node {
         assert!(self.node_id < NODE_CNT);
         self.node_id
     }
+
+    // 比较两个节点的资源使用情况
+    // pub enum Ordering {
+    //     Less,
+    //     Equal,
+    //     Greater,
+    // }
     pub fn cmp_rsc_used(&self, other: &Self) -> Ordering {
         (self.cpu * NODE_SCORE_CPU_WEIGHT + self.mem() * NODE_SCORE_MEM_WEIGHT)
             .partial_cmp(&(other.cpu * NODE_SCORE_CPU_WEIGHT + other.mem() * NODE_SCORE_MEM_WEIGHT))
             .unwrap()
     }
 
+    // 返回节点上所有任务（待处理和正在运行）的总数
     pub fn all_task_cnt(&self) -> usize {
         self.pending_task_cnt() + self.running_task_cnt()
     }
 
+    // 返回节点上待处理任务的数量
     pub fn pending_task_cnt(&self) -> usize {
         self.pending_tasks.borrow().len()
     }
 
+    // 返回节点上正在运行的任务数量
     pub fn running_task_cnt(&self) -> usize {
         self.fn_containers
             .borrow()
@@ -105,6 +129,7 @@ impl Node {
             .sum()
     }
 
+    // 返回指定函数ID的容器的可变引用
     pub fn container_mut<'a>(&'a self, fnid: FnId) -> Option<RefMut<'a, FnContainer>> {
         let b = self.fn_containers.borrow_mut();
         if !b.contains_key(&fnid) {
@@ -117,6 +142,8 @@ impl Node {
         Some(res)
         // .get_mut(&fnid)
     }
+
+    // 返回指定函数ID的容器的不可变引用
     pub fn container<'a>(&'a self, fnid: FnId) -> Option<Ref<'a, FnContainer>> {
         let b = self.fn_containers.borrow();
         if !b.contains_key(&fnid) {
@@ -133,6 +160,7 @@ impl Node {
     //     self.fn_containers.get(&fnid)
     // }
 
+    // 尝试在节点上加载指定函数ID的容器。如果内存足够且容器不存在，则创建新容器并更新节点状态
     pub fn try_load_spec_container(&self, fnid: FnId, env: &SimEnv) {
         if self.container(fnid).is_none() {
             // try cold start
@@ -164,6 +192,8 @@ impl Node {
         }
     }
 
+    // 尝试加载节点上所有待处理任务的容器
+    // 如果内存足够且容器不存在，则创建新容器，将任务状态添加到容器，并从待处理任务集合中移除
     pub fn load_container(&self, env: &SimEnv) {
         let mut removed_pending = vec![];
         for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
@@ -316,24 +346,29 @@ impl SimEnv {
         }
     }
 
+    // 返回节点数量
     pub fn node_cnt(&self) -> usize {
         self.core.nodes().len()
     }
 
+    // 返回对节点列表的不可变引用
     pub fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
         self.core.nodes()
     }
 
+    // 返回对节点列表的可变引用
     pub fn nodes_mut<'a>(&'a self) -> RefMut<'a, Vec<Node>> {
         self.core.nodes_mut()
     }
 
+    // 返回对指定节点ID的不可变引用
     pub fn node<'a>(&'a self, i: NodeId) -> Ref<'a, Node> {
         let b = self.nodes();
 
         Ref::map(b, |vec| &vec[i])
     }
 
+    // 返回对指定节点ID的可变引用
     pub fn node_mut<'a>(&'a self, i: NodeId) -> RefMut<'a, Node> {
         let b = self.nodes_mut();
 

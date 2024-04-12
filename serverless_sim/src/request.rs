@@ -40,11 +40,14 @@ pub struct Request {
 
     ///完成执行的函数节点，时间
     pub done_fns: HashMap<FnId, usize>,
-
+    
+    // 当前帧已完成的函数
     pub cur_frame_done: HashSet<FnId>,
+
     //请求到达的时刻
     pub begin_frame: usize,
 
+    // 请求完成的时刻
     pub end_frame: usize,
 
     // fn_dag_walker: Topo<NodeIndex, <FnDagInner as Visitable>::Map>,
@@ -89,6 +92,7 @@ impl Request {
         new
     }
 
+    // 判断某函数的前驱函数是否已经全部执行完毕
     pub fn parents_all_done(&self, env: &SimEnv, fnid: FnId) -> bool {
         let ps = env.func(fnid).parent_fns(env);
         for p in &ps {
@@ -110,6 +114,7 @@ impl Request {
         println!();
     }
 
+    // 获取指定函数被调度到的节点
     pub fn get_fn_node(&self, fnid: FnId) -> Option<NodeId> {
         self.fn_node.get(&fnid).map(|v| *v)
     }
@@ -127,6 +132,7 @@ impl Request {
     //     self.current_fn
     // }
 
+    // 标记指定函数为已完成，更新当前帧数已完成函数，并检查请求是否已完成
     pub fn fn_done(&mut self, env: &SimEnv, fnid: FnId, current_frame: usize) {
         // log::info!("request {} fn {} done", self.req_id, fnid);
         self.done_fns.insert(fnid, current_frame);
@@ -135,9 +141,11 @@ impl Request {
             self.end_frame = current_frame;
         }
     }
+    // 返回请求对应DAG中节点（函数）的数量
     pub fn fn_count(&self, env: &SimEnv) -> usize {
         env.core.dags()[self.dag_i].dag_inner.node_count()
     }
+    // 判断请求是否已完成
     pub fn is_done(&self, env: &SimEnv) -> bool {
         self.done_fns.len() == self.fn_count(env)
     }
@@ -184,6 +192,7 @@ impl SimEnv {
         self.core.done_requests_mut().push(req);
     }
 
+    // 返回指定请求ID的不可变引用
     pub fn request<'a>(&'a self, i: ReqId) -> Ref<'a, Request> {
         let b = self.core.requests();
 
@@ -193,6 +202,7 @@ impl SimEnv {
         })
     }
 
+    // 返回指定请求ID的可变引用
     pub fn request_mut<'a>(&'a self, i: ReqId) -> RefMut<'a, Request> {
         let b = self.core.requests_mut();
 

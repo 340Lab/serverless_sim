@@ -21,12 +21,14 @@ impl ScaleUpExec for LeastTaskScaleUpExec {
         let nodes_with_container_cnt = env.nodes().len() - nodes_no_container.len();
         if nodes_with_container_cnt < target_cnt {
             let to_scale_up_cnt = target_cnt - nodes_with_container_cnt;
+            // 对不含容器的节点按照其所有任务数量进行降序排序
             nodes_no_container.sort_by(|&a, &b| {
                 env.node(a)
                     .all_task_cnt()
                     .partial_cmp(&env.node(b).all_task_cnt())
                     .unwrap()
             });
+            // 反转，即优先选择任务数量最少的节点进行预加载
             nodes_no_container.reverse();
             for _ in 0..to_scale_up_cnt {
                 let node_2_load_contaienr = nodes_no_container.pop().unwrap();

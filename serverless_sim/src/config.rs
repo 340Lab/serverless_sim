@@ -237,18 +237,23 @@ impl ESConfig {
     // }
 }
 
+// 存储应用配置信息
 #[derive(Serialize, Deserialize, Clone)]
 pub struct APPConfig {
+    // 应用的数量
     pub app_cnt: usize,
+    // 表示请求频率
     pub request_freq: String,
     /// dag type: single, chain, dag
     pub dag_type: String,
     /// cold start: high, low, mix
+    /// 冷启动情况
     pub cold_start: String,
     /// cpu, memory,datasize
     // pub fn_cpu: String,
     // pub fn_mem: String,
     // pub fn_data: String,
+    // 函数的CPU、内存和数据大小需求
     pub fn_cpu: f32,
     pub fn_mem: f32,
     pub fn_data: f32,
