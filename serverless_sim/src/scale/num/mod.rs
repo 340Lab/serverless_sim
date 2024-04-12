@@ -4,20 +4,22 @@ pub mod hpa;
 pub mod lass;
 pub mod no;
 
+use crate::{
+    actions::ESActionWrapper,
+    algos::ContainerMetric,
+    config::Config,
+    fn_dag::{FnContainer, FnContainerState, FnId},
+    node::NodeId,
+    sim_env::SimEnv,
+};
 use std::{
     cell::{Ref, RefMut},
     collections::HashSet,
 };
 
-use crate::{
-    actions::ESActionWrapper,
-    algos::ContainerMetric,
-    fn_dag::{FnContainer, FnContainerState, FnId},
-    node::NodeId,
-    sim_env::SimEnv,
-};
+use self::{ai::AIScaleNum, hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum};
 
-pub trait ScaleNum {
+pub trait ScaleNum: Send {
     /// return (action, action_is_done)
     /// - action_is_done: need prepare next state and wait for new action
     fn scale_for_fn(
@@ -29,6 +31,31 @@ pub trait ScaleNum {
     ) -> (f32, bool);
 
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
+}
+
+pub const SCALE_NUM_NAMES: [&'static str; 4] = ["ai", "no", "hpa", "lass"];
+
+pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
+    let es = &c.es;
+    let (scale_num_name, scale_num_attr) = es.scale_num_conf();
+
+    match &*scale_num_name {
+        "ai" => {
+            return Some(Box::new(AIScaleNum::new()));
+        }
+        "no" => {
+            return Some(Box::new(NoScaleNum::new()));
+        }
+        "hpa" => {
+            return Some(Box::new(HpaScaleNum::new()));
+        }
+        "lass" => {
+            return Some(Box::new(LassScaleNum::new()));
+        }
+        _ => {
+            return None;
+        }
+    }
 }
 
 impl SimEnv {

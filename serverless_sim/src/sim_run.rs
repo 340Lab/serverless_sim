@@ -12,7 +12,7 @@ use crate::{
     sim_env::SimEnv,
 };
 
-pub trait Scheduler {
+pub trait Scheduler: Send {
     /// For scaler to get some schdule info.
     /// Not needed for non-scaler scheduler.
     fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv);

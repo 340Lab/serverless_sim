@@ -13,13 +13,14 @@ use crate::{
     config::Config,
     es::{self, ESState},
     fn_dag::{FnDAG, FnId, Func},
+    mechanism::{ConfigNewMec, Mechanism, MechanismImpl},
     metric::{OneFrameMetric, Records},
     node::{Node, NodeId},
     request::{ReqId, Request},
     scale::{
         self,
         down_exec::DefaultScaleDownExec,
-        num::ScaleNum,
+        num::{new_scale_num, ScaleNum},
         up_exec::{least_task::LeastTaskScaleUpExec, ScaleUpExec},
     },
     sche,
@@ -186,6 +187,7 @@ pub struct SimEnv {
     pub help: SimEnvHelperState,
     pub core: SimEnvCoreState,
     pub mechanisms: SimEnvMechanisms,
+    pub new_mech: Box<dyn Mechanism>,
 }
 
 impl SimEnv {
@@ -219,8 +221,9 @@ impl SimEnv {
                 scale_executor: RefCell::new(DefaultScaleDownExec),
                 scale_up_exec: RefCell::new(Box::new(LeastTaskScaleUpExec::new())),
                 spec_scheduler: RefCell::new(sche::prepare_spec_scheduler(&config)),
-                spec_scale_num: RefCell::new(scale::prepare_spec_scaler(&config)),
+                spec_scale_num: RefCell::new(new_scale_num(&config)),
             },
+            new_mech: config.new_mec().unwrap(),
 
             ef_state: RefCell::new(ESState::new()),
 

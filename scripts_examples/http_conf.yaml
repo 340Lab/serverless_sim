@@ -28,3 +28,25 @@ api_list:
                 env_id: ["Array", "String"]
             NotFound:
                 msg: "String"
+
+    reset:
+        req:
+            config: "Any"
+        resp_dispatch:
+            Success:
+                env_id: "String"
+            InvalidConfig:
+                msg: "String"
+
+    step:
+        req:
+            env_id: "String"
+            action: "Int"
+        resp_dispatch:
+            Success:
+                state: "String"
+                score: "Float"
+                stop: "Bool"
+                info: "String"
+            EnvNotFound:
+                msg: "String"

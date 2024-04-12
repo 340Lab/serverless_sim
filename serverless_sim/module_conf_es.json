@@ -1,0 +1,21 @@
+{
+  "scale_num": {
+    "no": null,
+    "lass": null,
+    "hpa": null,
+    "ai": null
+  },
+  "scale_down_exec": {
+    "default": null
+  },
+  "scale_up_exec": {
+    "no": null,
+    "least_task": null
+  },
+  "sche": {
+    "pos": null,
+    "faasflow": null,
+    "fnsche": null,
+    "pass": null
+  }
+}

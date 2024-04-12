@@ -18,7 +18,7 @@ pub struct AIScaleNum {
 }
 
 impl AIScaleNum {
-    pub fn new(config: &Config) -> Self {
+    pub fn new() -> Self {
         Self {
             // hpa: HpaESScaler::new(),
             scale_down_filter: Box::new(CarefulScaleDownFilter::new()),

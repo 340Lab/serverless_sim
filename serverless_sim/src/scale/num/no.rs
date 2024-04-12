@@ -1,15 +1,15 @@
-use crate::{fn_dag::FnId, scale::up_exec::no::NoPreLoader, sim_env::SimEnv};
+use crate::{fn_dag::FnId, scale::up_exec::no::NoScaleUpExec, sim_env::SimEnv};
 
 use super::ScaleNum;
 
 pub struct NoScaleNum {
-    preloader: NoPreLoader,
+    preloader: NoScaleUpExec,
 }
 
 impl NoScaleNum {
     pub fn new() -> Self {
         NoScaleNum {
-            preloader: NoPreLoader {},
+            preloader: NoScaleUpExec {},
         }
     }
 }

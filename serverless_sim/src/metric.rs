@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, ESConfig},
+    config::{Config, ESConfig, ModuleESConf},
     // parse_arg,
     sim_env::SimEnv,
 };
@@ -193,60 +193,9 @@ impl RecordFile {
             fn_type: "".to_owned(),
             // app_types: vec![],
             no_log: false,
-            es: ESConfig {
-                up: "".to_owned(),
-                down: "".to_owned(),
-                sche: "".to_owned(),
-                ai_type: None,
-                down_smooth: "".to_owned(),
-                no_perform_cost_rate_score: "".to_owned().into(),
-                fit_hpa: None,
-            },
+            es: ModuleESConf::new().0,
         };
 
-        for config_part in front_utc.split(".") {
-            match idx {
-                0 => {
-                    config.rand_seed = config_part.replacen("sd", "", 1);
-                }
-                1 => {
-                    config.request_freq = config_part.replacen("rf", "", 1);
-                }
-                2 => {
-                    config.dag_type = config_part.replacen("dt", "", 1);
-                }
-                3 => {
-                    config.cold_start = config_part.replacen("cs", "", 1);
-                }
-                4 => {
-                    config.fn_type = config_part.replacen("ft", "", 1);
-                }
-                5 => {
-                    config.es.up = config_part.replacen("up", "", 1);
-                }
-                6 => {
-                    config.es.down = config_part.replacen("dn", "", 1);
-                }
-                7 => {
-                    config.es.sche = config_part.replacen("sc", "", 1);
-                }
-                8 => {
-                    config.es.ai_type = if config_part.find("at").is_some() {
-                        Some(config_part.replacen("at", "", 1))
-                    } else {
-                        None
-                    };
-                }
-                9 => {
-                    config.es.down_smooth = config_part.replacen("ds", "", 1);
-                    break;
-                }
-                _ => {
-                    unreachable!("impossible");
-                }
-            }
-            idx += 1;
-        }
         Some(Self {
             file_name,
             config,

@@ -308,70 +308,33 @@ impl SimEnv {
                     // next action effect stage is prepared
                     break;
                 }
-                // faas flow don't do scale for fns
-                if self.help.config().es.sche_faas_flow() {
-                    ef_state.trans_stage(self);
-                    continue;
-                }
-                let has_next = {
-                    let stage = ef_state.stage.as_scale_for_fns_mut().unwrap();
-                    // let fnid = stage.current_fnid.unwrap();
-                    let &(fnid, ref metric) = stage.current_fn().unwrap();
-                    let (action_score_, action_done_) = self
-                        .mechanisms
-                        .spec_scale_num_mut()
-                        .as_mut()
-                        .unwrap()
-                        .scale_for_fn(self, fnid, metric, &raw_action);
-                    action_score += action_score_;
-                    action_done = action_done_;
-                    stage.prepare_next()
-                };
-                if !has_next {
-                    ef_state.trans_stage(self);
+                let mut scale_num_opt = self.mechanisms.spec_scale_num_mut();
+                if let Some(scale_num) = scale_num_opt.as_mut() {
+                    let has_next = {
+                        let stage = ef_state.stage.as_scale_for_fns_mut().unwrap();
+                        // let fnid = stage.current_fnid.unwrap();
+                        let &(fnid, ref metric) = stage.current_fn().unwrap();
+                        let (action_score_, action_done_) =
+                            scale_num.scale_for_fn(self, fnid, metric, &raw_action);
+                        action_score += action_score_;
+                        action_done = action_done_;
+                        stage.prepare_next()
+                    };
+                    if !has_next {
+                        ef_state.trans_stage(self);
+                    }
+                } else {
+                    log::debug!("skip scale for this env");
                 }
             } else if ef_state.stage.is_schedule() {
                 log::info!("schedule");
-                if self.help.config().es.sche_ai() {
-                    if action_done {
-                        // next action effect stage is prepared
-                        break;
-                    }
-                    action_done = true;
-                    let action = match raw_action {
-                        // ESActionWrapper::Float(raw_action) => (raw_action * 31.0) as u32,
-                        ESActionWrapper::Int(raw_action) => raw_action,
-                    };
-                    if !self.step_schedule(action, ef_state.stage.as_schedule_mut().unwrap()) {
-                        action_score -= 100.0;
-                    }
-                    if !ef_state
-                        .stage
-                        .as_scale_for_fns_mut()
-                        .unwrap()
-                        .prepare_next()
-                    {
-                        ef_state.trans_stage(self);
-                    }
-                }
-                // else if self.config.es.sche_rule() {
-                //     self.try_put_fn(false);
-                //     ef_state.trans_stage(self);
-                // } else if self.config.es.sche_rule_prewarm_succ() {
-                //     self.try_put_fn(true);
-                //     ef_state.trans_stage(self);
-                // }
-                else if let Some(spec_sche) = self.mechanisms.spec_scheduler_mut().as_mut() {
+                if let Some(spec_sche) = self.mechanisms.spec_scheduler_mut().as_mut() {
                     // let mut spec = self.spec_scheduler.borrow_mut();
                     spec_sche.schedule_some(self);
-                    ef_state.trans_stage(self);
-                } else if self.help.config().es.sche_fnsche() {
-                    // sche is done in scale stage
                     ef_state.trans_stage(self);
                 } else {
                     panic!("no schedule method");
                 }
-
                 //当前stage score
             } else if ef_state.stage.is_sim_compute() {
                 log::info!("sim compute");
@@ -382,47 +345,7 @@ impl SimEnv {
 
                 ef_state.trans_stage(self);
             }
-            // else if aief_state.stage.is_scale_down() {
-            //     if action_done {
-            //         // next action effect stage is prepared
-            //         break;
-            //     }
-            //     action_done = true;
-
-            //     self.step_scale_down(
-            //         (raw_action * 11.0) as u32,
-            //         aief_state.stage.as_scale_down_mut().unwrap()
-            //     );
-            // }
-
-            // if aief_state.is_action_effect_stage() {
-            //     if !aief_state.unwrap_aes_prepare_next() {
-            //         // stage 已经完成了, 转到下一个stage
-            //         aief_state.trans_stage(self);
-            //     } else {
-            //         // action effect stage not changed
-            //         break;
-            //     }
-            // }
         }
-
-        // let mut state_buf = StateBuffer::new();
-        // if aief_state.stage.is_scale_for_fns() {
-        //     self.make_state_scale_for_fns(
-        //         &mut state_buf,
-        //         aief_state.stage.as_scale_for_fns_mut().unwrap()
-        //     );
-        //     self.make_common_state(&mut state_buf, SCALE_FOR_FNS_IDX);
-        // } else if aief_state.stage.is_schedule() {
-        //     self.make_state_schedule(&mut state_buf, aief_state.stage.as_schedule_mut().unwrap());
-        //     self.make_common_state(&mut state_buf, SCHEDULE_IDX);
-        // } else if aief_state.stage.is_scale_down() {
-        //     self.make_state_scale_down(
-        //         &mut state_buf,
-        //         aief_state.stage.as_scale_down_mut().unwrap()
-        //     );
-        //     self.make_common_state(&mut state_buf, SCALE_DOWN_IDX);
-        // }
 
         // fnid    container_busy    container_count    fn running tasks
         //
