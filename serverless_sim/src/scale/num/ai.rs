@@ -1,31 +1,33 @@
 use crate::{
     actions::ESActionWrapper,
     config::Config,
-    es::{ActionEffectStage, ESScaler, ESState, StageScaleForFns},
-    // scaler_hpa::HpaESScaler,
     fn_dag::FnId,
-    scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
-    scale_executor::{ScaleExecutor, ScaleOption},
+    scale::down_exec::{ScaleDownExec, ScaleOption},
     sim_env::SimEnv,
 };
 
-pub struct AIScaler {
+use super::{
+    down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
+    ScaleNum,
+};
+
+pub struct AIScaleNum {
     // hpa: HpaESScaler,
-    pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+    pub scale_down_filter: Box<dyn ScaleDownFilter + Send>,
     fn_available_count: usize,
 }
 
-impl AIScaler {
-    pub fn new(config: &Config) -> Self {
+impl AIScaleNum {
+    pub fn new() -> Self {
         Self {
             // hpa: HpaESScaler::new(),
-            scale_down_policy: Box::new(CarefulScaleDown::new()),
+            scale_down_filter: Box::new(CarefulScaleDownFilter::new()),
             fn_available_count: 0,
         }
     }
 }
 
-impl ESScaler for AIScaler {
+impl ScaleNum for AIScaleNum {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         self.fn_available_count
     }
@@ -69,18 +71,18 @@ impl ESScaler for AIScaler {
             "fnid: {}, desired_container_cnt: {}, total: {}",
             fnid,
             desired_container_cnt,
-            env.fns.borrow().len()
+            env.core.fns().len()
         );
 
         let desired_container_cnt =
-            self.scale_down_policy
+            self.scale_down_filter
                 .filter_desired(fnid, desired_container_cnt, container_cnt);
 
         if desired_container_cnt < container_cnt {
             // # scale down
             let scale = container_cnt - desired_container_cnt;
 
-            env.scale_executor.borrow_mut().scale_down(
+            env.mechanisms.scale_executor_mut().exec_scale_down(
                 env,
                 ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
             );

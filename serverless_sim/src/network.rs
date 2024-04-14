@@ -1,7 +1,19 @@
+use crate::apis::{
+    ApiHandler, GetEnvIdResp, GetNetworkTopoReq, GetNetworkTopoResp, ResetReq, ResetResp, StepReq,
+    StepResp,
+};
+use crate::{
+    apis,
+    config::Config,
+    metric::{self, Records},
+    sim_env::SimEnv,
+};
+use async_trait::async_trait;
 use axum::{http::StatusCode, routing::post, Json, Router};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::format;
 use std::{
     cmp::min,
     collections::HashMap,
@@ -10,24 +22,15 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use crate::{
-    config::Config,
-    metric::{self, Records},
-    sim_env::SimEnv,
-};
-
 pub async fn start() {
     // build our application with a route
-    let app = Router::new()
-        .route("/step", post(step))
+    let mut app = Router::new()
         .route("/collect_seed_metrics", post(collect_seed_metrics))
         .route("/get_seeds_metrics", post(get_seeds_metrics))
-        .route("/reset", post(reset))
-        // .route("/state_score", post(state_score))
         .route("/history_list", post(history_list))
         .route("/history", post(history))
         .route("/meteic", post(metric));
-
+    app = apis::add_routers(app);
     // run our app with hyper, listening globally on port 3000
     // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
@@ -41,11 +44,119 @@ pub async fn start() {
 //     "Hello, World!"
 // }
 
+// 用于定义全局静态变量，这些变量在首次访问时才进行初始化，且初始化过程只执行一次。
 lazy_static! {
     /// This is an example for using doc comment attributes
     pub static ref SIM_ENVS: RwLock<HashMap<String,Mutex<SimEnv>>> = RwLock::new(HashMap::new());
     static ref HISTORY_CACHE: Cache<String,Arc<Records>> = Cache::new(100);
     static ref COLLECT_SEED_METRICS_LOCK :tokio::sync::Mutex<()>= tokio::sync::Mutex::new(());
+}
+
+pub struct ApiHandlerImpl;
+
+#[async_trait]
+impl ApiHandler for ApiHandlerImpl {
+    async fn handle_get_network_topo(&self, req: GetNetworkTopoReq) -> GetNetworkTopoResp {
+        let env_ids_response = self.handle_get_env_id().await;
+        if let GetEnvIdResp::Exist { env_id } = env_ids_response {
+            if let Some(first_env_id) = env_id.first() {
+                let sim_envs = match SIM_ENVS.read() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        return GetNetworkTopoResp::NotFound {
+                            msg: "Lock acquisition failed".to_string(),
+                        }
+                    }
+                };
+                return match sim_envs.get(first_env_id) {
+                    Some(env_mutex) => {
+                        let env = env_mutex.lock().unwrap();
+                        let node_count = env.node_cnt();
+                        let mut topo = Vec::with_capacity(node_count);
+                        for i in 0..node_count {
+                            let mut row = Vec::with_capacity(node_count);
+                            for j in 0..node_count {
+                                let speed = if i == j {
+                                    0.0
+                                } else {
+                                    f64::from(env.node_get_speed_btwn(i, j))
+                                };
+                                row.push(speed);
+                            }
+                            topo.push(row);
+                        }
+                        GetNetworkTopoResp::Exist { topo }
+                    }
+                    None => GetNetworkTopoResp::NotFound {
+                        msg: "Environment not found".to_string(),
+                    },
+                };
+            }
+        }
+        GetNetworkTopoResp::NotFound {
+            msg: "No valid environment IDs available".to_string(),
+        }
+    }
+
+    async fn handle_get_env_id(&self) -> GetEnvIdResp {
+        let read_guard = SIM_ENVS.read().unwrap();
+        let env_ids: Vec<String> = read_guard.keys().cloned().collect();
+        if env_ids.is_empty() {
+            GetEnvIdResp::NotFound {
+                msg: "No environments found".to_string(),
+            }
+        } else {
+            GetEnvIdResp::Exist { env_id: env_ids }
+        }
+    }
+
+    async fn handle_reset(&self, req: ResetReq) -> ResetResp {
+        log::info!("Reset sim env");
+        match serde_json::from_value::<Config>(req.config) {
+            Ok(config) => {
+                let key = config.str();
+                {
+                    let sim_envs = SIM_ENVS.read().unwrap();
+                    if let Some(sim_env) = sim_envs.get(&key) {
+                        let mut sim_env = sim_env.lock().unwrap();
+                        sim_env.help.metric_record().flush(&sim_env);
+                        *sim_env = SimEnv::new(config);
+                    } else {
+                        drop(sim_envs);
+                        let mut sim_envs = SIM_ENVS.write().unwrap();
+                        sim_envs.insert(key.clone(), SimEnv::new(config).into());
+                    }
+                }
+                ResetResp::Success { env_id: key }
+            }
+            Err(e) => ResetResp::InvalidConfig {
+                msg: format!("Invalid config: {}", e),
+            },
+        }
+    }
+
+    async fn handle_step(&self, StepReq { env_id, action }: StepReq) -> StepResp {
+        let key = env_id;
+        // log::info!("Step sim env");
+
+        let sim_envs = SIM_ENVS.read().unwrap();
+        if let Some(sim_env) = sim_envs.get(&key) {
+            let mut sim_env = sim_env.lock().unwrap();
+            let (score, state) = tokio::task::block_in_place(|| sim_env.step(action as u32));
+
+            // insert your application logic here
+            StepResp::Success {
+                score: score as f64,
+                state,
+                stop: sim_env.current_frame() > 1000,
+                info: "".to_owned(),
+            }
+        } else {
+            let msg = format!("Sim env {key} not found, create new one");
+            log::warn!("{}", msg);
+            StepResp::EnvNotFound { msg }
+        }
+    }
 }
 
 // async fn history() -> (StatusCode, Json<()>) {
@@ -169,7 +280,7 @@ async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
 
     let mut resp = HistoryListResp { list: vec![] };
 
-    if let Ok(paths) = fs::read_dir("./records"){
+    if let Ok(paths) = fs::read_dir("./records") {
         for path in paths {
             resp.list
                 .push(path.unwrap().file_name().into_string().unwrap());
@@ -183,29 +294,6 @@ async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
 #[derive(Serialize)]
 struct HistoryListResp {
     list: Vec<String>,
-}
-
-async fn reset(Json(payload): Json<Config>) -> (StatusCode, ()) {
-    log::info!("Reset sim env");
-    // payload.check_valid();
-    let key = payload.str();
-    {
-        let sim_envs = SIM_ENVS.read().unwrap();
-        if let Some(sim_env) = sim_envs.get(&key) {
-            let mut sim_env = sim_env.lock().unwrap();
-            sim_env.metric_record.borrow().flush(&sim_env);
-            *sim_env = SimEnv::new(payload);
-        } else {
-            drop(sim_envs);
-            let mut sim_envs = SIM_ENVS.write().unwrap();
-            sim_envs.insert(key, SimEnv::new(payload).into());
-        }
-    }
-
-    // sim_env.metric_record.borrow().flush();
-    // *sim_env = SimEnv::new();
-
-    (StatusCode::OK, ())
 }
 
 // async fn step_batch(Json(payload): Json<StepBatchReq>) -> (StatusCode, Json<StepBatchResp>) {
@@ -254,52 +342,6 @@ async fn collect_seed_metrics() -> (StatusCode, Json<()>) {
     (StatusCode::OK, ().into())
 }
 
-async fn step(
-    // this argument tells axum to parse the request body
-    // as JSON into a `CreateUser` type
-    Json(payload): Json<StepReq>,
-) -> (StatusCode, Json<StepResp>) {
-    let key = payload.config.str();
-    // log::info!("Step sim env");
-
-    let mut resp = StepResp {
-        score: 0.0,
-        state: "invalid{{{".to_owned(),
-        stop: false,
-        info: format!("unreset for {}", key.clone()),
-    };
-    let mut step = || {
-        let sim_envs = SIM_ENVS.read().unwrap();
-        if let Some(sim_env) = sim_envs.get(&key) {
-            let mut sim_env = sim_env.lock().unwrap();
-            let (score, state) = tokio::task::block_in_place(|| sim_env.step(payload.action));
-
-            // insert your application logic here
-            resp = StepResp {
-                score,
-                state,
-                stop: sim_env.current_frame() > 1000,
-                info: "".to_owned(),
-            };
-            true
-        } else {
-            log::warn!("Sim env {key} not found, create new one");
-            false
-        }
-    };
-    if !step() {
-        let mut sim_envs = SIM_ENVS.write().unwrap();
-        sim_envs.insert(key.clone(), SimEnv::new(payload.config.clone()).into());
-        step();
-    }
-
-    // let sim_env = SIM_ENV.lock().unwrap();
-
-    // this will be converted into a JSON response
-    // with a status code of `201 Created`
-    (StatusCode::OK, Json(resp))
-}
-
 // async fn step_float(
 //     // this argument tells axum to parse the request body
 //     // as JSON into a `CreateUser` type
@@ -336,61 +378,4 @@ async fn step(
 //     // this will be converted into a JSON response
 //     // with a status code of `201 Created`
 //     (StatusCode::OK, Json(resp))
-// }
-
-#[derive(Deserialize)]
-pub struct StepFloatReq {
-    pub config: Config,
-    pub action: f32,
-}
-
-#[derive(Deserialize)]
-pub struct StepReq {
-    pub config: Config,
-    pub action: u32,
-}
-
-// the output to our `create_user` handler
-#[derive(Serialize)]
-pub struct StepResp {
-    pub score: f32,
-    pub state: String,
-    pub stop: bool,
-    pub info: String,
-}
-
-// the input to our `create_user` handler
-// #[derive(Deserialize)]
-// pub struct StepBatchReq {
-//     pub config: Config,
-//     pub actions: Vec<Vec<f32>>,
-// }
-
-// // the output to our `create_user` handler
-// #[derive(Serialize)]
-// pub struct StepBatchResp {
-//     pub scores: Vec<f32>,
-//     pub next_state: String,
-//     pub stop: bool,
-//     pub info: String,
-// }
-
-// async fn state_score() -> (StatusCode, Json<StateScoreResp>) {
-//     let sim_env = SIM_ENV.lock().unwrap();
-
-//     // this will be converted into a JSON response
-//     // with a status code of `201 Created`
-//     (
-//         StatusCode::OK,
-//         Json(StateScoreResp {
-//             state: sim_env.state(),
-//             score: sim_env.score(),
-//         }),
-//     )
-// }
-
-// #[derive(Serialize)]
-// struct StateScoreResp {
-//     score: f32,
-//     state: State,
 // }

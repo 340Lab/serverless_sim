@@ -1,0 +1,52 @@
+backend:
+    dir: "../serverless_sim/src"
+    lan: "rs"
+    header: "use crate::network::ApiHandlerImpl;"
+
+frontend:
+    dir: "../serverless_sim_ui/src"
+    lan: "ts"
+    header: 'import axios from "axios"'
+    http_call: 'await axios.post("/api/{}", {})'
+
+api_list:
+    get_network_topo:
+        req: 
+            env_id : "String"
+
+        resp_dispatch:
+            Exist: 
+                topo: ["Array",["Array", "Float"]]
+            NotFound:
+                msg: "String" 
+
+    get_env_id:
+        req:
+
+        resp_dispatch:
+            Exist:
+                env_id: ["Array", "String"]
+            NotFound:
+                msg: "String"
+
+    reset:
+        req:
+            config: "Any"
+        resp_dispatch:
+            Success:
+                env_id: "String"
+            InvalidConfig:
+                msg: "String"
+
+    step:
+        req:
+            env_id: "String"
+            action: "Int"
+        resp_dispatch:
+            Success:
+                state: "String"
+                score: "Float"
+                stop: "Bool"
+                info: "String"
+            EnvNotFound:
+                msg: "String"

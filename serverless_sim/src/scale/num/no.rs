@@ -1,23 +1,20 @@
-use crate::{
-    es::ESScaler,
-    fn_dag::FnId,
-    scale_preloader::{no::NoPreLoader, ScalePreLoader},
-    sim_env::SimEnv,
-};
+use crate::{fn_dag::FnId, scale::up_exec::no::NoScaleUpExec, sim_env::SimEnv};
 
-pub struct ScalerNo {
-    preloader: NoPreLoader,
+use super::ScaleNum;
+
+pub struct NoScaleNum {
+    preloader: NoScaleUpExec,
 }
 
-impl ScalerNo {
+impl NoScaleNum {
     pub fn new() -> Self {
-        ScalerNo {
-            preloader: NoPreLoader {},
+        NoScaleNum {
+            preloader: NoScaleUpExec {},
         }
     }
 }
 
-impl ESScaler for ScalerNo {
+impl ScaleNum for NoScaleNum {
     fn scale_for_fn(
         &mut self,
         env: &crate::sim_env::SimEnv,

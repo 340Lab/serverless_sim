@@ -3,16 +3,16 @@ use crate::sim_env::SimEnv;
 impl SimEnv {
     /// req_done_avg 平均每个请求处理完的时间 越低越好
     pub fn req_done_time_avg(&self) -> f32 {
-        if self.done_requests.borrow().len() == 0
+        if self.core.requests().len() == 0
         //  &&
-        // self.requests.borrow().len() == 0
+        // self.real_time.requests().len() == 0
         {
             return 0.0;
         }
 
         let sum = self
-            .done_requests
-            .borrow()
+            .core
+            .done_requests()
             .iter()
             // .filter(|req| {
             //     if req.is_done(self) {
@@ -32,33 +32,33 @@ impl SimEnv {
         //     .sum::<f32>();
 
         sum / (
-            self.done_requests.borrow().len() as f32
-            //  + self.requests.borrow().len()
+            self.core.done_requests().len() as f32
+            //  + self.real_time.requests().len()
         )
     }
 
     /// req_done_std 平均每个请求处理完的时间的标准差 越低越好
     pub fn req_done_time_std(&self) -> f32 {
-        if self.done_requests.borrow().len() == 0 {
+        if self.core.done_requests().len() == 0 {
             return 0.0;
         }
 
         let avg = self.req_done_time_avg();
         let sum = self
-            .done_requests
-            .borrow()
+            .core
+            .done_requests()
             .iter()
             // .filter(|req| req.is_done(self))
             .map(|req| (((req.end_frame - req.begin_frame) as f32) - avg).powi(2))
             .sum::<f32>();
-        (sum / (self.done_requests.borrow().len() as f32)).sqrt()
+        (sum / (self.core.done_requests().len() as f32)).sqrt()
     }
 
     /// req_done_90 90%的请求处理完的时间 越低越好
     pub fn req_done_time_avg_90p(&self) -> f32 {
         let mut req_done_times = self
-            .done_requests
-            .borrow()
+            .core
+            .done_requests()
             .iter()
             // .filter(|req| req.is_done(self))
             .map(|req| (req.end_frame - req.begin_frame) as f32)
@@ -73,14 +73,14 @@ impl SimEnv {
 
     // /// req_move_on_avg 平均每个请求处理任务推进量
     // fn score_req_move_on_avg(&self) -> f32 {
-    //     if self.requests.borrow().len() == 0 {
+    //     if self.real_time.requests().len() == 0 {
     //         return 0.0;
     //     }
     //     self.requests
     //         .borrow()
     //         .iter()
     //         .map(|(_req_id, req)| req.cur_frame_done.len() as f32)
-    //         .sum::<f32>() / (self.requests.borrow().len() as f32)
+    //         .sum::<f32>() / (self.real_time.requests().len() as f32)
     // }
 
     // fn node_avg_mem(&self) -> f32 {
@@ -90,14 +90,16 @@ impl SimEnv {
     //         .map(|node| node.mem)
     //         .sum::<f32>() / (self.nodes.borrow().len() as f32)
     // }
-
+    
+    // 已完成请求的平均成本 越低越好
     pub fn cost_each_req(&self) -> f32 {
-        if self.done_requests.borrow().len() == 0 {
+        if self.core.done_requests().len() == 0 {
             return 0.0;
         }
-        *self.cost.borrow() / (self.done_requests.borrow().len() as f32)
+        *self.help.cost() / (self.core.done_requests().len() as f32)
     }
 
+    // 性能成本比：数值越大表示在给定成本下处理请求的速度越快，性能越好
     pub fn cost_perform(&self) -> f32 {
         let cost = self.cost_each_req();
         if cost < 0.0001 {
@@ -111,6 +113,7 @@ impl SimEnv {
         1.0 / req_avg_time / cost
     }
 
+    // 计算仿真环境的整体评分，衡量不同调度和扩缩容策略以及参数设置下的系统性能优劣
     pub fn score(&self) -> f32 {
         // let req_done_time_avg = self.req_done_time_avg();
         // let req_done_time_std = self.req_done_time_std();
@@ -134,34 +137,9 @@ impl SimEnv {
         // } else {
         //     score -= self.cost_each_req();
         // }
-        if self.config.es.fit_hpa.is_some() {
-            panic!("not support fit_hpa");
-            // score = -(*self.distance2hpa.borrow() as f32);
-        } else {
-            if self.config.es.no_perform_cost_rate_score.is_none() {
-                score += self.cost_perform();
-            }
-            score -= self.req_done_time_avg();
-        }
-        //  -
-        // (
-        //     self.requests
-        //         .borrow()
-        //         .iter()
-        //         .map(|(_, r)| { self.current_frame() - r.begin_frame })
-        //         .sum::<usize>() as f32
-        // )
 
-        // Don't left too much requests
-        // score -= self.requests.borrow().len() as f32;
+        score -= self.req_done_time_avg();
 
-        //-self.req_done_time_avg() //越小越好
-        // - self.req_done_time_std()//越小越好
-        // - self.req_done_time_avg_90p()//越小越好
-        // + self.score_req_move_on_avg() // 越大越好
-        // - self.node_avg_mem()/500.0 // 越小越好
-        // - self.cost_each_req() // 越小越好
-        // + self.cost_perform()*10.0
         score
     }
 }

@@ -37,7 +37,7 @@ impl FnDAG {
             .setup_after_insert_into_dag(dag_i, begin);
 
         Self {
-            dag_i,
+            dag_i, 
             begin_fn_g_i: begin,
             dag_inner: dag,
         }
@@ -62,7 +62,7 @@ impl FnDAG {
             let next = env.fn_gen_rand_fn();
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
-                env.fns.borrow()[begin_fn].out_put_size,
+                env.core.fns()[begin_fn].out_put_size,
                 next,
             );
             env.func_mut(next)
@@ -136,7 +136,9 @@ impl Func {
 
 #[derive(EnumAsInner)]
 pub enum FnContainerState {
+    // 创建
     Starting { left_frame: usize },
+    // 运行
     Running,
 }
 
@@ -157,6 +159,7 @@ pub struct FnContainer {
     state: FnContainerState,
 }
 
+const DONE_CNT_WINDOW: usize = 20;
 const WORKING_CNT_WINDOW: usize = 20;
 
 impl FnContainer {
@@ -214,7 +217,7 @@ impl FnContainer {
         //     sim_env.current_frame()
         // );
         self.recent_frames_done_cnt.push_back(done_cnt);
-        while self.recent_frames_done_cnt.len() > *sim_env.each_fn_watch_window.borrow() {
+        while self.recent_frames_done_cnt.len() > DONE_CNT_WINDOW {
             self.recent_frames_done_cnt.pop_front();
         }
         self.recent_frames_working_cnt.push_back(working_cnt);
@@ -333,15 +336,15 @@ impl RunningTask {
 
 impl SimEnv {
     fn fn_gen_rand_fn(&self) -> FnId {
-        let id = self.fn_alloc_fn_id();
-        let (cpu, out_put_size) = if self.config.fntype_cpu() {
+        let id = self.help.fn_next_id();
+        let (cpu, out_put_size) = if self.help.config().fntype_cpu() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
-        } else if self.config.fntype_data() {
+        } else if self.help.config().fntype_data() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
         } else {
             panic!("not support fntype");
         };
-        self.fns.borrow_mut().push(Func {
+        self.core.fns_mut().push(Func {
             fn_id: id,
             cpu,
             mem: self.env_rand_f(100.0, 1000.0),
@@ -360,10 +363,10 @@ impl SimEnv {
         for _ in 0..apptype.app_cnt {
             match &*apptype.dag_type {
                 "single" => {
-                    let dag_i = self.dags.borrow().len();
+                    let dag_i = self.core.dags().len();
                     // (appconfig: &APPConfig, dag_i: DagId, env: &SimEnv)
                     let dag = FnDAG::instance_single_fn(dag_i, env);
-                    self.dags.borrow_mut().push(dag);
+                    self.core.dags_mut().push(dag);
 
                     // let mapcnt = env.env_rand_i(2, 5); //2-4
                     //         let dag_i = env.dags.borrow().len();
@@ -372,9 +375,9 @@ impl SimEnv {
                 "chain" => {}
                 "branch" => {
                     let mapcnt = self.env_rand_i(2, 5); //2-4
-                    let dag_i = self.dags.borrow().len();
+                    let dag_i = self.core.dags().len();
                     let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
-                    self.dags.borrow_mut().push(dag);
+                    self.core.dags_mut().push(dag);
                 }
                 _ => {
                     panic!("not support")
@@ -394,31 +397,24 @@ impl SimEnv {
         //     // (&self, apptype: &APPConfig, env: &SimEnv)
         //     self.gen_dags_for_apptype(app, env);
         // }
-        if self.config.dag_type_dag() {
+        if self.help.config().dag_type_dag() {
             for _ in 0..6 {
                 let mapcnt = env.env_rand_i(2, 5); //2-4
-                let dag_i = env.dags.borrow().len();
+                let dag_i = env.core.dags().len();
                 let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
                 log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
-                env.dags.borrow_mut().push(dag);
+                env.core.dags_mut().push(dag);
             }
-        } else if self.config.dag_type_single() {
+        } else if self.help.config().dag_type_single() {
             for _ in 0..10 {
-                let dag_i = env.dags.borrow().len();
+                let dag_i = env.core.dags().len();
                 let dag = FnDAG::instance_single_fn(dag_i, env);
-                env.dags.borrow_mut().push(dag);
+                env.core.dags_mut().push(dag);
             }
         } else {
-            panic!("not support dag type {}", self.config.dag_type);
+            panic!("not support dag type {}", self.help.config().dag_type);
         }
-    }
-
-    fn fn_alloc_fn_id(&self) -> usize {
-        let env = self;
-        let ret = *env.fn_next_id.borrow();
-        *env.fn_next_id.borrow_mut() += 1;
-        ret
     }
 
     // pub fn fn_is_fn_dag_begin(&self, dag_i: DagId, fn_i: FnId) -> bool {
@@ -434,7 +430,7 @@ impl SimEnv {
         let fngi = env.func(fnid).graph_i;
         let mut need_node_data: HashMap<NodeId, f32> = HashMap::new();
         let dag_i = req.dag_i;
-        let env_dags = env.dags.borrow();
+        let env_dags = env.core.dags();
         let dag = &env_dags[dag_i];
         for (_, pgi) in dag.dag_inner.parents(fngi).iter(&dag.dag_inner) {
             let p: FnId = dag.dag_inner[pgi];
@@ -442,9 +438,9 @@ impl SimEnv {
             need_node_data
                 .entry(node)
                 .and_modify(|v| {
-                    *v += env.fns.borrow()[p].out_put_size;
+                    *v += env.core.fns()[p].out_put_size;
                 })
-                .or_insert(env.fns.borrow()[p].out_put_size);
+                .or_insert(env.core.fns()[p].out_put_size);
         }
         RunningTask {
             data_recv: need_node_data
@@ -457,36 +453,36 @@ impl SimEnv {
     }
 
     pub fn func<'a>(&'a self, i: FnId) -> Ref<'a, Func> {
-        let b = self.fns.borrow();
+        let b = self.core.fns();
 
         Ref::map(b, |vec| &vec[i])
     }
 
     pub fn func_mut<'a>(&'a self, i: FnId) -> RefMut<'a, Func> {
-        let fns = self.fns.borrow_mut();
+        let fns = self.core.fns_mut();
 
         RefMut::map(fns, |fns| &mut fns[i])
     }
 
     pub fn dag_inner<'a>(&'a self, i: usize) -> Ref<'a, FnDagInner> {
-        let b = self.dags.borrow();
+        let b = self.core.dags();
 
         Ref::map(b, |vec| &vec[i].dag_inner)
     }
 
     pub fn dag<'a>(&'a self, i: usize) -> Ref<'a, FnDAG> {
-        let b = self.dags.borrow();
+        let b = self.core.dags();
 
         Ref::map(b, |vec| &vec[i])
     }
 
     pub fn fn_container_cnt(&self, fnid: FnId) -> usize {
-        let map = self.fn_2_nodes.borrow();
+        let map = self.core.fn_2_nodes();
         map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
     }
 
     pub fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {
-        let map = self.fn_2_nodes.borrow();
+        let map = self.core.fn_2_nodes();
         if let Some(nodes) = map.get(&fnid) {
             for node in nodes.iter() {
                 let node = self.node(*node);
