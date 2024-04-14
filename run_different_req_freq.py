@@ -6,27 +6,19 @@ CUR_FDIR = os.path.dirname(CUR_FPATH)
 # chdir to the directory of this script
 os.chdir(CUR_FDIR)
 
-req_freqs=["low","middle","high"]
+req_freqs=["low"]
+req_freqs=["low"]
 
 import threading
-from proxy_env2 import ProxyEnv2
+from proxy_env3 import ProxyEnv3
 
 class Task: 
-    def algo(self,up:str,down:str,sche:str):
-        self.env=ProxyEnv2(False,{
-            "rand_seed":"hello",
-            "request_freq":"middle",
-            "dag_type":"single",
-            "cold_start":"high",
-            "no_log":False,
-            "fn_type":"cpu",
-            "es": {
-                "up":up,
-                "down":down,
-                "sche":sche,
-                "down_smooth":"direct",
-            },    
-        })
+    def algo(self,algo_conf):
+        self.env=ProxyEnv3()
+        self.env.config["es"]['scale_num'][algo_conf[0][0]]=algo_conf[0][1]
+        self.env.config["es"]['scale_down_exec'][algo_conf[1][0]]=algo_conf[1][1]
+        self.env.config["es"]['scale_up_exec'][algo_conf[2][0]]=algo_conf[2][1]
+        self.env.config["es"]['sche'][algo_conf[3][0]]=algo_conf[3][1]
         return self
         
     def config(self,config_cb):
@@ -42,8 +34,8 @@ class Task:
         return self
 
 algos=[
-    ["hpa","hpa","rule"],
-    ["hpa","hpa","pass"],
+    # scale_num, scale_down_exec, scale_up_exec, sche
+    [["hpa",""],["default",""],["least_task",""],["pos",""]],
     # ["lass","lass","rule"],
     # ["fnsche","fnsche","fnsche"],
     # ["faasflow","faasflow","faasflow"],
@@ -57,7 +49,7 @@ for req_freq in req_freqs:
             config["request_freq"]=req_freq
         def task():
             Task() \
-                .algo(algo[0],algo[1],algo[2]) \
+                .algo(algo) \
                 .config(cb) \
                 .run()
         t = threading.Thread(target=task, args=())

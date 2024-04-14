@@ -14,7 +14,9 @@ use crate::{
 pub type NodeId = usize;
 
 pub struct NodeRscLimit {
+    // 节点cpu上限
     pub cpu: f32,
+    // 节点mem上限
     pub mem: f32,
 }
 
@@ -32,8 +34,10 @@ pub struct Node {
     // #资源限制：cpu, mem
     pub rsc_limit: NodeRscLimit,
 
+    // 待处理的任务
     pending_tasks: RefCell<BTreeSet<(ReqId, FnId)>>,
 
+    // 节点上已有的函数容器
     pub fn_containers: RefCell<HashMap<FnId, FnContainer>>,
 
     // 使用了的cpu
@@ -42,12 +46,14 @@ pub struct Node {
     // 使用了的内存
     pub mem: RefCell<f32>,
 
+    // 上一帧使用的cpu
     pub last_frame_cpu: f32,
 
     pub frame_run_count: usize,
 }
 
 impl Node {
+    // 返回已使用的mem量
     pub fn mem(&self) -> f32 {
         *self.mem.borrow()
     }
@@ -66,15 +72,23 @@ impl Node {
             pending_tasks: BTreeSet::new().into(),
         }
     }
+
+    // 增加任务
     pub fn add_task(&self, req_id: ReqId, fn_id: FnId) {
         self.pending_tasks.borrow_mut().insert((req_id, fn_id));
     }
+
+    // 返回剩余的mem量
     pub fn left_mem(&self) -> f32 {
         self.rsc_limit.mem - self.mem()
     }
+
+    // 返回剩余的可用于部署容器的mem量
     pub fn left_mem_for_place_container(&self) -> f32 {
         self.rsc_limit.mem - self.mem() - NODE_LEFT_MEM_THRESHOLD
     }
+
+    // 判断剩余的可用于部署容器的mem量是否足够部署特定函数的容器
     pub fn mem_enough_for_container(&self, func: &Func) -> bool {
         self.left_mem_for_place_container() > func.cold_start_container_mem_use
             && self.left_mem_for_place_container() > func.container_mem()
@@ -83,20 +97,30 @@ impl Node {
         assert!(self.node_id < NODE_CNT);
         self.node_id
     }
+
+    // 比较两个节点的资源使用情况
+    // pub enum Ordering {
+    //     Less,
+    //     Equal,
+    //     Greater,
+    // }
     pub fn cmp_rsc_used(&self, other: &Self) -> Ordering {
         (self.cpu * NODE_SCORE_CPU_WEIGHT + self.mem() * NODE_SCORE_MEM_WEIGHT)
             .partial_cmp(&(other.cpu * NODE_SCORE_CPU_WEIGHT + other.mem() * NODE_SCORE_MEM_WEIGHT))
             .unwrap()
     }
 
+    // 返回节点上所有任务（待处理和正在运行）的总数
     pub fn all_task_cnt(&self) -> usize {
         self.pending_task_cnt() + self.running_task_cnt()
     }
 
+    // 返回节点上待处理任务的数量
     pub fn pending_task_cnt(&self) -> usize {
         self.pending_tasks.borrow().len()
     }
 
+    // 返回节点上正在运行的任务数量
     pub fn running_task_cnt(&self) -> usize {
         self.fn_containers
             .borrow()
@@ -105,6 +129,7 @@ impl Node {
             .sum()
     }
 
+    // 返回指定函数ID的容器的可变引用
     pub fn container_mut<'a>(&'a self, fnid: FnId) -> Option<RefMut<'a, FnContainer>> {
         let b = self.fn_containers.borrow_mut();
         if !b.contains_key(&fnid) {
@@ -117,6 +142,8 @@ impl Node {
         Some(res)
         // .get_mut(&fnid)
     }
+
+    // 返回指定函数ID的容器的不可变引用
     pub fn container<'a>(&'a self, fnid: FnId) -> Option<Ref<'a, FnContainer>> {
         let b = self.fn_containers.borrow();
         if !b.contains_key(&fnid) {
@@ -133,6 +160,7 @@ impl Node {
     //     self.fn_containers.get(&fnid)
     // }
 
+    // 尝试在节点上加载指定函数ID的容器。如果内存足够且容器不存在，则创建新容器并更新节点状态
     pub fn try_load_spec_container(&self, fnid: FnId, env: &SimEnv) {
         if self.container(fnid).is_none() {
             // try cold start
@@ -143,8 +171,8 @@ impl Node {
                 // log::info!("expand fn: {fn_id} to node: {node_id}");
                 // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
                 let node_id = self.node_id();
-                env.fn_2_nodes
-                    .borrow_mut()
+                env.core
+                    .fn_2_nodes_mut()
                     .entry(fnid)
                     .and_modify(|v| {
                         v.insert(node_id);
@@ -164,6 +192,8 @@ impl Node {
         }
     }
 
+    // 尝试加载节点上所有待处理任务的容器
+    // 如果内存足够且容器不存在，则创建新容器，将任务状态添加到容器，并从待处理任务集合中移除
     pub fn load_container(&self, env: &SimEnv) {
         let mut removed_pending = vec![];
         for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
@@ -189,9 +219,9 @@ impl SimEnv {
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id);
             // let node_i = nodecnt;
-            env.nodes.borrow_mut().push(node);
+            env.core.nodes_mut().push(node);
 
-            let nodecnt: usize = env.nodes.borrow().len();
+            let nodecnt: usize = env.core.nodes().len();
 
             for i in 0..nodecnt - 1 {
                 let randspeed = env.env_rand_f(8000.0, 10000.0);
@@ -201,13 +231,13 @@ impl SimEnv {
 
         // # init nodes graph
         let dim = NODE_CNT;
-        *self.node2node_connection_count.borrow_mut() = vec![vec![0; dim]; dim];
-        *self.node2node_graph.borrow_mut() = vec![vec![0.0; dim]; dim];
+        *self.core.node2node_connection_count_mut() = vec![vec![0; dim]; dim];
+        *self.core.node2node_graph_mut() = vec![vec![0.0; dim]; dim];
         for i in 0..dim {
             _init_one_node(self, i);
         }
 
-        log::info!("node speed graph: {:?}", self.node2node_graph.borrow());
+        log::info!("node bandwidth graph: {:?}", self.core.node2node_graph());
     }
 
     /// 设置节点间网速
@@ -215,7 +245,7 @@ impl SimEnv {
     fn node_set_speed_btwn(&self, n1: usize, n2: usize, speed: f32) {
         assert!(n1 != n2);
         fn _set_speed_btwn(env: &SimEnv, nbig: usize, nsmall: usize, speed: f32) {
-            env.node2node_graph.borrow_mut()[nbig][nsmall] = speed;
+            env.core.node2node_graph_mut()[nbig][nsmall] = speed;
         }
         if n1 > n2 {
             _set_speed_btwn(self, n1, n2, speed);
@@ -228,7 +258,7 @@ impl SimEnv {
     /// - speed: MB/s
     pub fn node_get_speed_btwn(&self, n1: NodeId, n2: NodeId) -> f32 {
         let _get_speed_btwn =
-            |nbig: usize, nsmall: usize| self.node2node_graph.borrow()[nbig][nsmall];
+            |nbig: usize, nsmall: usize| self.core.node2node_graph()[nbig][nsmall];
         if n1 > n2 {
             _get_speed_btwn(n1, n2)
         } else {
@@ -238,7 +268,7 @@ impl SimEnv {
 
     //获取计算速度最慢的节点
     pub fn node_get_lowest(&self) -> NodeId {
-        let nodes = self.nodes.borrow();
+        let nodes = self.core.nodes();
         let res = nodes
             .iter()
             .min_by(|x, y| x.cpu.partial_cmp(&y.cpu).unwrap())
@@ -250,8 +280,8 @@ impl SimEnv {
     pub fn node_btw_get_lowest(&self) -> f32 {
         let mut low_btw = None;
 
-        for i in 0..self.nodes.borrow().len() {
-            for j in i + 1..self.nodes.borrow().len() {
+        for i in 0..self.core.nodes().len() {
+            for j in i + 1..self.core.nodes().len() {
                 let btw = self.node_get_speed_btwn(i, j);
                 if let Some(low_btw_) = low_btw.take() {
                     low_btw = Some(btw.min(low_btw_));
@@ -266,7 +296,7 @@ impl SimEnv {
 
     pub fn node_set_connection_count_between(&self, n1: NodeId, n2: NodeId, count: usize) {
         let _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
-            self.node2node_connection_count.borrow_mut()[nbig][nsmall] = count;
+            self.core.node2node_connection_count_mut()[nbig][nsmall] = count;
         };
         if n1 > n2 {
             _set_connection_count_between(n1, n2, count);
@@ -277,7 +307,7 @@ impl SimEnv {
 
     pub fn node_get_connection_count_between(&self, n1: NodeId, n2: NodeId) -> usize {
         let _get_connection_count_between =
-            |nbig: usize, nsmall: usize| self.node2node_connection_count.borrow()[nbig][nsmall];
+            |nbig: usize, nsmall: usize| self.core.node2node_connection_count()[nbig][nsmall];
         if n1 > n2 {
             _get_connection_count_between(n1, n2)
         } else {
@@ -316,26 +346,31 @@ impl SimEnv {
         }
     }
 
+    // 返回节点数量
     pub fn node_cnt(&self) -> usize {
-        self.nodes.borrow().len()
+        self.core.nodes().len()
     }
 
+    // 返回对节点列表的不可变引用
     pub fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
-        self.nodes.borrow()
+        self.core.nodes()
     }
 
+    // 返回对节点列表的可变引用
     pub fn nodes_mut<'a>(&'a self) -> RefMut<'a, Vec<Node>> {
-        self.nodes.borrow_mut()
+        self.core.nodes_mut()
     }
 
+    // 返回对指定节点ID的不可变引用
     pub fn node<'a>(&'a self, i: NodeId) -> Ref<'a, Node> {
-        let b = self.nodes.borrow();
+        let b = self.nodes();
 
         Ref::map(b, |vec| &vec[i])
     }
 
+    // 返回对指定节点ID的可变引用
     pub fn node_mut<'a>(&'a self, i: NodeId) -> RefMut<'a, Node> {
-        let b = self.nodes.borrow_mut();
+        let b = self.nodes_mut();
 
         RefMut::map(b, |vec| &mut vec[i])
     }

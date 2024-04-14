@@ -3,9 +3,11 @@ import CurrentState from "./components/CurrentState.vue";
 import SideBar from "./components/SideBar.vue";
 import HistoryMetric from "./components/HistoryMetric.vue";
 import HorizontalComparation from "./components/HorizontalComparation.vue";
+import NetworkTopology from "./components/NetworkTopology.vue";
 
 import { request } from "./request";
 import { local_cache } from "./local_cache";
+import {page} from "@/page";
 
 class FetchCanceller {
   cancel = false;
@@ -17,11 +19,14 @@ export default {
     CurrentState,
     HistoryMetric,
     HorizontalComparation,
+    NetworkTopology,
   },
   data() {
     return {
-      current_state_or_history: true,
+      current_page: page.TopoPage,
+      // current_state_or_history: true,
       selected_keys: {},
+      page:page,
     };
   },
 
@@ -31,9 +36,9 @@ export default {
       // console.log("selected bar", select);
       if (select == 0) {
         this.selected_keys = {};
-        this.current_state_or_history = true;
+        this.current_page = page.StatePage;
       } else {
-        this.current_state_or_history = false;
+        this.current_page = page.RecordPage;
         if ("_" + select in this.selected_keys) {
           this.selected_keys["_" + select].cancel = true;
           this.$refs.history_metric.clean_frame_draw(select_name);
@@ -128,11 +133,21 @@ export default {
         style="width: 200px"
         ref="sidebar"
       />
-      <CurrentState class="right_column" v-if="current_state_or_history" />
-      <div v-else class="right_column">
-        <HorizontalComparation class="right" />
-        <HistoryMetric class="right" ref="history_metric" />
-      </div>
+      <NetworkTopology
+          v-if="current_page===page.TopoPage"
+      ></NetworkTopology>
+      <HistoryMetric
+          v-if="current_page===page.RecordPage"
+      ></HistoryMetric>
+      <CurrentState
+          v-if="current_page===page.StatePage"
+      ></CurrentState>
+<!--      <CurrentState class="right_column" v-if="current_state_or_history" />-->
+<!--      <div class="right_column">-->
+<!--        HELLO-->
+<!--&lt;!&ndash;        <HorizontalComparation class="right" />&ndash;&gt;-->
+<!--&lt;!&ndash;        <HistoryMetric class="right" ref="history_metric" />&ndash;&gt;-->
+<!--      </div>-->
       <!-- <HistoryMetric /> -->
     </div>
   </main>

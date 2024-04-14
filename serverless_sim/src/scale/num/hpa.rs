@@ -1,35 +1,35 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::scale::down_exec::ScaleDownExec;
 use crate::{
-    actions::ESActionWrapper,
-    algos::ContainerMetric,
-    es::ESScaler,
-    fn_dag::FnId,
-    scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
-    scale_executor::{ScaleExecutor, ScaleOption},
-    scale_preloader::ScalePreLoader,
+    actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, scale::down_exec::ScaleOption,
     sim_env::SimEnv,
+};
+
+use super::{
+    down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
+    ScaleNum,
 };
 
 enum Target {
     CpuUseRate(f32),
 }
 
-pub struct HpaESScaler {
+pub struct HpaScaleNum {
     target: Target,
     // target_tolerance: determines how close the target/current
     //   resource ratio must be to 1.0 to skip scaling
     target_tolerance: f32,
-    pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+    pub scale_down_policy: Box<dyn ScaleDownFilter + Send>,
     fn_sche_container_count: HashMap<FnId, usize>,
 }
 
-impl HpaESScaler {
+impl HpaScaleNum {
     pub fn new() -> Self {
         Self {
             target: Target::CpuUseRate(0.5),
             target_tolerance: 0.1,
-            scale_down_policy: Box::new(CarefulScaleDown::new()),
+            scale_down_policy: Box::new(CarefulScaleDownFilter::new()),
             fn_sche_container_count: HashMap::new(),
         }
     }
@@ -84,7 +84,7 @@ impl HpaESScaler {
     }
 }
 
-impl ESScaler for HpaESScaler {
+impl ScaleNum for HpaScaleNum {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         self.fn_sche_container_count
             .get(&fnid)
@@ -126,9 +126,9 @@ impl ESScaler for HpaESScaler {
                     (avg_cpu_use_rate / cpu_target_use_rate).ceil() as usize;
 
                 if env
-                    .spec_scheduler
-                    .borrow()
-                    .as_ref()
+                    .mechanisms
+                    .spec_scheduler_mut()
+                    .as_mut()
                     .unwrap()
                     .this_turn_will_schedule(fnid)
                     && desired_container_cnt == 0
@@ -160,7 +160,7 @@ impl ESScaler for HpaESScaler {
                 if desired_container_cnt < container_cnt {
                     // # scale down
                     let scale = container_cnt - desired_container_cnt;
-                    env.scale_executor.borrow_mut().scale_down(
+                    env.mechanisms.scale_executor_mut().exec_scale_down(
                         env,
                         ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
                     );

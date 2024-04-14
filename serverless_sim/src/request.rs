@@ -40,11 +40,14 @@ pub struct Request {
 
     ///完成执行的函数节点，时间
     pub done_fns: HashMap<FnId, usize>,
-
+    
+    // 当前帧已完成的函数
     pub cur_frame_done: HashSet<FnId>,
+
     //请求到达的时刻
     pub begin_frame: usize,
 
+    // 请求完成的时刻
     pub end_frame: usize,
 
     // fn_dag_walker: Topo<NodeIndex, <FnDagInner as Visitable>::Map>,
@@ -68,7 +71,7 @@ impl Request {
     // }
     pub fn new(env: &SimEnv, dag_i: DagId, begin_frame: usize) -> Self {
         let new = Self {
-            req_id: env.req_alloc_req_id(),
+            req_id: env.help.req_next_id(),
             dag_i,
             fn_node: HashMap::new(),
             done_fns: HashMap::new(),
@@ -89,6 +92,7 @@ impl Request {
         new
     }
 
+    // 判断某函数的前驱函数是否已经全部执行完毕
     pub fn parents_all_done(&self, env: &SimEnv, fnid: FnId) -> bool {
         let ps = env.func(fnid).parent_fns(env);
         for p in &ps {
@@ -101,15 +105,16 @@ impl Request {
 
     pub fn print_fns(&self, env: &SimEnv) {
         let dag_i = self.dag_i;
-        let mut iter = Topo::new(&env.dags.borrow()[dag_i].dag_inner);
+        let mut iter = Topo::new(&env.core.dags()[dag_i].dag_inner);
 
-        while let Some(next) = iter.next(&env.dags.borrow()[dag_i].dag_inner) {
-            let fnid = &env.dags.borrow()[dag_i].dag_inner[next];
+        while let Some(next) = iter.next(&env.core.dags()[dag_i].dag_inner) {
+            let fnid = &env.core.dags()[dag_i].dag_inner[next];
             print!("{} ", fnid);
         }
         println!();
     }
 
+    // 获取指定函数被调度到的节点
     pub fn get_fn_node(&self, fnid: FnId) -> Option<NodeId> {
         self.fn_node.get(&fnid).map(|v| *v)
     }
@@ -127,6 +132,7 @@ impl Request {
     //     self.current_fn
     // }
 
+    // 标记指定函数为已完成，更新当前帧数已完成函数，并检查请求是否已完成
     pub fn fn_done(&mut self, env: &SimEnv, fnid: FnId, current_frame: usize) {
         // log::info!("request {} fn {} done", self.req_id, fnid);
         self.done_fns.insert(fnid, current_frame);
@@ -135,50 +141,45 @@ impl Request {
             self.end_frame = current_frame;
         }
     }
+    // 返回请求对应DAG中节点（函数）的数量
     pub fn fn_count(&self, env: &SimEnv) -> usize {
-        env.dags.borrow()[self.dag_i].dag_inner.node_count()
+        env.core.dags()[self.dag_i].dag_inner.node_count()
     }
+    // 判断请求是否已完成
     pub fn is_done(&self, env: &SimEnv) -> bool {
         self.done_fns.len() == self.fn_count(env)
     }
 }
 
 impl SimEnv {
-    pub fn req_alloc_req_id(&self) -> ReqId {
-        let env = self;
-        let ret = *env.req_next_id.borrow();
-        *env.req_next_id.borrow_mut() += 1;
-        ret
-    }
-
     pub fn req_sim_gen_requests(&self) {
         let env = self;
-        if *env.current_frame.borrow() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let scale = if env.config.dag_type_dag() {
-                if env.config.request_freq_high() {
+        if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
+            let scale = if env.help.config().dag_type_dag() {
+                if env.help.config().request_freq_high() {
                     30
-                } else if env.config.request_freq_middle() {
+                } else if env.help.config().request_freq_middle() {
                     20
                 } else {
                     10
                 }
             } else {
-                if env.config.request_freq_high() {
+                if env.help.config().request_freq_high() {
                     120
-                } else if env.config.request_freq_middle() {
+                } else if env.help.config().request_freq_middle() {
                     75
                 } else {
                     30
                 }
             };
 
-            let req_cnt = env.env_rand_i(scale, scale * env.dags.borrow().len());
+            let req_cnt = env.env_rand_i(scale, scale * env.core.dags().len());
 
             for _ in 0..req_cnt {
-                let dag_i = env.env_rand_i(0, env.dags.borrow().len() - 1);
-                let request = Request::new(env, dag_i, *env.current_frame.borrow());
+                let dag_i = env.env_rand_i(0, env.core.dags().len() - 1);
+                let request = Request::new(env, dag_i, *env.core.current_frame());
                 let req_id = request.req_id;
-                env.requests.borrow_mut().insert(req_id, request);
+                env.core.requests_mut().insert(req_id, request);
             }
 
             log::info!("Gen requests {req_cnt} at frame {}", env.current_frame());
@@ -186,13 +187,14 @@ impl SimEnv {
     }
 
     pub fn on_request_done(&self, req_id: ReqId) {
-        let req = self.requests.borrow_mut().remove(&req_id).unwrap();
-        self.metric.borrow_mut().add_done_request();
-        self.done_requests.borrow_mut().push(req);
+        let req = self.core.requests_mut().remove(&req_id).unwrap();
+        self.help.metric_mut().add_done_request();
+        self.core.done_requests_mut().push(req);
     }
 
+    // 返回指定请求ID的不可变引用
     pub fn request<'a>(&'a self, i: ReqId) -> Ref<'a, Request> {
-        let b = self.requests.borrow();
+        let b = self.core.requests();
 
         Ref::map(b, |map| {
             map.get(&i)
@@ -200,8 +202,9 @@ impl SimEnv {
         })
     }
 
+    // 返回指定请求ID的可变引用
     pub fn request_mut<'a>(&'a self, i: ReqId) -> RefMut<'a, Request> {
-        let b = self.requests.borrow_mut();
+        let b = self.core.requests_mut();
 
         RefMut::map(b, |map| {
             map.get_mut(&i)

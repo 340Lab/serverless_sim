@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, ESConfig},
+    config::{Config, ESConfig, ModuleESConf},
     // parse_arg,
     sim_env::SimEnv,
 };
@@ -116,10 +116,10 @@ impl Records {
     }
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
-        frame[FRAME_IDX_FRAME] = (*sim_env.current_frame.borrow()).into();
+        frame[FRAME_IDX_FRAME] = (*sim_env.core.current_frame()).into();
         frame[FRAME_IDX_RUNNING_REQS] = sim_env
-            .requests
-            .borrow()
+            .core
+            .requests()
             .iter()
             .map(|(reqid, req)| {
                 serde_json::json!({
@@ -131,8 +131,8 @@ impl Records {
             .collect::<Vec<_>>()
             .into();
         frame[FRAME_IDX_NODES] = sim_env
-            .nodes
-            .borrow()
+            .core
+            .nodes()
             .iter()
             .map(|node| {
                 serde_json::json!( {
@@ -148,12 +148,12 @@ impl Records {
         frame[FRAME_IDX_REQ_DONE_TIME_AVG_90P] = sim_env.req_done_time_avg_90p().into();
         frame[FRAME_IDX_COST] = sim_env.cost_each_req().into();
         frame[FRAME_IDX_SCORE] = sim_env.score().into();
-        frame[FRAME_IDX_DONE_REQ_COUNT] = sim_env.metric.borrow().done_request_count.into();
+        frame[FRAME_IDX_DONE_REQ_COUNT] = sim_env.help.metric().done_request_count.into();
 
         self.frames.push(frame);
     }
     pub fn flush(&self, env: &SimEnv) {
-        if env.config.no_log {
+        if env.help.config().no_log {
             return;
         }
         if self.frames.len() > 9 {
@@ -193,60 +193,9 @@ impl RecordFile {
             fn_type: "".to_owned(),
             // app_types: vec![],
             no_log: false,
-            es: ESConfig {
-                up: "".to_owned(),
-                down: "".to_owned(),
-                sche: "".to_owned(),
-                ai_type: None,
-                down_smooth: "".to_owned(),
-                no_perform_cost_rate_score: "".to_owned().into(),
-                fit_hpa: None,
-            },
+            es: ModuleESConf::new().0,
         };
 
-        for config_part in front_utc.split(".") {
-            match idx {
-                0 => {
-                    config.rand_seed = config_part.replacen("sd", "", 1);
-                }
-                1 => {
-                    config.request_freq = config_part.replacen("rf", "", 1);
-                }
-                2 => {
-                    config.dag_type = config_part.replacen("dt", "", 1);
-                }
-                3 => {
-                    config.cold_start = config_part.replacen("cs", "", 1);
-                }
-                4 => {
-                    config.fn_type = config_part.replacen("ft", "", 1);
-                }
-                5 => {
-                    config.es.up = config_part.replacen("up", "", 1);
-                }
-                6 => {
-                    config.es.down = config_part.replacen("dn", "", 1);
-                }
-                7 => {
-                    config.es.sche = config_part.replacen("sc", "", 1);
-                }
-                8 => {
-                    config.es.ai_type = if config_part.find("at").is_some() {
-                        Some(config_part.replacen("at", "", 1))
-                    } else {
-                        None
-                    };
-                }
-                9 => {
-                    config.es.down_smooth = config_part.replacen("ds", "", 1);
-                    break;
-                }
-                _ => {
-                    unreachable!("impossible");
-                }
-            }
-            idx += 1;
-        }
         Some(Self {
             file_name,
             config,

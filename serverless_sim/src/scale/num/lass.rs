@@ -1,26 +1,26 @@
 use std::collections::HashMap;
 
+use super::{
+    down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
+    ScaleNum,
+};
+use crate::scale::down_exec::ScaleDownExec;
 use crate::{
-    actions::ESActionWrapper,
-    algos::ContainerMetric,
-    es::ESScaler,
-    fn_dag::FnId,
-    scale_down_policy::{CarefulScaleDown, ScaleDownPolicy},
-    scale_executor::{ScaleExecutor, ScaleOption},
+    actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, scale::down_exec::ScaleOption,
     sim_env::SimEnv,
 };
 
-pub struct LassESScaler {
+pub struct LassScaleNum {
     pub latency_required: f32,
-    pub scale_down_policy: Box<dyn ScaleDownPolicy + Send>,
+    pub scale_down_policy: Box<dyn ScaleDownFilter + Send>,
     fn_sche_container_count: HashMap<FnId, usize>,
 }
 
-impl LassESScaler {
+impl LassScaleNum {
     pub fn new() -> Self {
         Self {
             latency_required: 7.0,
-            scale_down_policy: Box::new(CarefulScaleDown::new()),
+            scale_down_policy: Box::new(CarefulScaleDownFilter::new()),
             fn_sche_container_count: HashMap::new(),
         }
     }
@@ -28,7 +28,7 @@ impl LassESScaler {
 
 // unsafe impl Send for LassEFScaler {}
 
-impl ESScaler for LassESScaler {
+impl ScaleNum for LassScaleNum {
     fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
         self.fn_sche_container_count
             .get(&fnid)
@@ -51,7 +51,7 @@ impl ESScaler for LassESScaler {
                     let mut recent_speed_sum = 0.0;
                     let mut recent_speed_cnt = 0;
 
-                    if let Some(nodes) = env.fn_2_nodes.borrow().get(&fnid) {
+                    if let Some(nodes) = env.core.fn_2_nodes().get(&fnid) {
                         nodes.iter().for_each(|&nodeid| {
                             let node = env.node(nodeid);
                             let container = node.container(fnid).unwrap();
@@ -84,8 +84,8 @@ impl ESScaler for LassESScaler {
                 .filter_desired(fnid, desired_container_cnt, container_cnt);
 
         if env
-            .spec_scheduler
-            .borrow()
+            .mechanisms
+            .spec_scheduler()
             .as_ref()
             .unwrap()
             .this_turn_will_schedule(fnid)
@@ -98,7 +98,7 @@ impl ESScaler for LassESScaler {
             // # scale down
             let scale = container_cnt - desired_container_cnt;
 
-            env.scale_executor.borrow_mut().scale_down(
+            env.mechanisms.scale_executor_mut().exec_scale_down(
                 env,
                 ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
             );

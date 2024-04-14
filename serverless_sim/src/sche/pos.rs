@@ -4,9 +4,8 @@ use crate::{
     fn_dag::FnId,
     node::NodeId,
     request::{ReqId, Request},
-    scale_executor::ScaleExecutor,
-    schedule::{schedule_helper, Scheduler},
     sim_env::SimEnv,
+    sim_run::{schedule_helper, Scheduler},
 };
 
 pub struct PosScheduler {
@@ -62,7 +61,7 @@ impl PosScheduler {
             schedule_helper::CollectTaskConfig::PreAllSched,
         );
 
-        let mut node2node_connection_count = env.node2node_connection_count.borrow().clone();
+        let mut node2node_connection_count = env.core.node2node_connection_count().clone();
         schedule_able_fns.sort_by(|&a, &b| {
             env.func(a)
                 .cpu
@@ -71,7 +70,8 @@ impl PosScheduler {
                 .reverse()
         });
         for &fnid in &schedule_able_fns {
-            // 可以调度的节点数
+            // 可以调度的节点数 ???
+            // 可以调度的容器数量 ???
             let mut scheable_node_count = env.spec_scaler().fn_available_count(fnid, env);
             if scheable_node_count == 0 {
                 log::warn!("scaler should ask scheduler for requirement and prepare enough nodes");
@@ -83,9 +83,8 @@ impl PosScheduler {
 
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
             let target_cnt = env.spec_scaler().fn_available_count(fnid, env);
-            env.scale_preloader
-                .borrow_mut()
-                .pre_load(target_cnt, fnid, env);
+            env.mechanisms.scale_up_exec_mut()
+                .exec_scale_up(target_cnt, fnid, env);
 
             // 选择节点算法，首先选出包含当前函数容器的节点
             let nodes_with_container: Vec<NodeId> = env
@@ -301,7 +300,7 @@ impl PosScheduler {
             //         if time > 0 {
             //             let req_id = req.req_id;
             //             env.start_timer(time as usize, move |env: &SimEnv| {
-            //                 let requests = env.requests.borrow();
+            //                 let requests = env.real_time.requests();
             //                 if let Some(req) = requests.get(&req_id) {
             //                     // 子函数未调度
             //                     if !req.fn_node.contains_key(&child_fnid) {
@@ -329,14 +328,14 @@ impl Scheduler for PosScheduler {
         //     .iter()
         //     .map(|n| (n.node_id(), n.task_cnt()))
         //     .collect::<HashMap<NodeId, usize>>();
-        for (_req_id, req) in env.requests.borrow_mut().iter_mut() {
+        for (_req_id, req) in env.core.requests_mut().iter_mut() {
             self.schedule_one_req_fns(env, req);
         }
     }
 
     fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {
         self.schealeable_fns.clear();
-        for (_req_id, req) in env.requests.borrow().iter() {
+        for (_req_id, req) in env.core.requests().iter() {
             self.collect_scheable_fns_for_req(env, req);
         }
     }
