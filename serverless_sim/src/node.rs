@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    fn_dag::{FnContainer, FnId, Func},
+    fn_dag::{FnContainer, FnContainerState, FnId, Func},
     request::ReqId,
     sim_env::SimEnv,
     util, NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
@@ -160,8 +160,43 @@ impl Node {
     //     self.fn_containers.get(&fnid)
     // }
 
+    pub fn try_unload_container(&mut self, fnid: FnId, env: &SimEnv) {
+        log::info!("scale down fn {fnid} from node {}", self.node_id());
+        // env.set_scale_down_result(fnid, self.node_id());
+
+        let nodeid = self.node_id();
+        let cont = self.fn_containers.borrow_mut().remove(&fnid).unwrap();
+        env.core
+            .fn_2_nodes_mut()
+            .get_mut(&fnid)
+            .unwrap()
+            .remove(&nodeid);
+        match cont.state() {
+            FnContainerState::Starting { .. } => {
+                *env.node_mut(nodeid).mem.borrow_mut() -=
+                    env.func(fnid).cold_start_container_mem_use;
+            }
+            FnContainerState::Running => {
+                *self.mem.borrow_mut() -= env.func(fnid).container_mem();
+            }
+        }
+        // let fncon = self.fn_containers.borrow_mut().remove(&fnid).unwrap();
+        // let con_mem_take = fncon.mem_take(env);
+        // // log::info!("unload fn: {fn_id} from node: {node_id}");
+        // // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
+        // let node_id = self.node_id();
+        // env.core.fn_2_nodes_mut().entry(fnid).and_modify(|v| {
+        //     v.remove(&node_id);
+        // });
+        // // will recalc next frame begin
+        // // but we need to add mem to node in this frame because it's new container
+        // *self.mem.borrow_mut() -= con_mem_take;
+        // self.nodes.borrow_mut()[node_id].mem +=
+        //     self.func(fn_id).cold_start_container_mem_use;
+    }
+
     // 尝试在节点上加载指定函数ID的容器。如果内存足够且容器不存在，则创建新容器并更新节点状态
-    pub fn try_load_spec_container(&self, fnid: FnId, env: &SimEnv) {
+    pub fn try_load_container(&self, fnid: FnId, env: &SimEnv) {
         if self.container(fnid).is_none() {
             // try cold start
             if self.mem_enough_for_container(&env.func(fnid)) {
@@ -197,7 +232,7 @@ impl Node {
     pub fn load_container(&self, env: &SimEnv) {
         let mut removed_pending = vec![];
         for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
-            self.try_load_spec_container(fnid, env);
+            self.try_load_container(fnid, env);
 
             if let Some(mut fncon) = self.container_mut(fnid) {
                 // add to container

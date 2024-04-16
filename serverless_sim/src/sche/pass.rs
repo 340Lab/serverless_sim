@@ -8,6 +8,7 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     fn_dag::{DagId, FnId},
+    mechanism::{DownCmd, ScheCmd, UpCmd},
     node::NodeId,
     request::{ReqId, Request},
     sim_env::SimEnv,
@@ -147,7 +148,7 @@ impl PassScheduler {
         }
     }
 
-    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) {
+    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) -> Vec<ScheCmd> {
         self.prepare_priority_for_dag(req, env);
 
         let dag = env.dag(req.dag_i);
@@ -166,20 +167,15 @@ impl PassScheduler {
             self.select_node_for_fn(&mut schedule_to_map, &mut schedule_to, *func_id, req, env);
         }
 
-        for (fnid, nodeid) in schedule_to {
-            // if env.node(nodeid).fn_containers.get(&fnid).is_none() {
-            //     if env
-            //         .scale_executor
-            //         .borrow_mut()
-            //         .scale_up_fn_to_nodes(env, fnid, &vec![nodeid])
-            //         == 0
-            //     {
-            //         panic!("can't fail");
-            //     }
-            // }
-            // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
-            env.schedule_reqfn_on_node(req, fnid, nodeid);
-        }
+        schedule_to
+            .into_iter()
+            .map(|(fnid, nid)| ScheCmd {
+                nid,
+                reqid: req.req_id,
+                fnid,
+                memlimit: None,
+            })
+            .collect()
     }
 }
 
@@ -195,13 +191,14 @@ impl PassScheduler {
 //  最后，调度算法将采用装箱策略，根据节点容量为每个函数组选择适当的工作节点（第21-23行）。
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for PassScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) {
+    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        let mut sche_cmds = vec![];
         for (_, req) in env.core.requests_mut().iter_mut() {
             if req.fn_node.len() == 0 {
-                self.schedule_for_one_req(req, env);
+                sche_cmds.extend(self.schedule_for_one_req(req, env));
             }
         }
-
+        (vec![], sche_cmds, vec![])
         // let mut to_scale_down = vec![];
         // // 回收空闲container
         // for n in env.nodes.borrow().iter() {
@@ -216,10 +213,5 @@ impl Scheduler for PassScheduler {
         //         .borrow_mut()
         //         .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
         // }
-    }
-
-    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {}
-    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
-        false
     }
 }

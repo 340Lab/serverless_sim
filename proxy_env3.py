@@ -29,7 +29,7 @@ class ProxyEnv3:
         "fn_type": "cpu",
         "no_log": False,
         # // optional
-        "es": {}
+        "mech": {}
     }
 
     env_id=""
@@ -37,7 +37,7 @@ class ProxyEnv3:
     def __init__(self):
         # read ./serverless_sim/module_conf_es.json and set to config["es"]
         with open("./serverless_sim/module_conf_es.json", "r") as f:
-            self.config["es"] = json.load(f)
+            self.config["mech"] = json.load(f)
         print(f"Config Templete {self.config}")
         print("\n\n")
 

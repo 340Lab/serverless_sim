@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -14,6 +14,33 @@ use crate::sim_env::SimEnv;
 //     let a = rand::thread_rng().gen_range(begin..end);
 //     a
 // }
+
+pub struct Window {
+    queue: VecDeque<f32>,
+    cap: usize,
+}
+
+impl Window {
+    pub fn new(cap: usize) -> Self {
+        Self {
+            queue: VecDeque::new(),
+            cap,
+        }
+    }
+    pub fn push(&mut self, ele: f32) {
+        self.queue.push_back(ele);
+        if self.queue.len() > self.cap {
+            self.queue.pop_front();
+        }
+    }
+    pub fn avg(&self) -> f32 {
+        if self.queue.is_empty() {
+            return 0.0;
+        }
+        let sum: f32 = self.queue.iter().sum();
+        sum / (self.queue.len() as f32)
+    }
+}
 
 pub fn to_range(r: f32, begin: usize, end: usize) -> usize {
     let mut v: usize = unsafe { ((begin as f32) + ((end - begin) as f32) * r).to_int_unchecked() };
@@ -207,87 +234,5 @@ impl SimEnv {
     pub fn env_rand_f(&self, min: f32, max: f32) -> f32 {
         let mut rng = self.rander.borrow_mut();
         rng.gen_range(min..max)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    // use std::{collections::BTreeMa, intrinsics::fabsf32};
-
-    use std::collections::BTreeMap;
-
-    use crate::{
-        config::{Config, ESConfig},
-        sim_env::SimEnv,
-    };
-
-    use super::DirectedGraph;
-
-    #[test]
-    // fn test_seeded_rand() {
-    //     let seed = "helloworld";
-    //     let config = Config {
-    //         rand_seed: seed.to_owned(),
-    //         request_freq: "low".to_owned(),
-    //         dag_type: "single".to_owned(),
-    //         cold_start: "high".to_owned(),
-    //         fn_type: "cpu".to_owned(),
-    //         es: ESConfig {
-    //             up: "hpa".to_owned(),
-    //             down: "hpa".to_owned(),
-    //             sche: "rule".to_owned(),
-    //             down_smooth: "direct".to_owned(),
-    //         },
-    //         no_log: false,
-    //     };
-    //     let sim1 = SimEnv::new(config.clone());
-    //     let sim2 = SimEnv::new(config.clone());
-    //     for _ in 0..1000 {
-    //         assert_eq!(sim1.env_rand_i(0, 100), sim2.env_rand_i(0, 100));
-    //     }
-    // }
-    #[test]
-    fn test_digistra() {
-        // assert_eq!(2 + 2, 4);
-        let mut g = DirectedGraph::new();
-        let mut dist_map = BTreeMap::new();
-        g.add(0);
-        let mut add_conn = |a: usize, b: usize, dist: f32| {
-            g.add_a_after_b(b, a);
-            dist_map.insert((a, b), dist)
-        };
-        let levels = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]];
-        for i in 0..levels.len() {
-            let level = &levels[i];
-            if i == 0 {
-                for &n in level {
-                    add_conn(0, n, n as f32);
-                }
-            } else {
-                for &prev in &levels[i - 1] {
-                    for &n in level {
-                        add_conn(prev, n, (n * prev) as f32);
-                    }
-                }
-            }
-        }
-        for &n in &levels[levels.len() - 1] {
-            add_conn(n, 10, (n * 10) as f32);
-        }
-
-        let mut min_path = g.find_min(0, 10, |a, b| *dist_map.get(&(a, b)).unwrap());
-
-        min_path.reverse();
-        let mut sum = 0.0;
-        for i in 0..min_path.len() - 1 {
-            let a = min_path[i];
-            let b = min_path[i + 1];
-            sum += *dist_map.get(&(a, b)).unwrap();
-        }
-        println!("path:{min_path:?},len:{sum}");
-        assert!((sum - ((1 + 4 + 28 + 70) as f32)).abs() < 0.000001);
-        // add_conn(0, 1, 1.0);
-        // add_conn(0, 2, 2.0);
-        // add_conn(0, 3, 3.0);
     }
 }

@@ -19,7 +19,6 @@ impl ScaleNum for NoScaleNum {
         &mut self,
         env: &crate::sim_env::SimEnv,
         fnid: crate::fn_dag::FnId,
-        metric: &crate::algos::ContainerMetric,
         action: &crate::actions::ESActionWrapper,
     ) -> (f32, bool) {
         return (0.0, false);

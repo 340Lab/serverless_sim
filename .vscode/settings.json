@@ -1,0 +1,7 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./serverless_sim/Cargo.toml",
+        "./serverless_sim/Cargo.toml",
+        "./serverless_sim/Cargo.toml"
+    ]
+}

@@ -3,9 +3,9 @@ mod algos;
 mod apis;
 mod config;
 mod env_gc;
-mod es;
 mod fn_dag;
 mod mechanism;
+mod mechanism_conf;
 mod metric;
 mod network;
 mod node;
@@ -15,12 +15,13 @@ mod scale;
 mod sche;
 mod score;
 mod sim_env;
+mod sim_loop;
 mod sim_run;
 mod sim_timer;
 mod state;
 mod util;
 
-use config::ModuleESConf;
+use mechanism_conf::ModuleMechConf;
 use std::{env::set_var, time::Duration};
 
 #[macro_use]
@@ -38,7 +39,7 @@ async fn main() {
     output::print_logo();
     // 启动垃圾回收（Garbage Collection, GC）机制
     env_gc::start_gc();
-    ModuleESConf::new().export_module_file();
+    ModuleMechConf::new().export_module_file();
     // parse_arg::parse_arg();
     network::start().await;
 }
