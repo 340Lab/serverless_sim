@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     fn_dag::FnId,
+    mechanism::{DownCmd, ScheCmd, UpCmd},
     node::NodeId,
     request::{ReqId, Request},
     sim_env::SimEnv,
@@ -9,16 +10,16 @@ use crate::{
 };
 
 pub struct PosScheduler {
-    // dag_fn_prorities_: HashMap<DagId, HashMap<FnId, f32>>,
-
-    //
-    // recent_schedule_node: Vec<NodeId>,
+    new_scale_up_nodes: HashMap<FnId, HashSet<NodeId>>,
     schealeable_fns: HashSet<FnId>,
+    // node_new_task_cnt: HashMap<NodeId, usize>,
 }
 
 impl PosScheduler {
     pub fn new() -> Self {
         Self {
+            // node_new_task_cnt: HashMap::new(),
+            new_scale_up_nodes: HashMap::new(),
             // recent_schedule_node: vec![],
             schealeable_fns: HashSet::new(),
         }
@@ -53,15 +54,36 @@ impl PosScheduler {
             }
         }
     }
-
-    fn schedule_one_req_fns(&self, env: &SimEnv, req: &mut Request) {
+    fn record_new_scale_up_node(&mut self, fnid: FnId, node_id: NodeId) {
+        if !self.new_scale_up_nodes.contains_key(&fnid) {
+            self.new_scale_up_nodes.insert(fnid, HashSet::new());
+        }
+        self.new_scale_up_nodes
+            .get_mut(&fnid)
+            .unwrap()
+            .insert(node_id);
+    }
+    fn new_scale_up_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
+        self.new_scale_up_nodes
+            .get(&fnid)
+            .cloned()
+            .unwrap_or_default()
+    }
+    // fn node_new_task_cnt(&self, node_id: NodeId) -> usize {
+    //     self.node_new_task_cnt.get(&node_id).cloned().unwrap_or(0)
+    // }
+    fn schedule_one_req_fns(
+        &mut self,
+        env: &SimEnv,
+        req: &mut Request,
+    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
             schedule_helper::CollectTaskConfig::PreAllSched,
         );
 
-        let mut node2node_connection_count = env.core.node2node_connection_count().clone();
+        // let mut node2node_connection_count = env.core.node2node_connection_count().clone();
         schedule_able_fns.sort_by(|&a, &b| {
             env.func(a)
                 .cpu
@@ -69,35 +91,35 @@ impl PosScheduler {
                 .unwrap()
                 .reverse()
         });
-        for &fnid in &schedule_able_fns {
-            // 可以调度的节点数 ???
-            // 可以调度的容器数量 ???
-            let mut scheable_node_count = env.spec_scaler().fn_available_count(fnid, env);
-            if scheable_node_count == 0 {
-                log::warn!("scaler should ask scheduler for requirement and prepare enough nodes");
-                continue;
-            }
-            // if scheable_node_count == 0 {
-            //     scheable_node_count = 1;
-            // }
 
+        let scale_num = env.new_mech.scale_num();
+        let scale_up_exec = env.new_mech.scale_up_exec();
+        let mech_metric = || env.help.mech_metric_mut();
+
+        let mut sche_cmds = vec![];
+        let scale_up_cmds = vec![];
+
+        for &fnid in &schedule_able_fns {
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
-            let target_cnt = env.spec_scaler().fn_available_count(fnid, env);
-            env.mechanisms.scale_up_exec_mut()
-                .exec_scale_up(target_cnt, fnid, env);
+            let mut target_cnt = scale_num.fn_available_count(fnid, env);
+            if target_cnt == 0 {
+                target_cnt = 1;
+            }
+
+            let scale_up_cmds_fn = scale_up_exec.exec_scale_up(target_cnt, fnid, env);
+            for cmd in scale_up_cmds_fn.iter() {
+                self.record_new_scale_up_node(cmd.fnid, cmd.nid);
+            }
 
             // 选择节点算法，首先选出包含当前函数容器的节点
-            let nodes_with_container: Vec<NodeId> = env
+            let mut nodes2select: Vec<NodeId> = env
                 .nodes()
                 .iter()
                 .filter(|n| n.container(fnid).is_some())
                 .map(|n| n.node_id())
                 .collect();
-
-            let nodes_with_container_cnt = nodes_with_container.len();
-
-            let nodes2select =
-                &nodes_with_container[0..env.spec_scaler().fn_available_count(fnid, env)];
+            let nodes_with_container_cnt = nodes2select.len();
+            nodes2select.extend(self.new_scale_up_nodes(fnid));
 
             // let nodes = env.fn_running_containers_nodes(fnid);
             // if nodes.len() == 0 {
@@ -115,27 +137,29 @@ impl PosScheduler {
             //     }
             //     *on_node_time.get(&node_id).unwrap()
             // };
-            let each_node_time = nodes2select
-                .iter()
-                .enumerate()
-                .map(|(idx, &n): (usize, &usize)| {
-                    (
-                        n,
-                        if idx < nodes_with_container_cnt {
-                            // node with container
-                            env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
-                                + env.func(fnid).cold_start_time as f32
-                        } else {
-                            // node without container
-                            env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
-                        },
-                    )
-                })
-                .collect::<Vec<_>>();
+
+            // !! not used
+            // let each_node_time = nodes2select
+            //     .iter()
+            //     .enumerate()
+            //     .map(|(idx, &n): (usize, &usize)| {
+            //         (
+            //             n,
+            //             if idx < nodes_with_container_cnt {
+            //                 // node with container
+            //                 env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
+            //             } else {
+            //                 // node without container
+            //                 env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
+            //                     + env.func(fnid).cold_start_time as f32
+            //             },
+            //         )
+            //     })
+            //     .collect::<Vec<_>>();
 
             let nodes_task_cnt = nodes2select
                 .iter()
-                .map(|n| env.node(*n).all_task_cnt() as f32)
+                .map(|n| (mech_metric().node_task_new_cnt(*n) as f32))
                 .collect::<Vec<_>>();
             let fparents = env.func(fnid).parent_fns(env);
             let nodes_parent_distance = nodes2select
@@ -187,159 +211,55 @@ impl PosScheduler {
             // })
             // .unwrap();
 
-            if env.func(fnid).parent_fns(env).len() > 0 {}
-            // for &n in nodes.iter() {
-            //     let time = env.node(n).running_task_cnt() as f32;
-            //     if let Some((best_n, besttime)) = best_node.take() {
-            //         if time < besttime {
-            //             best_node = Some((n, time));
-            //         } else {
-            //             best_node = Some((best_n, besttime));
-            //         }
-            //     } else {
-            //         best_node = Some((n, time));
-            //     }
-            // }
-            env.schedule_reqfn_on_node(req, fnid, best_node);
-            // continue;
-            // }
-
-            // let mut best_node = None;
-            // if env.func(fnid).parent_fns(env).len() == 0 {
-            //     for &n in nodes.iter() {
-            //         let time = env.node(n).task_cnt() as f32;
-            //         if let Some((best_n, besttime)) = best_node.take() {
-            //             if time < besttime {
-            //                 best_node = Some((n, time));
-            //             } else {
-            //                 best_node = Some((best_n, besttime));
-            //             }
-            //         } else {
-            //             best_node = Some((n, time));
-            //         }
-            //     }
-            // } else {
-            //     for &n in nodes.iter() {
-            //         let time = env.algo_predict_fn_on_node_work_time(
-            //             req,
-            //             fnid,
-            //             n,
-            //             (&node2node_connection_count).into(),
-            //         );
-            //         if let Some((best_n, besttime)) = best_node.take() {
-            //             if time < besttime {
-            //                 best_node = Some((n, time));
-            //             } else {
-            //                 best_node = Some((best_n, besttime));
-            //             }
-            //         } else {
-            //             best_node = Some((n, time));
-            //         }
-            //     }
-            // }
-
-            // let (node_to_run_req_fn, run_time) = best_node.unwrap();
-            // env.schedule_reqfn_on_node(req, fnid, node_to_run_req_fn);
-            // update connection count map
-            // {
-            //     let parents = env.func(fnid).parent_fns(env);
-            //     for &p in &parents {
-            //         let pnode = *req.fn_node.get(&p).unwrap();
-            //         if pnode == best_node {
-            //         } else {
-            //             let connection_count = env
-            //                 .node_get_connection_count_between_by_offerd_graph(
-            //                     pnode,
-            //                     best_node,
-            //                     &node2node_connection_count,
-            //                 );
-            //             env.node_set_connection_count_between_by_offerd_graph(
-            //                 pnode,
-            //                 best_node,
-            //                 connection_count + 1,
-            //                 &mut node2node_connection_count,
-            //             );
-            //         }
-            //     }
-            // }
-            // if do_prewarm_check {
-            // // 有一个请求函数（预测所有前驱函数结束时间点，计数）表
-            // // 在调度一个函数时，预估该函数的结束时间，对于后继节点，
-            // // 其冷启动时间点应该为前驱结束时间点-冷启动时间，
-            // // 若当前预测结束时间点大于预测启动表中时间，更新该时间，
-            // // 同时计数+1，直到计数等于该后继函数的所有前驱节点数时，
-            // // 代表预计时间以及确定，从表中移除该项，并注册定时器，
-            // // 时间为（预测所有前驱函数结束时间点-观测到的冷启动时间），
-            // // 在对应时间判断容器数是否为0，若为0，则进行预热。
-            // let mut children = env.dag_inner(dag_i).children(env.func(fnid).graph_i);
-            // // update children predict
-            // while let Some((e, child_n)) = children.walk_next(&env.dag_inner(dag_i)) {
-            //     let child_fnid = env.dag_inner(dag_i)[child_n];
-            //     let cunrrent_fn_done_time = (env.current_frame() as f32) + run_time;
-            //     let mut prev_done_time_all_collected = false;
-            //     req.fn_predict_prevs_done_time
-            //         .entry(child_fnid)
-            //         .and_modify(|(time, cnt, total)| {
-            //             if cunrrent_fn_done_time > *time {
-            //                 *time = cunrrent_fn_done_time;
-            //             }
-            //             *cnt += 1;
-            //             if *cnt == *total {
-            //                 prev_done_time_all_collected = true;
-            //             }
-            //         })
-            //         .or_insert_with(|| {
-            //             (cunrrent_fn_done_time, 1, env.func(child_fnid).parent_fns(self).len())
-            //         });
-            //     if prev_done_time_all_collected {
-            //         let (time, _, _) = req.fn_predict_prevs_done_time
-            //             .remove(&child_fnid)
-            //             .unwrap();
-            //         let time =
-            //             (time as isize) + 1 - (env.func(child_fnid).cold_start_time as isize);
-            //         if time > 0 {
-            //             let req_id = req.req_id;
-            //             env.start_timer(time as usize, move |env: &SimEnv| {
-            //                 let requests = env.real_time.requests();
-            //                 if let Some(req) = requests.get(&req_id) {
-            //                     // 子函数未调度
-            //                     if !req.fn_node.contains_key(&child_fnid) {
-            //                         if env.fn_container_cnt(child_fnid) == 0 {
-            //                             env.scale_executor
-            //                                 .borrow_mut()
-            //                                 .scale_up(env, child_fnid, 1);
-            //                         }
-            //                     }
-            //                 }
-            //             });
-            //         }
-            //     }
-            // }
-            // }
+            // env.schedule_reqfn_on_node(req, fnid, best_node);
+            mech_metric().add_node_task_new_cnt(best_node);
+            sche_cmds.push(ScheCmd {
+                reqid: req.req_id,
+                fnid,
+                nid: best_node,
+                memlimit: None,
+            })
         }
+        (scale_up_cmds, vec![], sche_cmds)
     }
 }
 
 impl Scheduler for PosScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) {
+    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        self.new_scale_up_nodes.clear();
+        self.schealeable_fns.clear();
+        for (_req_id, req) in env.core.requests().iter() {
+            self.collect_scheable_fns_for_req(env, req);
+        }
         // log::info!("try put fn");
         // let nodes_taskcnt = env
         //     .nodes()
         //     .iter()
         //     .map(|n| (n.node_id(), n.task_cnt()))
         //     .collect::<HashMap<NodeId, usize>>();
-        for (_req_id, req) in env.core.requests_mut().iter_mut() {
-            self.schedule_one_req_fns(env, req);
-        }
-    }
+        let mut up_cmds = vec![];
+        let mut sche_cmds = vec![];
+        let mut down_cmds = vec![];
 
-    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {
-        self.schealeable_fns.clear();
-        for (_req_id, req) in env.core.requests().iter() {
-            self.collect_scheable_fns_for_req(env, req);
+        for func in env.core.fns().iter() {
+            let target = env.new_mech.scale_num().fn_available_count(func.fn_id, env);
+            let cur = env.fn_container_cnt(func.fn_id);
+            if target < cur {
+                down_cmds.extend(env.new_mech.scale_down_exec().exec_scale_down(
+                    env,
+                    func.fn_id,
+                    cur - target,
+                ));
+            }
         }
-    }
-    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
-        self.schealeable_fns.contains(&fnid)
+
+        for (_req_id, req) in env.core.requests_mut().iter_mut() {
+            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, req);
+            up_cmds.extend(sub_up);
+            down_cmds.extend(sub_down);
+            sche_cmds.extend(sub_sche);
+        }
+
+        (up_cmds, sche_cmds, down_cmds)
     }
 }

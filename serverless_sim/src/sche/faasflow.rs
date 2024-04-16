@@ -1,8 +1,9 @@
 use crate::{
     fn_dag::FnId,
+    mechanism::{DownCmd, ScheCmd, UpCmd},
     node::NodeId,
     request::{ReqId, Request},
-    scale::down_exec::{ScaleDownExec, ScaleOption},
+    scale::down_exec::ScaleDownExec,
     sim_env::SimEnv,
     sim_run::Scheduler,
     util,
@@ -11,7 +12,6 @@ use daggy::{
     petgraph::visit::{EdgeRef, IntoEdgeReferences},
     EdgeIndex,
 };
-use rand::{thread_rng, Rng};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, HashSet},
     hash::{self, Hash, Hasher},
@@ -21,21 +21,53 @@ struct RequestSchedulePlan {
     fn_nodes: HashMap<FnId, NodeId>,
 }
 
-pub struct FaasFlowScheduler {
-    // request_schedule_state: HashMap<ReqId, RequestSchedulePlan>,
-    scheduled_reqs: HashSet<ReqId>,
-}
+pub struct FaasFlowScheduler {}
 
 impl FaasFlowScheduler {
     pub fn new() -> Self {
-        Self {
-            scheduled_reqs: HashSet::new(),
-        }
+        Self {}
     }
 
-    fn schedule_one_req(&mut self, req: &mut Request, env: &SimEnv) {
+    // fn do_some_schedule(&self, req: &mut Request, env: &SimEnv) {
+    //     let dag = env.dag(req.dag_i);
+    //     let plan = self.request_schedule_state.get(&req.req_id).unwrap();
+    //     let mut walker = dag.new_dag_walker();
+    //     while let Some(fnode) = walker.next(&dag.dag_inner) {
+    //         let fnid = dag.dag_inner[fnode];
+    //         // Already scheduled
+    //         if req.get_fn_node(fnid).is_some() {
+    //             continue;
+    //         }
+    //         // Not schduled but not all parents done
+    //         if !req.parents_all_done(env, fnid) {
+    //             continue;
+    //         }
+    //         // Ready to be scheduled
+    //         let fn_node = *plan.fn_nodes.get(&fnid).unwrap();
+    //         if env.node(fn_node).container(fnid).is_none() {
+    //             if env
+    //                 .scale_executor
+    //                 .borrow_mut()
+    //                 .scale_up_fn_to_nodes(env, fnid, &vec![fn_node])
+    //                 == 0
+    //             {
+    //                 continue;
+    //             }
+    //         }
+    //         // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
+    //         env.schedule_reqfn_on_node(req, fnid, fn_node);
+    //         // }
+    //     }
+    // }
+
+    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) -> Vec<ScheCmd> {
+        if req.fn_count(env) == req.fn_node.len() {
+            return vec![];
+        }
+
         log::info!("faasflow start generate schedule for req {}", req.req_id);
-        let mut nodes_left_mem = env.core
+        let mut nodes_left_mem = env
+            .core
             .nodes()
             .iter()
             .map(|n| n.left_mem_for_place_container())
@@ -115,48 +147,16 @@ impl FaasFlowScheduler {
         // self.request_schedule_state
         //     .insert(req.req_id, RequestSchedulePlan { fn_nodes: fn_poses });
         log::info!("faasflow end generate schedule for req {}", req.req_id);
-        for (fnid, nodeid) in fn_poses {
-            env.schedule_reqfn_on_node(req, fnid, nodeid)
-        }
-        self.scheduled_reqs.insert(req.req_id);
-    }
-
-    // fn do_some_schedule(&self, req: &mut Request, env: &SimEnv) {
-    //     let dag = env.dag(req.dag_i);
-    //     let plan = self.request_schedule_state.get(&req.req_id).unwrap();
-    //     let mut walker = dag.new_dag_walker();
-    //     while let Some(fnode) = walker.next(&dag.dag_inner) {
-    //         let fnid = dag.dag_inner[fnode];
-    //         // Already scheduled
-    //         if req.get_fn_node(fnid).is_some() {
-    //             continue;
-    //         }
-    //         // Not schduled but not all parents done
-    //         if !req.parents_all_done(env, fnid) {
-    //             continue;
-    //         }
-    //         // Ready to be scheduled
-    //         let fn_node = *plan.fn_nodes.get(&fnid).unwrap();
-    //         if env.node(fn_node).container(fnid).is_none() {
-    //             if env
-    //                 .scale_executor
-    //                 .borrow_mut()
-    //                 .scale_up_fn_to_nodes(env, fnid, &vec![fn_node])
-    //                 == 0
-    //             {
-    //                 continue;
-    //             }
-    //         }
-    //         // if env.node(fn_node).mem_enough_for_container(&env.func(fnid)) {
-    //         env.schedule_reqfn_on_node(req, fnid, fn_node);
-    //         // }
-    //     }
-    // }
-
-    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) {
-        if !self.scheduled_reqs.contains(&req.req_id) {
-            self.schedule_one_req(req, env);
-        }
+        fn_poses
+            .into_iter()
+            .map(|(fnid, nid)| ScheCmd {
+                nid,
+                reqid: req.req_id,
+                fnid,
+                memlimit: None,
+            })
+            .collect()
+        // self.scheduled_reqs.insert(req.req_id);
         // self.do_some_schedule(req, env);
     }
 }
@@ -173,9 +173,10 @@ impl FaasFlowScheduler {
 //  最后，调度算法将采用装箱策略，根据节点容量为每个函数组选择适当的工作节点（第21-23行）。
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for FaasFlowScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) {
+    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        let mut sche_cmds = vec![];
         for (_, req) in env.core.requests_mut().iter_mut() {
-            self.schedule_for_one_req(req, env);
+            sche_cmds.extend(self.schedule_for_one_req(req, env));
         }
 
         let mut to_scale_down = vec![];
@@ -183,19 +184,19 @@ impl Scheduler for FaasFlowScheduler {
         for n in env.core.nodes().iter() {
             for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
-                    to_scale_down.push((n.node_id(), c.fn_id));
+                    // to_scale_down.push((n.node_id(), c.fn_id));
+                    to_scale_down.push(DownCmd {
+                        nid: n.node_id(),
+                        fnid: c.fn_id,
+                    })
                 }
             }
         }
-        for (n, f) in to_scale_down {
-            env.mechanisms.scale_executor_mut()
-                .exec_scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
-        }
-    }
-
-    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv) {}
-
-    fn this_turn_will_schedule(&self, fnid: FnId) -> bool {
-        panic!("not support");
+        (vec![], sche_cmds, to_scale_down)
+        // for (n, f) in to_scale_down {
+        //     env.mechanisms
+        //         .scale_executor_mut()
+        //         .exec_scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
+        // }
     }
 }

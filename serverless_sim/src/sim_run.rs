@@ -7,19 +7,14 @@ use daggy::Walker;
 
 use crate::{
     fn_dag::{FnContainer, FnContainerState, FnId},
+    mechanism::{DownCmd, ScheCmd, UpCmd},
     node::{Node, NodeId},
     request::{ReqId, Request},
     sim_env::SimEnv,
 };
 
 pub trait Scheduler: Send {
-    /// For scaler to get some schdule info.
-    /// Not needed for non-scaler scheduler.
-    fn prepare_this_turn_will_schedule(&mut self, env: &SimEnv);
-    /// For scaler to get some schdule info.
-    /// Not needed for non-scaler scheduler.
-    fn this_turn_will_schedule(&self, fnid: FnId) -> bool;
-    fn schedule_some(&mut self, env: &SimEnv);
+    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>);
 }
 
 pub mod schedule_helper {
@@ -103,6 +98,7 @@ impl NodeTrans {
 type NodeTransMap = HashMap<(NodeId, NodeId), NodeTrans>;
 
 impl SimEnv {
+    // TODO: ScheCmd has memlimit
     pub fn schedule_reqfn_on_node(&self, req: &mut Request, fnid: FnId, nodeid: NodeId) {
         // schedule on node
         // let new_fn_running = self.fn_new_fn_running_state(req, fnid);
@@ -296,7 +292,7 @@ impl SimEnv {
             let mut req = self.request_mut(reqid);
             req.fn_done(self, fnid, self.current_frame());
             if req.is_done(self) {
-                log::info!("req {} done", reqid);
+                // log::info!("req {} done", reqid);
                 drop(req);
                 self.on_request_done(reqid);
             }
@@ -402,8 +398,6 @@ impl SimEnv {
     }
 
     pub fn sim_run(&self) {
-        log::info!("sim run");
-
         self.sim_load_container();
         self.sim_transfers();
         self.sim_computes();

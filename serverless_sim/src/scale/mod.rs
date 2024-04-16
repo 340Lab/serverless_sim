@@ -1,7 +1,3 @@
-use crate::config::Config;
-
-use self::num::{ai::AIScaleNum, hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, ScaleNum};
-
 pub mod down_exec;
 pub mod num;
 pub mod up_exec;

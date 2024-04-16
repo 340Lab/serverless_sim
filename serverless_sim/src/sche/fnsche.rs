@@ -4,6 +4,7 @@ use crate::{
     actions::ESActionWrapper,
     algos::ContainerMetric,
     fn_dag::FnId,
+    mechanism::{DownCmd, ScheCmd, UpCmd},
     node::NodeId,
     sim_env::SimEnv,
     sim_run::{schedule_helper, Scheduler},
@@ -38,13 +39,8 @@ impl FnScheScheduler {
 }
 
 impl Scheduler for FnScheScheduler {
-    fn prepare_this_turn_will_schedule(&mut self, _env: &SimEnv) {}
-
-    fn this_turn_will_schedule(&self, _fnid: FnId) -> bool {
-        false
-    }
-
-    fn schedule_some(&mut self, env: &SimEnv) {
+    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        let mut sche_cmds = vec![];
         for (_req_id, req) in env.core.requests_mut().iter_mut() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
@@ -53,11 +49,18 @@ impl Scheduler for FnScheScheduler {
             );
             for fnid in fns {
                 let nodeid = self.select_node_for_fn(env, fnid);
-                {
-                    env.schedule_reqfn_on_node(req, fnid, nodeid);
-                }
+                // {
+                // env.schedule_reqfn_on_node(req, fnid, nodeid);
+                // }
+                sche_cmds.push(ScheCmd {
+                    nid: nodeid,
+                    reqid: req.req_id,
+                    fnid,
+                    memlimit: None,
+                })
             }
         }
+        (vec![], sche_cmds, vec![])
     }
 
     // fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {

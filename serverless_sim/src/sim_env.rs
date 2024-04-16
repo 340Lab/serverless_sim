@@ -11,10 +11,9 @@ use rand_seeder::Seeder;
 use crate::{
     actions::ESActionWrapper,
     config::Config,
-    es::{self, ESState},
     fn_dag::{FnDAG, FnId, Func},
     mechanism::{ConfigNewMec, Mechanism, MechanismImpl},
-    metric::{OneFrameMetric, Records},
+    metric::{MechMetric, OneFrameMetric, Records},
     node::{Node, NodeId},
     request::{ReqId, Request},
     scale::{
@@ -23,7 +22,7 @@ use crate::{
         num::{new_scale_num, ScaleNum},
         up_exec::{least_task::LeastTaskScaleUpExec, ScaleUpExec},
     },
-    sche,
+    sche, sim_loop,
     sim_run::Scheduler,
 };
 
@@ -34,6 +33,7 @@ pub struct SimEnvHelperState {
     cost: RefCell<f32>,
     metric: RefCell<OneFrameMetric>,
     metric_record: RefCell<Records>,
+    mech_metric: RefCell<MechMetric>,
 }
 impl SimEnvHelperState {
     pub fn fn_next_id(&self) -> FnId {
@@ -67,6 +67,12 @@ impl SimEnvHelperState {
     }
     pub fn metric_record_mut<'a>(&'a self) -> RefMut<'a, Records> {
         self.metric_record.borrow_mut()
+    }
+    pub fn mech_metric<'a>(&'a self) -> Ref<'a, MechMetric> {
+        self.mech_metric.borrow()
+    }
+    pub fn mech_metric_mut<'a>(&'a self) -> RefMut<'a, MechMetric> {
+        self.mech_metric.borrow_mut()
     }
 }
 
@@ -183,11 +189,10 @@ pub struct SimEnv {
     // end time - tasks
     pub timers: RefCell<HashMap<usize, Vec<Box<dyn FnMut(&SimEnv) + Send>>>>,
 
-    pub ef_state: RefCell<ESState>,
     pub help: SimEnvHelperState,
     pub core: SimEnvCoreState,
-    pub mechanisms: SimEnvMechanisms,
-    pub new_mech: Box<dyn Mechanism>,
+    // pub mechanisms: SimEnvMechanisms,
+    pub new_mech: MechanismImpl,
 }
 
 impl SimEnv {
@@ -206,6 +211,7 @@ impl SimEnv {
                 metric: RefCell::new(OneFrameMetric::new()),
                 metric_record: RefCell::new(Records::new(config.str())),
                 config: config.clone(),
+                mech_metric: RefCell::new(MechMetric::new()),
             },
             core: SimEnvCoreState {
                 node2node_graph: RefCell::new(Vec::new()),
@@ -218,15 +224,13 @@ impl SimEnv {
                 fn_2_nodes: RefCell::new(HashMap::new()),
                 fns: RefCell::new(Vec::new()),
             },
-            mechanisms: SimEnvMechanisms {
-                scale_executor: RefCell::new(DefaultScaleDownExec),
-                scale_up_exec: RefCell::new(Box::new(LeastTaskScaleUpExec::new())),
-                spec_scheduler: RefCell::new(sche::prepare_spec_scheduler(&config)),
-                spec_scale_num: RefCell::new(new_scale_num(&config)),
-            },
+            // mechanisms: SimEnvMechanisms {
+            //     scale_executor: RefCell::new(DefaultScaleDownExec),
+            //     scale_up_exec: RefCell::new(Box::new(LeastTaskScaleUpExec::new())),
+            //     spec_scheduler: RefCell::new(sche::prepare_spec_scheduler(&config)),
+            //     spec_scale_num: RefCell::new(new_scale_num(&config)),
+            // },
             new_mech: config.new_mec().unwrap(),
-
-            ef_state: RefCell::new(ESState::new()),
 
             recent_use_time,
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
@@ -337,8 +341,12 @@ impl SimEnv {
             let mut cost = self.help.cost_mut();
             *cost += n.cpu * 0.00001 + n.mem() * 0.00001;
         }
+
+        self.help.metric_record_mut().add_frame(self);
+
         // 自增 frame
         let mut cur_frame = self.core.current_frame.borrow_mut();
+        log::info!("frame done: {}", *cur_frame);
         *cur_frame += 1;
     }
 }

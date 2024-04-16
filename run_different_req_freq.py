@@ -15,10 +15,21 @@ from proxy_env3 import ProxyEnv3
 class Task: 
     def algo(self,algo_conf):
         self.env=ProxyEnv3()
-        self.env.config["es"]['scale_num'][algo_conf[0][0]]=algo_conf[0][1]
-        self.env.config["es"]['scale_down_exec'][algo_conf[1][0]]=algo_conf[1][1]
-        self.env.config["es"]['scale_up_exec'][algo_conf[2][0]]=algo_conf[2][1]
-        self.env.config["es"]['sche'][algo_conf[3][0]]=algo_conf[3][1]
+        confs=[
+            'mech_type',
+            'scale_num',
+            'scale_down_exec',
+            'scale_up_exec',
+            'sche'
+        ]
+        for i,conf in enumerate(confs):
+            self.env.config["mech"][conf][algo_conf[i][0]]=algo_conf[i][1]
+            
+        # self.env.config["mech"]['mech_type']
+        # self.env.config["mech"]['scale_num'][algo_conf[0][0]]=algo_conf[0][1]
+        # self.env.config["mech"]['scale_down_exec'][algo_conf[1][0]]=algo_conf[1][1]
+        # self.env.config["mech"]['scale_up_exec'][algo_conf[2][0]]=algo_conf[2][1]
+        # self.env.config["mech"]['sche'][algo_conf[3][0]]=algo_conf[3][1]
         return self
         
     def config(self,config_cb):
@@ -34,8 +45,11 @@ class Task:
         return self
 
 algos=[
-    # scale_num, scale_down_exec, scale_up_exec, sche
-    [["hpa",""],["default",""],["least_task",""],["pos",""]],
+    # mechtype, scale_num, scale_down_exec, scale_up_exec, sche
+    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""]],
+    # [['scale_sche_joint',''],["lass",""],["default",""],["least_task",""],["pos",""]],
+
+    # [['no_scale',''],['no',''],["default",""],['no',''],['faasflow','']],
     # ["lass","lass","rule"],
     # ["fnsche","fnsche","fnsche"],
     # ["faasflow","faasflow","faasflow"],

@@ -7,7 +7,7 @@ import NetworkTopology from "./components/NetworkTopology.vue";
 
 import { request } from "./request";
 import { local_cache } from "./local_cache";
-import {page} from "@/page";
+import { page } from "@/page";
 
 class FetchCanceller {
   cancel = false;
@@ -26,7 +26,7 @@ export default {
       current_page: page.TopoPage,
       // current_state_or_history: true,
       selected_keys: {},
-      page:page,
+      page: page,
     };
   },
 
@@ -113,7 +113,7 @@ export default {
       console.log("final res", all_frames);
     },
   },
-  unmounted() {},
+  unmounted() { },
 };
 </script>
 
@@ -128,26 +128,19 @@ export default {
 
   <main>
     <div class="row_container">
-      <SideBar
-        :selected_keys="selected_keys"
-        style="width: 200px"
-        ref="sidebar"
-      />
-      <NetworkTopology
-          v-if="current_page===page.TopoPage"
-      ></NetworkTopology>
-      <HistoryMetric
-          v-if="current_page===page.RecordPage"
-      ></HistoryMetric>
-      <CurrentState
-          v-if="current_page===page.StatePage"
-      ></CurrentState>
-<!--      <CurrentState class="right_column" v-if="current_state_or_history" />-->
-<!--      <div class="right_column">-->
-<!--        HELLO-->
-<!--&lt;!&ndash;        <HorizontalComparation class="right" />&ndash;&gt;-->
-<!--&lt;!&ndash;        <HistoryMetric class="right" ref="history_metric" />&ndash;&gt;-->
-<!--      </div>-->
+      <SideBar :selected_keys="selected_keys" style="width: 200px" ref="sidebar" />
+      <div class="right_column">
+
+        <NetworkTopology v-if="current_page === page.TopoPage"></NetworkTopology>
+        <HistoryMetric v-if="current_page === page.RecordPage" ref="history_metric"></HistoryMetric>
+        <CurrentState v-if="current_page === page.StatePage"></CurrentState>
+      </div>
+      <!--      <CurrentState class="right_column" v-if="current_state_or_history" />-->
+      <!--      <div class="right_column">-->
+      <!--        HELLO-->
+      <!--&lt;!&ndash;        <HorizontalComparation class="right" />&ndash;&gt;-->
+      <!--&lt;!&ndash;        <HistoryMetric class="right" ref="history_metric" />&ndash;&gt;-->
+      <!--      </div>-->
       <!-- <HistoryMetric /> -->
     </div>
   </main>
@@ -160,8 +153,9 @@ export default {
   flex-direction: row;
   height: calc(100vh - 60px);
 }
-.right {
-}
+
+.right {}
+
 .right_column {
   width: calc(100% - 200px);
   padding-left: 20px;
@@ -169,6 +163,7 @@ export default {
   height: 100%;
   overflow: scroll;
 }
+
 /* .col_item {
   width: 25%;
 } */

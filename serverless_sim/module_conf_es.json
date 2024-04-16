@@ -1,9 +1,13 @@
 {
+  "mech_type": {
+    "scale_sche_joint": null,
+    "no_scale": null,
+    "scale_sche_separated": null
+  },
   "scale_num": {
-    "hpa": null,
     "lass": null,
-    "ai": null,
-    "no": null
+    "no": null,
+    "hpa": null
   },
   "scale_down_exec": {
     "default": null
@@ -13,9 +17,9 @@
     "least_task": null
   },
   "sche": {
-    "pos": null,
     "faasflow": null,
-    "fnsche": null,
-    "pass": null
+    "pass": null,
+    "pos": null,
+    "fnsche": null
   }
 }

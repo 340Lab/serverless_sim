@@ -1,10 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::scale::down_exec::ScaleDownExec;
-use crate::{
-    actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, scale::down_exec::ScaleOption,
-    sim_env::SimEnv,
-};
+use crate::{actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, sim_env::SimEnv};
 
 use super::{
     down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
@@ -33,55 +30,6 @@ impl HpaScaleNum {
             fn_sche_container_count: HashMap::new(),
         }
     }
-    pub fn action(&mut self, env: &SimEnv, fnid: FnId, metric: &ContainerMetric) -> usize {
-        let cpu_target_use_rate = match self.target {
-            Target::CpuUseRate(cpu_target_use_rate) => cpu_target_use_rate,
-        };
-        let container_cnt = metric.container_count;
-        let mut avg_cpu_use_rate = 0.0;
-        env.fn_containers_for_each(fnid, |c| {
-            // avg_cpu_use_rate +=
-            // env.node(c.node_id).last_frame_cpu / env.node(c.node_id).rsc_limit.cpu;
-            avg_cpu_use_rate += env.node(c.node_id).mem() / env.node(c.node_id).rsc_limit.mem;
-        });
-        if container_cnt != 0 {
-            avg_cpu_use_rate /= container_cnt as f32;
-        }
-
-        // let container_cnt = nodes.len();
-        // let avg_cpu_use_rate = nodes
-        //     .iter()
-        //     .map(|n: &usize| {
-        //         let node = env.node(*n);
-        //         let fn_container = node.fn_containers.get(fnid).unwrap();
-        //         fn_container.cpu_use_rate()
-        //     })
-        //     .sum::<f32>()
-        //     / container_cnt as f32;
-        let mut desired_container_cnt = (avg_cpu_use_rate / cpu_target_use_rate).ceil() as usize;
-
-        if metric.ready_2_schedule_fn_count() > 0 && desired_container_cnt == 0 {
-            desired_container_cnt = 1;
-        } else {
-            // current divide target
-            let ratio = avg_cpu_use_rate / cpu_target_use_rate;
-            if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
-                || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
-                || ratio == 1.0
-            {
-                // # ratio is sufficiently close to 1.0
-
-                // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
-                return 11;
-            }
-        }
-
-        desired_container_cnt =
-            self.scale_down_policy
-                .filter_desired(fnid, desired_container_cnt, container_cnt);
-
-        desired_container_cnt
-    }
 }
 
 impl ScaleNum for HpaScaleNum {
@@ -91,97 +39,63 @@ impl ScaleNum for HpaScaleNum {
             .map(|c| *c)
             .unwrap_or(0)
     }
-    fn scale_for_fn(
-        &mut self,
-        env: &SimEnv,
-        fnid: FnId,
-        metric: &ContainerMetric,
-        action: &ESActionWrapper,
-    ) -> (f32, bool) {
+    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> (f32, bool) {
+        let mech_metric = env.help.mech_metric();
         match self.target {
             Target::CpuUseRate(cpu_target_use_rate) => {
-                let container_cnt = metric.container_count;
-                let mut avg_cpu_use_rate = 0.0;
-                env.fn_containers_for_each(fnid, |c| {
-                    // avg_cpu_use_rate +=
-                    // env.node(c.node_id).last_frame_cpu / env.node(c.node_id).rsc_limit.cpu;
-                    avg_cpu_use_rate +=
-                        env.node(c.node_id).mem() / env.node(c.node_id).rsc_limit.mem;
-                });
-                if container_cnt != 0 {
-                    avg_cpu_use_rate /= container_cnt as f32;
-                }
+                let container_cnt = env.fn_container_cnt(fnid);
 
-                // let container_cnt = nodes.len();
-                // let avg_cpu_use_rate = nodes
-                //     .iter()
-                //     .map(|n: &usize| {
-                //         let node = env.node(*n);
-                //         let fn_container = node.fn_containers.get(fnid).unwrap();
-                //         fn_container.cpu_use_rate()
-                //     })
-                //     .sum::<f32>()
-                //     / container_cnt as f32;
-                let mut desired_container_cnt =
-                    (avg_cpu_use_rate / cpu_target_use_rate).ceil() as usize;
+                let mut desired_container_cnt = if container_cnt != 0 {
+                    let mut avg_mem_use_rate = 0.0;
+                    env.fn_containers_for_each(fnid, |c| {
+                        // avg_cpu_use_rate +=
+                        // env.node(c.node_id).last_frame_cpu / env.node(c.node_id).rsc_limit.cpu;
+                        avg_mem_use_rate +=
+                            env.node(c.node_id).mem() / env.node(c.node_id).rsc_limit.mem;
+                    });
+                    avg_mem_use_rate /= container_cnt as f32;
 
-                if env
-                    .mechanisms
-                    .spec_scheduler_mut()
-                    .as_mut()
-                    .unwrap()
-                    .this_turn_will_schedule(fnid)
-                    && desired_container_cnt == 0
-                {
-                    desired_container_cnt = 1;
-                } else {
-                    // current divide target
-                    let ratio = avg_cpu_use_rate / cpu_target_use_rate;
-                    if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
-                        || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
-                        || ratio == 1.0
                     {
-                        // # ratio is sufficiently close to 1.0
+                        // current divide target
+                        let ratio = avg_mem_use_rate / cpu_target_use_rate;
+                        if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
+                            || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
+                            || ratio == 1.0
+                        {
+                            // # ratio is sufficiently close to 1.0
 
-                        // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
-                        return (0.0, false);
+                            // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
+                            return (0.0, false);
+                        }
                     }
+                    log::info!("avg mem use rate {}", avg_mem_use_rate);
+                    (avg_mem_use_rate / cpu_target_use_rate).ceil() as usize
+                } else {
+                    0
+                };
+
+                if mech_metric.fn_unsche_req_cnt(fnid) > 0 {
+                    desired_container_cnt = 1;
                 }
+                // !!! move to basic filter
+                // if env
+                //     .mechanisms
+                //     .spec_scheduler_mut()
+                //     .as_mut()
+                //     .unwrap()
+                //     .this_turn_will_schedule(fnid)
+                //     && desired_container_cnt == 0
+                // {
+                //     desired_container_cnt = 1;
+                // } else
 
                 desired_container_cnt = self.scale_down_policy.filter_desired(
                     fnid,
                     desired_container_cnt,
                     container_cnt,
                 );
-
-                // log::info!("hpa try scale from {} to {}", container_cnt, desired_container_cnt);
-
-                // take the initiative in scale down to save cost
-                if desired_container_cnt < container_cnt {
-                    // # scale down
-                    let scale = container_cnt - desired_container_cnt;
-                    env.mechanisms.scale_executor_mut().exec_scale_down(
-                        env,
-                        ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
-                    );
-                }
-                // else if desired_container_cnt > container_cnt {
-                //     // # scale up
-                //     let scale = desired_container_cnt - container_cnt;
-                //     env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
-                // }
                 self.fn_sche_container_count
                     .insert(fnid, desired_container_cnt);
-                // if env
-                //     .spec_scheduler
-                //     .borrow()
-                //     .as_ref()
-                //     .unwrap()
-                //     .this_turn_will_schedule(fnid)
-                // {
-                //     self.preloader().pre_load(desired_container_cnt, fnid, env);
-                // }
-                // self.preloader().pre_load(desired_container_cnt, fnid, env);
             }
         }
         (0.0, false)

@@ -1,12 +1,10 @@
 use std::collections::HashMap;
-
 use super::{
     down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
     ScaleNum,
 };
-use crate::scale::down_exec::ScaleDownExec;
 use crate::{
-    actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, scale::down_exec::ScaleOption,
+    actions::ESActionWrapper,fn_dag::FnId, 
     sim_env::SimEnv,
 };
 
@@ -35,18 +33,14 @@ impl ScaleNum for LassScaleNum {
             .map(|c| *c)
             .unwrap_or(0)
     }
-    fn scale_for_fn(
-        &mut self,
-        env: &SimEnv,
-        fnid: FnId,
-        metric: &ContainerMetric,
-        action: &ESActionWrapper,
-    ) -> (f32, bool) {
+    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> (f32, bool) {
         // 请求时间=请求数/(当前容器数(cc)*每个容器请求处理速率(r/t))
-        let mut desired_container_cnt =
-            if metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count == 0 {
-                0
-            } else {
+        let desired_container_cnt =
+            // if metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count == 0 {
+            //     0
+            // } else
+            {
+                
                 let recent_speed = {
                     let mut recent_speed_sum = 0.0;
                     let mut recent_speed_cnt = 0;
@@ -72,44 +66,50 @@ impl ScaleNum for LassScaleNum {
                 if recent_speed < 0.00001 {
                     1
                 } else {
-                    (((metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count) as f32)
+                    (env.help.mech_metric().fn_recent_req_cnt(fnid)
                         / (self.latency_required * recent_speed).ceil())
                         as usize
                 }
             };
 
-        let container_cnt = metric.container_count;
-        desired_container_cnt =
-            self.scale_down_policy
-                .filter_desired(fnid, desired_container_cnt, container_cnt);
 
-        if env
-            .mechanisms
-            .spec_scheduler()
-            .as_ref()
-            .unwrap()
-            .this_turn_will_schedule(fnid)
-            && desired_container_cnt == 0
-        {
-            desired_container_cnt = 1;
-        }
+        
+        // !!! move to careful_down_filter
+        // desired_container_cnt =
+        //     self.scale_down_policy
+        //         .filter_desired(fnid, desired_container_cnt, container_cnt);
 
-        if desired_container_cnt < container_cnt {
-            // # scale down
-            let scale = container_cnt - desired_container_cnt;
+        // !!! move to basic filter                
+        // if env
+        //     .mechanisms
+        //     .spec_scheduler()
+        //     .as_ref()
+        //     .unwrap()
+        //     .this_turn_will_schedule(fnid)
+        //     && desired_container_cnt == 0
+        // {
+        //     desired_container_cnt = 1;
+        // }
 
-            env.mechanisms.scale_executor_mut().exec_scale_down(
-                env,
-                ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
-            );
-        }
-        self.fn_sche_container_count
-            .insert(fnid, desired_container_cnt);
+        // !!! move out of here
+        // if desired_container_cnt < container_cnt {
+        //     // # scale down
+        //     let scale = container_cnt - desired_container_cnt;
+
+        //     env.mechanisms.scale_executor_mut().exec_scale_down(
+        //         env,
+        //         ScaleOption::new().for_spec_fn(fnid).with_scale_cnt(scale),
+        //     );
+        // }
         // else {
         //     // # scale up
         //     let scale = desired_container_cnt - container_cnt;
         //     env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
         // }
+
+        self.fn_sche_container_count
+            .insert(fnid, desired_container_cnt);
+        
 
         (0.0, false)
     }

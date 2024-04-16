@@ -5,26 +5,19 @@ use self::{
     fnsche::FnScheScheduler,
     pass::PassScheduler,
     pos::PosScheduler,
-    rule_based::{RuleBasedScheduler, ScheduleRule},
-    time_aware::TimeScheduler,
+    // rule_based::{RuleBasedScheduler, ScheduleRule},
+    // time_aware::TimeScheduler,
 };
 
 pub mod faasflow;
 pub mod fnsche;
 pub mod pass;
 pub mod pos;
-pub mod rule_based;
-pub mod time_aware;
-
-pub const SCHE_NAMES: [&'static str; 4] = [
-    "faasflow", "pass", "pos", "fnsche",
-    // "gofs",
-    // "load_least",
-    // "random",
-];
+// pub mod rule_based;
+// pub mod time_aware;
 
 pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Send>> {
-    let es = &config.es;
+    let es = &config.mech;
     // let (scale_num_name, scale_num_attr) = es.scale_num_conf();
     // let (scale_up_exec_name, scale_up_exec_attr) = es.scale_up_exec_conf();
     // let (scale_down_exec_name, scale_down_exec_attr) = es.scale_down_exec_conf();

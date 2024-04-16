@@ -1,7 +1,5 @@
 use crate::{
-    config::{Config, ESConfig, ModuleESConf},
-    // parse_arg,
-    sim_env::SimEnv,
+    config::Config, fn_dag::FnId, mechanism_conf::ModuleMechConf, sim_env::SimEnv, util::Window,
 };
 use chrono;
 use serde::{Deserialize, Serialize};
@@ -43,6 +41,68 @@ use std::{
 //     cost: f32,
 //     score:f32,
 // }
+pub struct MechMetric {
+    fn_recent_req_cnt_window: HashMap<FnId, Window>,
+    fn_unsche_req_cnt: HashMap<FnId, usize>,
+    node_task_new_cnt: HashMap<FnId, usize>,
+}
+
+impl MechMetric {
+    pub fn new() -> Self {
+        Self {
+            fn_recent_req_cnt_window: HashMap::new(),
+            fn_unsche_req_cnt: HashMap::new(),
+            node_task_new_cnt: HashMap::new(),
+        }
+    }
+    pub fn on_new_req_generated(&mut self, env: &SimEnv) {
+        self.fn_unsche_req_cnt.clear();
+        self.fn_recent_req_cnt_window.clear();
+        self.node_task_new_cnt.clear();
+
+        for (_, req) in env.core.requests().iter() {
+            let mut walker = env.dag(req.dag_i).new_dag_walker();
+            while let Some(fngid) = walker.next(&env.dag(req.dag_i).dag_inner) {
+                let fnid = env.dag_inner(req.dag_i)[fngid];
+                if req.get_fn_node(fnid) == None {
+                    self.fn_unsche_req_cnt
+                        .entry(fnid)
+                        .and_modify(|v| *v += 1)
+                        .or_insert(1);
+                }
+                if !req.done_fns.contains_key(&fnid) {
+                    self.fn_recent_req_cnt_window
+                        .entry(fnid)
+                        .or_insert_with(|| Window::new(10))
+                        .push(1.0);
+                }
+            }
+        }
+
+        for n in env.nodes().iter() {
+            self.node_task_new_cnt.insert(n.node_id(), n.all_task_cnt());
+        }
+    }
+    pub fn fn_recent_req_cnt(&self, fnid: FnId) -> f32 {
+        self.fn_recent_req_cnt_window
+            .get(&fnid)
+            .map(|v| v.avg())
+            .unwrap_or(0.0)
+    }
+    pub fn fn_unsche_req_cnt(&self, fnid: FnId) -> usize {
+        *self.fn_unsche_req_cnt.get(&fnid).unwrap_or(&0)
+    }
+
+    pub fn add_node_task_new_cnt(&mut self, nodeid: FnId) {
+        self.node_task_new_cnt
+            .entry(nodeid)
+            .and_modify(|v| *v += 1)
+            .or_insert(1);
+    }
+    pub fn node_task_new_cnt(&self, nodeid: FnId) -> usize {
+        *self.node_task_new_cnt.get(&nodeid).unwrap_or(&0)
+    }
+}
 
 pub struct OneFrameMetric {
     // pub frame: usize,
@@ -154,6 +214,7 @@ impl Records {
     }
     pub fn flush(&self, env: &SimEnv) {
         if env.help.config().no_log {
+            log::info!("no metric record, skip flush");
             return;
         }
         if self.frames.len() > 9 {
@@ -165,6 +226,8 @@ impl Records {
                 .unwrap();
 
             // 计算几个关键指标，输出到对应seed的文件中
+        } else {
+            log::info!("frame is too small, skip flush");
         }
     }
 }
@@ -193,7 +256,7 @@ impl RecordFile {
             fn_type: "".to_owned(),
             // app_types: vec![],
             no_log: false,
-            es: ModuleESConf::new().0,
+            mech: ModuleMechConf::new().0,
         };
 
         Some(Self {
