@@ -4,7 +4,7 @@ use crate::scale::down_exec::ScaleDownExec;
 use crate::{actions::ESActionWrapper, algos::ContainerMetric, fn_dag::FnId, sim_env::SimEnv};
 
 use super::{
-    down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
+    down_filter::{CarefulScaleDownFilter, ScaleFilter},
     ScaleNum,
 };
 
@@ -17,7 +17,7 @@ pub struct HpaScaleNum {
     // target_tolerance: determines how close the target/current
     //   resource ratio must be to 1.0 to skip scaling
     target_tolerance: f32,
-    pub scale_down_policy: Box<dyn ScaleDownFilter + Send>,
+    pub scale_down_policy: Box<dyn ScaleFilter + Send>,
     fn_sche_container_count: HashMap<FnId, usize>,
 }
 
@@ -33,15 +33,9 @@ impl HpaScaleNum {
 }
 
 impl ScaleNum for HpaScaleNum {
-    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
-        self.fn_sche_container_count
-            .get(&fnid)
-            .map(|c| *c)
-            .unwrap_or(0)
-    }
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> (f32, bool) {
+    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> usize {
         let mech_metric = env.help.mech_metric();
-        match self.target {
+        let desired_container_cnt = match self.target {
             Target::CpuUseRate(cpu_target_use_rate) => {
                 let container_cnt = env.fn_container_cnt(fnid);
 
@@ -65,10 +59,10 @@ impl ScaleNum for HpaScaleNum {
                             // # ratio is sufficiently close to 1.0
 
                             // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
-                            return (0.0, false);
+                            return container_cnt;
                         }
                     }
-                    log::info!("avg mem use rate {}", avg_mem_use_rate);
+                    // log::info!("avg mem use rate {}", avg_mem_use_rate);
                     (avg_mem_use_rate / cpu_target_use_rate).ceil() as usize
                 } else {
                     0
@@ -89,15 +83,15 @@ impl ScaleNum for HpaScaleNum {
                 //     desired_container_cnt = 1;
                 // } else
 
-                desired_container_cnt = self.scale_down_policy.filter_desired(
-                    fnid,
-                    desired_container_cnt,
-                    container_cnt,
-                );
-                self.fn_sche_container_count
-                    .insert(fnid, desired_container_cnt);
+                // !!! move to down filter
+                // desired_container_cnt = self.scale_down_policy.filter_desired(
+                //     fnid,
+                //     desired_container_cnt,
+                //     container_cnt,
+                // );
+                desired_container_cnt
             }
-        }
-        (0.0, false)
+        };
+        desired_container_cnt
     }
 }

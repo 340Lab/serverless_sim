@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::fn_dag::FnId;
 
-pub trait ScaleDownFilter {
+pub trait ScaleFilter: Send {
     fn filter_desired(&mut self, fnid: FnId, desired: usize, current: usize) -> usize;
 }
 
@@ -35,8 +35,9 @@ impl CarefulScaleDownFilter {
     }
 }
 
-impl ScaleDownFilter for CarefulScaleDownFilter {
+impl ScaleFilter for CarefulScaleDownFilter {
     fn filter_desired(&mut self, fnid: FnId, desired: usize, current: usize) -> usize {
+        // log::info!("do careful scale down filter");
         if desired < current {
             let ret = if self.smaller_than_history(fnid, desired) {
                 desired

@@ -1,4 +1,7 @@
-use std::cell::{RefCell, RefMut};
+use std::{
+    cell::{RefCell, RefMut},
+    collections::HashMap,
+};
 
 use crate::{
     actions::ESActionWrapper,
@@ -9,7 +12,10 @@ use crate::{
     request::ReqId,
     scale::{
         down_exec::{new_scale_down_exec, ScaleDownExec},
-        num::{new_scale_num, ScaleNum},
+        num::{
+            down_filter::{CarefulScaleDownFilter, ScaleFilter},
+            new_scale_num, ScaleNum,
+        },
         up_exec::{new_scale_up_exec, ScaleUpExec},
     },
     sche::prepare_spec_scheduler,
@@ -43,6 +49,7 @@ pub const SCALE_NUM_NAMES: [&'static str; 3] = ["no", "hpa", "lass"];
 pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
 pub const SCALE_UP_EXEC_NAMES: [&'static str; 2] = ["least_task", "no"];
 pub const MECH_NAMES: [&'static str; 3] = ["no_scale", "scale_sche_separated", "scale_sche_joint"];
+pub const FILTER_NAMES: [&'static str; 1] = ["careful_down"];
 
 pub trait Mechanism: Send {
     fn step(
@@ -158,11 +165,27 @@ impl ConfigNewMec for Config {
         let Some(scale_up_exec) = new_scale_up_exec(self) else {
             return None;
         };
+        let filters = FILTER_NAMES
+            .iter()
+            .filter(|v| self.mech.filter.get(**v).unwrap().is_some())
+            .map(|filters| {
+                let filter = match *filters {
+                    "careful_down" => CarefulScaleDownFilter::new(),
+                    _ => {
+                        panic!("filter not supported {}", filters);
+                    }
+                };
+                let filter: Box<dyn ScaleFilter> = Box::new(filter);
+                RefCell::new(filter)
+            })
+            .collect();
         Some(MechanismImpl {
             sche: RefCell::new(sche),
             scale_num: RefCell::new(scale_num),
             scale_down_exec: RefCell::new(scale_down_exec),
             scale_up_exec: RefCell::new(scale_up_exec),
+            filters,
+            fn_scale_num: RefCell::new(HashMap::new()),
         })
     }
 }
@@ -172,6 +195,8 @@ pub struct MechanismImpl {
     scale_num: RefCell<Box<dyn ScaleNum>>,
     scale_down_exec: RefCell<Box<dyn ScaleDownExec>>,
     scale_up_exec: RefCell<Box<dyn ScaleUpExec>>,
+    filters: Vec<RefCell<Box<dyn ScaleFilter>>>,
+    fn_scale_num: RefCell<HashMap<FnId, usize>>,
 }
 
 impl Mechanism for MechanismImpl {
@@ -201,9 +226,9 @@ impl MechanismImpl {
     pub fn scale_up_exec<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleUpExec>> {
         self.scale_up_exec.borrow_mut()
     }
-    pub fn scale_num<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleNum>> {
-        self.scale_num.borrow_mut()
-    }
+    // pub fn scale_num<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleNum>> {
+    //     self.scale_num.borrow_mut()
+    // }
     // no scale
     fn step_no_scaler(
         &self,
@@ -213,6 +238,20 @@ impl MechanismImpl {
         log::info!("step_no_scaler");
         let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);
         (up_cmds, down_cmds, sche_cmds)
+    }
+
+    fn update_scale_num(&self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) {
+        let mut target = self.scale_num.borrow_mut().scale_for_fn(env, fnid, action);
+        for filter in self.filters.iter() {
+            target = filter
+                .borrow_mut()
+                .filter_desired(fnid, target, env.fn_container_cnt(fnid));
+        }
+        self.fn_scale_num.borrow_mut().insert(fnid, target);
+    }
+
+    pub fn scale_num(&self, fnid: FnId) -> usize {
+        self.fn_scale_num.borrow().get(&fnid).unwrap().clone()
     }
 
     // scale and sche separated
@@ -226,14 +265,9 @@ impl MechanismImpl {
         let mut down_cmds = Vec::new();
 
         for func in env.core.fns().iter() {
-            self.scale_num
-                .borrow_mut()
-                .scale_for_fn(env, func.fn_id, &raw_action);
+            self.update_scale_num(env, func.fn_id, &raw_action);
+            let target = self.scale_num(func.fn_id);
 
-            let target = self
-                .scale_num
-                .borrow_mut()
-                .fn_available_count(func.fn_id, env);
             let cur = env.fn_container_cnt(func.fn_id);
             if target > cur {
                 up_cmds.extend(
@@ -264,16 +298,11 @@ impl MechanismImpl {
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         for func in env.core.fns().iter() {
-            self.scale_num
-                .borrow_mut()
-                .scale_for_fn(env, func.fn_id, &raw_action);
+            self.update_scale_num(env, func.fn_id, &raw_action);
             let cur = env.fn_container_cnt(func.fn_id);
-            let tar = self
-                .scale_num
-                .borrow_mut()
-                .fn_available_count(func.fn_id, env);
+            let tar = self.scale_num(func.fn_id);
 
-            log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
+            // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
         }
 
         let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);

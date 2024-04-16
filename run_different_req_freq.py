@@ -22,9 +22,12 @@ class Task:
             'scale_up_exec',
             'sche'
         ]
-        for i,conf in enumerate(confs):
+        for i,conf in enumerate(confs[:5]):
             self.env.config["mech"][conf][algo_conf[i][0]]=algo_conf[i][1]
-            
+        for f in algo_conf[5]:
+            filter_name=list(f.keys())[0]
+            attr=f[filter_name]
+            self.env.config["mech"]['filter'][filter_name]=attr
         # self.env.config["mech"]['mech_type']
         # self.env.config["mech"]['scale_num'][algo_conf[0][0]]=algo_conf[0][1]
         # self.env.config["mech"]['scale_down_exec'][algo_conf[1][0]]=algo_conf[1][1]
@@ -46,7 +49,7 @@ class Task:
 
 algos=[
     # mechtype, scale_num, scale_down_exec, scale_up_exec, sche
-    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""]],
+    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
     # [['scale_sche_joint',''],["lass",""],["default",""],["least_task",""],["pos",""]],
 
     # [['no_scale',''],['no',''],["default",""],['no',''],['faasflow','']],
