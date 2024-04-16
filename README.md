@@ -59,7 +59,8 @@ pip install -r requirements.txt
 
 The process flow will help you build up a general view about this simulation framework.
 
-![图片](img_jpeg/image1.jpeg)
+``` 
+ ```
 
 Relations between Task - Fn - App（DAG） - Container - Request
 
@@ -71,17 +72,64 @@ Scaler & Scheduler General Pattern
 
 ## 6. Roadmap
 
+Refactor
+
+- refactor: use new mechanism
+
+- [refactor: new config for mechanisms. pr/33](https://github.com/340Lab/serverless_sim/pull/33)
+
+- [refactor: divide sim env into sub mods. pr/32](https://github.com/340Lab/serverless_sim/pull/32)
+
 Experimental
 
 [sim支持python脚本vscode右键运行 pr/17 feat:New python script file can directly “run code” by YouMeiYouMaoTai · Pull Request #17 · 340Lab/serverless_sim (github.com)](https://github.com/340Lab/serverless_sim/pull/17)
 
 ## 7. Algorithms
 
+### FaasFlow
 
+src: sche_faasflow.rs
 
+paper: https://dl.acm.org/doi/abs/10.1145/3503222.3507717
 
+``` 
 
-[同步块-无权限下载此内容]
+同步自文档: https://fvd360f8oos.feishu.cn/docx/Za01dnGHJoYJ0Hxu0vBcM4uon3f#HSO9dZrVlszPyPbPSwvc4sLwnkb
+ ```
 
+### FnSched
 
+src: sche_fnsche
+
+paper: https://dl.acm.org/doi/abs/10.1145/3366623.3368136
+
+``` 
+
+同步自文档: https://fvd360f8oos.feishu.cn/docx/Za01dnGHJoYJ0Hxu0vBcM4uon3f#XVqyddSNSsKDVPbhsZJc5tdpnrb
+ ```
+
+### PASS
+
+src: sche_pass
+
+Papar: https://ieeexplore.ieee.org/abstract/document/9812887 
+
+``` 
+
+同步自文档: https://fvd360f8oos.feishu.cn/docx/Za01dnGHJoYJ0Hxu0vBcM4uon3f#A6jwdzRCSs4xj4b5lzscENNXnLb
+ ```
+
+### POS
+
+src: sche_pos
+
+![图片](img_jpeg/image4.jpeg)
+
+### HPA
+
+src: scaler_hpa
+
+paper: https://arxiv.org/abs/2403.07909
+
+![图片](img_jpeg/image4.jpeg)
 
