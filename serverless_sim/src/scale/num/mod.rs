@@ -20,11 +20,11 @@ use std::{
 use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum};
 
 pub trait ScaleNum: Send {
-    /// return (action, action_is_done)
+    /// return target scale count
     /// - action_is_done: need prepare next state and wait for new action
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> (f32, bool);
+    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> usize;
 
-    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
+    // fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
 }
 
 pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {

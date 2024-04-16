@@ -92,7 +92,6 @@ impl PosScheduler {
                 .reverse()
         });
 
-        let scale_num = env.new_mech.scale_num();
         let scale_up_exec = env.new_mech.scale_up_exec();
         let mech_metric = || env.help.mech_metric_mut();
 
@@ -101,7 +100,7 @@ impl PosScheduler {
 
         for &fnid in &schedule_able_fns {
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
-            let mut target_cnt = scale_num.fn_available_count(fnid, env);
+            let mut target_cnt = env.new_mech.scale_num(fnid);
             if target_cnt == 0 {
                 target_cnt = 1;
             }
@@ -242,7 +241,7 @@ impl Scheduler for PosScheduler {
         let mut down_cmds = vec![];
 
         for func in env.core.fns().iter() {
-            let target = env.new_mech.scale_num().fn_available_count(func.fn_id, env);
+            let target = env.new_mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);
             if target < cur {
                 down_cmds.extend(env.new_mech.scale_down_exec().exec_scale_down(

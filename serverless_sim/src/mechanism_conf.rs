@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::mechanism::{
-    MECH_NAMES, SCALE_DOWN_EXEC_NAMES, SCALE_NUM_NAMES, SCALE_UP_EXEC_NAMES, SCHE_NAMES,
+    FILTER_NAMES, MECH_NAMES, SCALE_DOWN_EXEC_NAMES, SCALE_NUM_NAMES, SCALE_UP_EXEC_NAMES,
+    SCHE_NAMES,
 };
 use std::{collections::HashMap, fs::File};
 
@@ -26,6 +27,7 @@ impl ModuleMechConf {
                 .collect(),
             sche: SCHE_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
             mech_type: MECH_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
+            filter: FILTER_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
         })
     }
     pub fn export_module_file(&self) {
@@ -36,6 +38,7 @@ impl ModuleMechConf {
         fn compare_sub_hashmap(
             module: &HashMap<String, Option<String>>,
             conf: &HashMap<String, Option<String>>,
+            must_one_some: bool,
         ) -> bool {
             // len must be same
             if module.len() != conf.len() {
@@ -48,25 +51,30 @@ impl ModuleMechConf {
             }
             // only one can be some
             let somecnt = conf.iter().filter(|(k, v)| v.is_some()).count();
-            if somecnt != 1 {
+            if must_one_some && somecnt != 1 {
                 log::warn!("Sub conf with multi some, cnt:{}", somecnt);
+                return false;
             }
             true
         }
-        if !compare_sub_hashmap(&self.0.scale_down_exec, &conf.scale_down_exec) {
+        if !compare_sub_hashmap(&self.0.scale_down_exec, &conf.scale_down_exec, true) {
             log::warn!("scale_down_exec is not match");
             return false;
         }
-        if !compare_sub_hashmap(&self.0.scale_num, &conf.scale_num) {
+        if !compare_sub_hashmap(&self.0.scale_num, &conf.scale_num, true) {
             log::warn!("scale_num is not match");
             return false;
         }
-        if !compare_sub_hashmap(&self.0.scale_up_exec, &conf.scale_up_exec) {
+        if !compare_sub_hashmap(&self.0.scale_up_exec, &conf.scale_up_exec, true) {
             log::warn!("scale_up_exec is not match");
             return false;
         }
-        if !compare_sub_hashmap(&self.0.sche, &conf.sche) {
+        if !compare_sub_hashmap(&self.0.sche, &conf.sche, true) {
             log::warn!("sche is not match");
+            return false;
+        }
+        if !compare_sub_hashmap(&self.0.mech_type, &conf.mech_type, false) {
+            log::warn!("mech_type is not match");
             return false;
         }
         true
@@ -80,6 +88,7 @@ pub struct MechConfig {
     pub scale_down_exec: HashMap<String, Option<String>>,
     pub scale_up_exec: HashMap<String, Option<String>>,
     pub sche: HashMap<String, Option<String>>,
+    pub filter: HashMap<String, Option<String>>,
 }
 
 impl MechConfig {

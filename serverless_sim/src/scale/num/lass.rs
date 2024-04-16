@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use super::{
-    down_filter::{CarefulScaleDownFilter, ScaleDownFilter},
+    down_filter::{CarefulScaleDownFilter, ScaleFilter},
     ScaleNum,
 };
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
 
 pub struct LassScaleNum {
     pub latency_required: f32,
-    pub scale_down_policy: Box<dyn ScaleDownFilter + Send>,
+    pub scale_down_policy: Box<dyn ScaleFilter + Send>,
     fn_sche_container_count: HashMap<FnId, usize>,
 }
 
@@ -27,13 +27,7 @@ impl LassScaleNum {
 // unsafe impl Send for LassEFScaler {}
 
 impl ScaleNum for LassScaleNum {
-    fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {
-        self.fn_sche_container_count
-            .get(&fnid)
-            .map(|c| *c)
-            .unwrap_or(0)
-    }
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> (f32, bool) {
+    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> usize {
         // 请求时间=请求数/(当前容器数(cc)*每个容器请求处理速率(r/t))
         let desired_container_cnt =
             // if metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count == 0 {
@@ -107,10 +101,6 @@ impl ScaleNum for LassScaleNum {
         //     env.scale_executor.borrow_mut().scale_up(env, fnid, scale);
         // }
 
-        self.fn_sche_container_count
-            .insert(fnid, desired_container_cnt);
-        
-
-        (0.0, false)
+        desired_container_cnt
     }
 }
