@@ -13,6 +13,8 @@ import threading
 from proxy_env3 import ProxyEnv3
 
 class Task: 
+
+    # 根据给定的算法配置来配置代理环境的参数
     def algo(self,algo_conf):
         self.env=ProxyEnv3()
         confs=[

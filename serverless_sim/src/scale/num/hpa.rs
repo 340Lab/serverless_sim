@@ -39,24 +39,25 @@ impl ScaleNum for HpaScaleNum {
             Target::CpuUseRate(cpu_target_use_rate) => {
                 let container_cnt = env.fn_container_cnt(fnid);
 
-                let mut desired_container_cnt = if container_cnt != 0 {
-                    let mut avg_mem_use_rate = 0.0;
-                    env.fn_containers_for_each(fnid, |c| {
-                        // avg_cpu_use_rate +=
-                        // env.node(c.node_id).last_frame_cpu / env.node(c.node_id).rsc_limit.cpu;
-                        avg_mem_use_rate +=
-                            env.node(c.node_id).mem() / env.node(c.node_id).rsc_limit.mem;
-                    });
-                    avg_mem_use_rate /= container_cnt as f32;
+                let mut desired_container_cnt = 
+                    if container_cnt != 0 {
+                        let mut avg_mem_use_rate = 0.0;
+                        env.fn_containers_for_each(fnid, |c| {
+                            // avg_cpu_use_rate +=
+                            // env.node(c.node_id).last_frame_cpu / env.node(c.node_id).rsc_limit.cpu;
+                            avg_mem_use_rate +=
+                                env.node(c.node_id).mem() / env.node(c.node_id).rsc_limit.mem;
+                        });
+                        avg_mem_use_rate /= container_cnt as f32;
 
-                    {
-                        // current divide target
-                        let ratio = avg_mem_use_rate / cpu_target_use_rate;
-                        if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
-                            || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
-                            || ratio == 1.0
                         {
-                            // # ratio is sufficiently close to 1.0
+                            // current divide target
+                            let ratio = avg_mem_use_rate / cpu_target_use_rate;
+                            if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
+                                || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
+                                || ratio == 1.0
+                            {
+                                // # ratio is sufficiently close to 1.0
 
                             // log::info!("hpa skip {fnid} at frame {}", env.current_frame());
                             return container_cnt;

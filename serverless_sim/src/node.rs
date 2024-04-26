@@ -250,21 +250,25 @@ impl Node {
 }
 
 impl SimEnv {
+    // 初始化节点之间的图数据结构，包括节点之间的连接数计数和带宽图，并为每个节点设置随机速度
     pub fn node_init_node_graph(&self) {
+
+        // 初始化一个节点
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id);
-            // let node_i = nodecnt;
+
             env.core.nodes_mut().push(node);
 
             let nodecnt: usize = env.core.nodes().len();
 
             for i in 0..nodecnt - 1 {
                 let randspeed = env.env_rand_f(8000.0, 10000.0);
+                // 设置节点间网速
                 env.node_set_speed_btwn(i, nodecnt - 1, randspeed);
             }
         }
 
-        // # init nodes graph
+        // 初始化节点图
         let dim = NODE_CNT;
         *self.core.node2node_connection_count_mut() = vec![vec![0; dim]; dim];
         *self.core.node2node_graph_mut() = vec![vec![0.0; dim]; dim];

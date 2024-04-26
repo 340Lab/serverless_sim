@@ -3,6 +3,7 @@ pub mod down_filter;
 pub mod hpa;
 pub mod lass;
 pub mod no;
+pub mod temp_scaler;
 
 use crate::{
     actions::ESActionWrapper,

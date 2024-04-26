@@ -32,19 +32,19 @@ pub struct Request {
     /// 请求id
     pub req_id: ReqId,
 
-    /// 对应请求处理的应用
+    /// 对应请求处理的DAG，有函数组成
     pub dag_i: DagId,
 
     /// 函数节点被调度到的机器节点
     pub fn_node: HashMap<FnId, NodeId>,
 
-    ///完成执行的函数节点，时间
+    /// 完成执行的函数节点，时间
     pub done_fns: HashMap<FnId, usize>,
 
     // 当前帧已完成的函数
     pub cur_frame_done: HashSet<FnId>,
 
-    //请求到达的时刻
+    // 请求到达的时刻，这个DAG中包含的所有函数到达时刻也可以看成这个时刻
     pub begin_frame: usize,
 
     // 请求完成的时刻
@@ -152,10 +152,16 @@ impl Request {
 }
 
 impl SimEnv {
+    // 生成请求
     pub fn req_sim_gen_requests(&self) {
         let env = self;
+
+        // 每10帧生成一次请求
         if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
-            let scale = if env.help.config().dag_type_dag() {
+
+            // 根据负载情况生成请求
+            let scale = 
+            if env.help.config().dag_type_dag() {
                 if env.help.config().request_freq_high() {
                     30
                 } else if env.help.config().request_freq_middle() {
@@ -163,7 +169,8 @@ impl SimEnv {
                 } else {
                     10
                 }
-            } else {
+            } 
+            else {
                 if env.help.config().request_freq_high() {
                     120
                 } else if env.help.config().request_freq_middle() {
@@ -173,11 +180,16 @@ impl SimEnv {
                 }
             };
 
+            // 根据 scale 的值和环境中存在的应用数量来生成一个随机数，用来确定要生成的请求的数量
             let req_cnt = env.env_rand_i(scale, scale * env.core.dags().len());
 
+            // 对每一个请求：随机选择一个应用（dag_i）、创建一个新的请求对象、将新请求添加到环境对象的请求映射中
             for _ in 0..req_cnt {
                 let dag_i = env.env_rand_i(0, env.core.dags().len() - 1);
+
+                // 创建一个请求实例，一个请求相当于就是一个DAG
                 let request = Request::new(env, dag_i, *env.core.current_frame());
+                
                 let req_id = request.req_id;
                 env.core.requests_mut().insert(req_id, request);
             }

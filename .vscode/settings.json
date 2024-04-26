@@ -3,5 +3,86 @@
         "./serverless_sim/Cargo.toml",
         "./serverless_sim/Cargo.toml",
         "./serverless_sim/Cargo.toml"
-    ]
+    ],
+
+      //todo-tree 标签配置  标签兼容大小写字母(很好的功能!!!)
+      "todo-tree.regex.regex": "((%|#|//|<!--|^\\s*\\*)\\s*($TAGS)|^\\s*- \\[ \\])",
+      "todo-tree.general.tags": [    
+          "todo",  //添加自定义的标签成员,将在下面实现它们的样式
+          "bug",
+          "fix",
+          "tag",
+          "done",
+          "mark",
+          "test",
+          "update"
+      ],
+      "todo-tree.regex.regexCaseSensitive": false,
+      "todo-tree.highlights.customHighlight": {
+          //todo 		需要做的功能
+          "todo": {
+              "icon": "alert",          //标签样式
+              "background": "#c9c552",  //背景色
+              "rulerColour": "#c9c552", //外框颜色
+              "iconColour": "#c9c552",  //标签颜色
+          },
+   
+          //bug		必须要修复的BUG  
+          "bug": {
+              "background": "#eb5c5c",
+              "icon": "bug",
+              "rulerColour": "#eb5c5c",
+              "iconColour": "#eb5c5c",
+          },
+
+          //fix		必须要修复的BUG  
+          "fix": {
+            "background": "#ec3a61",
+            "icon": "fix",
+            "rulerColour": "#ec3a61",
+            "iconColour": "#ec3a61",
+        },
+   
+          //tag		标签
+          "tag": {
+              "background": "#38b2f4",
+              "icon": "tag",
+              "rulerColour": "#38b2f4",
+              "iconColour": "#38b2f4",
+              "rulerLane": "full"
+          },
+   
+          //done		已完成
+          "done": {
+              "background": "#5eec95",
+              "icon": "check",
+              "rulerColour": "#5eec95",
+              "iconColour": "#5eec95",
+          },
+   
+          //mark     	标记一下
+          "mark": {
+              "background": "#f90",
+              "icon": "note",
+              "rulerColour": "#f90",
+              "iconColour": "#f90",
+          },
+   
+          //test		测试代码
+          "test": {
+              "background": "#df7be6",
+              "icon": "flame",
+              "rulerColour": "#df7be6",
+              "iconColour": "#df7be6",
+          },
+   
+          //update  	优化升级点
+          "update": {
+              "background": "#d65d8e",
+              "icon": "versions",
+              "rulerColour": "#d65d8e",
+              "iconColour": "#d65d8e",
+          }
+      },
 }
+

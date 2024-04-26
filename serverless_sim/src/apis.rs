@@ -11,10 +11,11 @@ use crate::network::ApiHandlerImpl;
 pub enum GetNetworkTopoResp{
     Exist{
        topo:Vec<Vec<f64>>,
-},
+    },
+
     NotFound{
        msg:String,
-},
+    },
 
 }
 
@@ -22,10 +23,10 @@ impl GetNetworkTopoResp {
     fn id(&self)->u32 {
         match self {
                 GetNetworkTopoResp::Exist{..}=>1,
-    GetNetworkTopoResp::NotFound{..}=>2,
-
-        }
+                GetNetworkTopoResp::NotFound{..}=>2,
+            }
     }
+
     pub fn serialize(&self)->Value {
         json!({
             "id": self.id(),
@@ -37,7 +38,7 @@ impl GetNetworkTopoResp {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetNetworkTopoReq {
-       pub env_id:String,
+    pub env_id:String,
 }
 
 
@@ -143,8 +144,8 @@ impl StepResp {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StepReq {
-       pub env_id:String,
-       pub action:i32,
+    pub env_id:String,
+    pub action:i32,
 }
 
 
@@ -176,13 +177,15 @@ pub fn add_routers(mut router:Router)->Router
     }
     router=router
         .route("/get_env_id", post(get_env_id));
-                             
+
+    // python脚本文件向前端请求的接口，前端调用的 reset 函数，用于创建模拟环境对象
     async fn reset(Json(req):Json<ResetReq>)-> (StatusCode, Json<Value>){
         (StatusCode::OK, Json(ApiHandlerImpl.handle_reset(req).await.serialize()))
     }
     router=router
         .route("/reset", post(reset));
-                             
+
+    // python脚本文件向前端请求的接口，前端调用的 step 函数   
     async fn step(Json(req):Json<StepReq>)-> (StatusCode, Json<Value>){
         (StatusCode::OK, Json(ApiHandlerImpl.handle_step(req).await.serialize()))
     }

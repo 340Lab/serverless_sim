@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{cell::{Ref,RefMut,RefCell}, collections::{HashMap, HashSet, VecDeque}};
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -15,30 +15,43 @@ use crate::sim_env::SimEnv;
 //     a
 // }
 
+// 滑动窗口
 pub struct Window {
-    queue: VecDeque<f32>,
+    // 存储的浮点数
+    queue: RefCell<VecDeque<f32>>,
+
+    // 窗口容量
     cap: usize,
 }
 
 impl Window {
     pub fn new(cap: usize) -> Self {
         Self {
-            queue: VecDeque::new(),
+            queue: RefCell::new(VecDeque::new()),
             cap,
         }
     }
     pub fn push(&mut self, ele: f32) {
-        self.queue.push_back(ele);
-        if self.queue.len() > self.cap {
-            self.queue.pop_front();
+        self.queue.borrow_mut().push_back(ele);
+        if self.queue.borrow().len() > self.cap {
+            self.queue.borrow_mut().pop_front();
         }
     }
     pub fn avg(&self) -> f32 {
-        if self.queue.is_empty() {
+        if self.queue.borrow().is_empty() {
             return 0.0;
         }
-        let sum: f32 = self.queue.iter().sum();
-        sum / (self.queue.len() as f32)
+        let sum: f32 = self.queue.borrow().iter().sum();
+        sum / (self.queue.borrow().len() as f32)
+    }
+    pub fn cap(&self) -> usize {
+        self.cap.clone()
+    }
+    pub fn queue(&self) -> Ref<VecDeque<f32>> {
+        self.queue.borrow()
+    }
+    pub fn queue_mut(&self) -> RefMut<VecDeque<f32>> {
+        self.queue.borrow_mut()
     }
 }
 

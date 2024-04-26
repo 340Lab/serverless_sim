@@ -24,6 +24,7 @@ use std::{
 
 pub async fn start() {
     // build our application with a route
+    // 定义了应用程序的路由，将不同的HTTP请求映射到相应的处理函数上
     let mut app = Router::new()
         .route("/collect_seed_metrics", post(collect_seed_metrics))
         .route("/get_seeds_metrics", post(get_seeds_metrics))
@@ -33,6 +34,8 @@ pub async fn start() {
     app = apis::add_routers(app);
     // run our app with hyper, listening globally on port 3000
     // run it with hyper on localhost:3000
+
+    // 绑定全局的3000端口，并通过.serve()启动应用程序，从而监听和处理HTTP请求
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await
@@ -112,18 +115,29 @@ impl ApiHandler for ApiHandlerImpl {
 
     async fn handle_reset(&self, req: ResetReq) -> ResetResp {
         log::info!("Reset sim env");
+        // 将req.config反序列化为Config类型的数据，并使用match表达式处理反序列化结果
         match serde_json::from_value::<Config>(req.config) {
             Ok(config) => {
+                // 获取配置的标识键，并尝试获取或创建该SimEnv实例
                 let key = config.str();
                 {
+                    // 获取全局SIM_ENVS的写入锁
                     let sim_envs = SIM_ENVS.read().unwrap();
+
+                    // 如果找到了已有的模拟环境实例，则获取其独占锁，以便更新模拟环境
                     if let Some(sim_env) = sim_envs.get(&key) {
                         let mut sim_env = sim_env.lock().unwrap();
+                        // 调用模拟环境的帮助方法来记录指标，并刷新记录
                         sim_env.help.metric_record().flush(&sim_env);
+                        // 用新的配置创建一个新的模拟环境实例
                         *sim_env = SimEnv::new(config);
-                    } else {
+                    } 
+                    else {
+                        // 释放读锁
                         drop(sim_envs);
+                        // 获取写锁
                         let mut sim_envs = SIM_ENVS.write().unwrap();
+                        // 向模拟环境映射中插入一个新的模拟环境实例
                         sim_envs.insert(key.clone(), SimEnv::new(config).into());
                     }
                 }
@@ -139,12 +153,19 @@ impl ApiHandler for ApiHandlerImpl {
         let key = env_id;
         // log::info!("Step sim env");
 
+        // 获取全局SIM_ENVS的读取锁
         let sim_envs = SIM_ENVS.read().unwrap();
+
+        // 尝试获取指定env_id对应的SimEnv实例
         if let Some(sim_env) = sim_envs.get(&key) {
+            // 尝试获取该SimEnv实例的独占锁
             let mut sim_env = sim_env.lock().unwrap();
+
+            // 调用SimEnv实例的step方法
             let (score, state) = tokio::task::block_in_place(|| sim_env.step(action as u32));
 
             // insert your application logic here
+            // 根据步进操作的结果，返回StepResp::Success，其中包含得分、状态和停止标志，停止标志基于当前帧是否大于1000
             StepResp::Success {
                 score: score as f64,
                 state,
@@ -334,8 +355,11 @@ async fn get_seeds_metrics(
     (StatusCode::OK, Json(res))
 }
 
+// 执行种子度量数据的收集操作
 async fn collect_seed_metrics() -> (StatusCode, Json<()>) {
+    // 获取COLLECT_SEED_METRICS_LOCK的互斥锁，确保在一个时刻只有一个任务可以执行收集种子度量的操作
     let _hold = COLLECT_SEED_METRICS_LOCK.lock().await;
+    // 启动一个新的阻塞任务，该任务会调用metric::group_records_by_seed函数来处理种子度量的数据收集工作
     tokio::task::spawn_blocking(metric::group_records_by_seed)
         .await
         .unwrap();

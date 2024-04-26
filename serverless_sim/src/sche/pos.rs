@@ -120,42 +120,6 @@ impl PosScheduler {
             let nodes_with_container_cnt = nodes2select.len();
             nodes2select.extend(self.new_scale_up_nodes(fnid));
 
-            // let nodes = env.fn_running_containers_nodes(fnid);
-            // if nodes.len() == 0 {
-            // assert_eq!(env.fn_2_nodes.borrow().get(&fnid).unwrap().len(), 1);
-            // let fn_2_nodes = env.fn_2_nodes.borrow();
-            // let nodes = fn_2_nodes.get(&fnid).unwrap();
-
-            // let mut on_node_time = HashMap::new();
-            // let mut get_on_node_time = |node_id: NodeId| {
-            //     if !on_node_time.contains_key(&node_id) {
-            //         on_node_time.insert(
-            //             node_id,
-            //             env.algo_predict_fn_on_node_work_time(req, fnid, node_id, None),
-            //         );
-            //     }
-            //     *on_node_time.get(&node_id).unwrap()
-            // };
-
-            // !! not used
-            // let each_node_time = nodes2select
-            //     .iter()
-            //     .enumerate()
-            //     .map(|(idx, &n): (usize, &usize)| {
-            //         (
-            //             n,
-            //             if idx < nodes_with_container_cnt {
-            //                 // node with container
-            //                 env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
-            //             } else {
-            //                 // node without container
-            //                 env.node(n).rsc_limit.cpu / env.node(n).all_task_cnt() as f32
-            //                     + env.func(fnid).cold_start_time as f32
-            //             },
-            //         )
-            //     })
-            //     .collect::<Vec<_>>();
-
             let nodes_task_cnt = nodes2select
                 .iter()
                 .map(|n| (mech_metric().node_task_new_cnt(*n) as f32))
@@ -198,19 +162,7 @@ impl PosScheduler {
                 })
                 .unwrap()
                 .1;
-            // .min_by(|&&a, &&b| {
-            //     // let atime = get_on_node_time(a);
-            //     // let btime = get_on_node_time(b);
-            //     env.node(a)
-            //         .all_task_cnt()
-            //         .partial_cmp(&env.node(b).all_task_cnt())
-            //         .unwrap()
-            //     // atime.partial_cmp(&btime).unwrap()
-            //     // a.total_cmp(&b)
-            // })
-            // .unwrap();
 
-            // env.schedule_reqfn_on_node(req, fnid, best_node);
             mech_metric().add_node_task_new_cnt(best_node);
             sche_cmds.push(ScheCmd {
                 reqid: req.req_id,
@@ -240,6 +192,7 @@ impl Scheduler for PosScheduler {
         let mut sche_cmds = vec![];
         let mut down_cmds = vec![];
 
+        // 遍历每个函数，看是否需要缩容
         for func in env.core.fns().iter() {
             let target = env.new_mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);

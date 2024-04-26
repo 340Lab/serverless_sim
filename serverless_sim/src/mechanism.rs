@@ -200,6 +200,8 @@ pub struct MechanismImpl {
 }
 
 impl Mechanism for MechanismImpl {
+
+    // 执行步进操作前的准备，根据配置选择调度、扩缩容模式
     fn step(
         &self,
         env: &SimEnv,
@@ -208,6 +210,8 @@ impl Mechanism for MechanismImpl {
         match &*env.help.config().mech.mech_type().0 {
             "no_scale" => self.step_no_scaler(env, raw_action),
             "scale_sche_separated" => self.step_scale_sche_separated(env, raw_action),
+
+            // 目前只实现了这个
             "scale_sche_joint" => self.step_scale_sche_joint(env, raw_action),
             _ => {
                 panic!(
@@ -230,6 +234,7 @@ impl MechanismImpl {
     //     self.scale_num.borrow_mut()
     // }
     // no scale
+    // 表示只进行调度，不主动对容器数量进行干涉
     fn step_no_scaler(
         &self,
         env: &SimEnv,
@@ -255,6 +260,7 @@ impl MechanismImpl {
     }
 
     // scale and sche separated
+    // 先进行扩缩容，再进行调度
     fn step_scale_sche_separated(
         &self,
         env: &SimEnv,
@@ -264,18 +270,23 @@ impl MechanismImpl {
         let mut up_cmds = Vec::new();
         let mut down_cmds = Vec::new();
 
+        // 遍历每个函数
         for func in env.core.fns().iter() {
             self.update_scale_num(env, func.fn_id, &raw_action);
             let target = self.scale_num(func.fn_id);
 
             let cur = env.fn_container_cnt(func.fn_id);
+
+            // 扩容
             if target > cur {
                 up_cmds.extend(
                     self.scale_up_exec
                         .borrow_mut()
                         .exec_scale_up(target, func.fn_id, env),
                 );
-            } else if target < cur {
+            }
+            // 缩容 
+            else if target < cur {
                 down_cmds.extend(self.scale_down_exec.borrow_mut().exec_scale_down(
                     env,
                     func.fn_id,
@@ -284,7 +295,10 @@ impl MechanismImpl {
             }
         }
 
+        // 进行调度
         let (up, sche_cmds, down) = self.sche.borrow_mut().schedule_some(env);
+        
+        // 扩缩容和调度分离，所以要求调度后不能再主动调节容器数量
         assert!(up.is_empty());
         assert!(down.is_empty());
 
@@ -297,12 +311,23 @@ impl MechanismImpl {
         env: &SimEnv,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+        
+        // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
         for func in env.core.fns().iter() {
             self.update_scale_num(env, func.fn_id, &raw_action);
+
+            // 获取对该函数执行扩缩容算法后的容器数量
+            self.scale_num
+                .borrow_mut()
+                .scale_for_fn(env, func.fn_id, &raw_action);
+
+            // 获取对该函数当前容器数量
             let cur = env.fn_container_cnt(func.fn_id);
             let tar = self.scale_num(func.fn_id);
 
             // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
+            // 不进行扩缩容，在调度时候一起进行
+            log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
         }
 
         let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);
