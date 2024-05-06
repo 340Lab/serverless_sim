@@ -5,9 +5,7 @@ use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, HashMap},
-    fs::{self, File},
-    io::{Read, Write},
+    borrow::BorrowMut, collections::{BTreeMap, HashMap}, fs::{self, File}, io::{Read, Write}
 };
 
 // #[derive(Serialize, Deserialize)]
@@ -42,8 +40,13 @@ use std::{
 //     score:f32,
 // }
 pub struct MechMetric {
+    // 函数-窗口，窗口中记录了该函数在 窗口长度 中被请求但还未被调度的次数
     fn_recent_req_cnt_window: HashMap<FnId, Window>,
+
+    // 函数-未被调度的数量
     fn_unsche_req_cnt: HashMap<FnId, usize>,
+
+    // 节点-任务数量
     node_task_new_cnt: HashMap<FnId, usize>,
 }
 
@@ -55,34 +58,69 @@ impl MechMetric {
             node_task_new_cnt: HashMap::new(),
         }
     }
+
+    // FIX 滑动窗口有问题，需要重新设计
+    // 新请求生成之后
     pub fn on_new_req_generated(&mut self, env: &SimEnv) {
+
+        // 清空数据表
         self.fn_unsche_req_cnt.clear();
-        self.fn_recent_req_cnt_window.clear();
         self.node_task_new_cnt.clear();
 
+        // 记录这一帧中每个函数的未被调度的请求数量
+        let mut fn_count = HashMap::new();
+
+        // 遍历所有函数
+        for func in env.core.fns().iter() {
+            // MARK 对每个函数都进行统计
+            fn_count.entry(func.fn_id).or_insert(0);
+        }
+        
+        // 遍历每个请求
         for (_, req) in env.core.requests().iter() {
+            // DAG的迭代器
             let mut walker = env.dag(req.dag_i).new_dag_walker();
+
+            // 遍历DAG的每个节点
             while let Some(fngid) = walker.next(&env.dag(req.dag_i).dag_inner) {
+
+                // 获取函数节点id
                 let fnid = env.dag_inner(req.dag_i)[fngid];
+
+                // 若该函数没有被调度到节点上
                 if req.get_fn_node(fnid) == None {
+
+                    // 如果fnid在fn_unsche_req_cnt中存在，则将其值加一，否则插入一个新值1
                     self.fn_unsche_req_cnt
                         .entry(fnid)
                         .and_modify(|v| *v += 1)
                         .or_insert(1);
                 }
+
+                // 如果请求的已完成函数列表中不包含fnid，则计数+1
                 if !req.done_fns.contains_key(&fnid) {
-                    self.fn_recent_req_cnt_window
-                        .entry(fnid)
-                        .or_insert_with(|| Window::new(10))
-                        .push(1.0);
+                    fn_count.entry(fnid).and_modify(|v| *v += 1);
                 }
             }
         }
+ 
+        // 遍历所有函数，将其未完成的函数请求数量记录到窗口中
+        for (fnid, count) in fn_count.iter() {
+            // 如果目前对该函数没有记录，则先创建一个窗口
+            if !self.fn_recent_req_cnt_window.contains_key(fnid) {
+                self.fn_recent_req_cnt_window.insert(*fnid, Window::new(10));
+            }
+            // 更新记录
+            self.fn_recent_req_cnt_window.entry(*fnid).and_modify(|window| window.push(*count as f32));
+        }
 
+        // 遍历模拟环境中的每个节点
         for n in env.nodes().iter() {
+            // 将节点ID和该节点的所有任务插入到node_task_new_cnt中
             self.node_task_new_cnt.insert(n.node_id(), n.all_task_cnt());
         }
     }
+
     pub fn fn_recent_req_cnt(&self, fnid: FnId) -> f32 {
         self.fn_recent_req_cnt_window
             .get(&fnid)
@@ -174,6 +212,8 @@ impl Records {
             frames: Vec::new(),
         }
     }
+
+    // 将模拟环境中的一帧数据添加到记录中
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
         frame[FRAME_IDX_FRAME] = (*sim_env.core.current_frame()).into();
@@ -198,7 +238,7 @@ impl Records {
                 serde_json::json!( {
                     "n": node.node_id(),
                     "c": node.cpu,
-                    "m": node.mem,
+                    "m": node.unready_mem(),
                 })
             })
             .collect::<Vec<_>>()
@@ -212,6 +252,7 @@ impl Records {
 
         self.frames.push(frame);
     }
+
     pub fn flush(&self, env: &SimEnv) {
         if env.help.config().no_log {
             log::info!("no metric record, skip flush");
