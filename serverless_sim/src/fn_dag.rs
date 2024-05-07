@@ -30,9 +30,14 @@ pub struct FnDAG {
 }
 
 impl FnDAG {
+    // 初始化一个FnDAG，包含一个起始函数
     fn new(begin_fn: FnId, dag_i: DagId, env: &SimEnv) -> Self {
+        // 创建一个空的DAG
         let mut dag = Dag::new();
+        // 加入起始函数
         let begin = dag.add_node(begin_fn);
+
+        // 设置这个函数实例的DAGid以及在这个DAG中的位置
         env.func_mut(begin_fn)
             .setup_after_insert_into_dag(dag_i, begin);
 
@@ -43,31 +48,46 @@ impl FnDAG {
         }
     }
 
+    // 单函数DAG
     pub fn instance_single_fn(dag_i: DagId, env: &SimEnv) -> FnDAG {
         let begin_fn: FnId = env.fn_gen_rand_fn();
         let dag = FnDAG::new(begin_fn, dag_i, env);
         dag
     }
 
+    // 创建一个复杂DAG实例
     pub fn instance_map_reduce(dag_i: DagId, env: &SimEnv, map_cnt: usize) -> FnDAG {
+        // 创建一个Func实例并获得fnid，设置为该DAG的起始函数
         let begin_fn = env.fn_gen_rand_fn();
+
+        // 创建一个FnDAG实例，并设置起始函数
         let mut dag = FnDAG::new(begin_fn, dag_i, env);
 
+        // 创建一个Func实例并获得fnid，设置为该DAG的结束函数
         let end_fn = env.fn_gen_rand_fn();
+        // 为DAG添加一个结束函数，并返回它的节点索引
         let end_g_i = dag.dag_inner.add_node(end_fn);
+
+        // 设置这个函数实例的DAGid以及在这个DAG中的位置
         env.func_mut(end_fn)
             .setup_after_insert_into_dag(dag_i, end_g_i);
 
+        // 往DAG图里插入 map_cnt 数量的节点
         for _i in 0..map_cnt {
+            // 创建Func实例并获得fnid
             let next = env.fn_gen_rand_fn();
+
+            // 为DAG图插入一个节点，是初始节点的子节点，并返回它的节点索引
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
                 env.core.fns()[begin_fn].out_put_size,
                 next,
             );
+            // 设置这个函数实例的DAGid以及在这个DAG中的位置
             env.func_mut(next)
                 .setup_after_insert_into_dag(dag_i, next_i);
 
+            // 为DAG添加边,让中间节点连接到结束节点
             dag.dag_inner
                 .add_edge(next_i, end_g_i, env.func(next).out_put_size)
                 .unwrap();
@@ -124,11 +144,13 @@ impl Func {
         ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
     }
 
+    // 设置这个函数实例的DAGid以及在这个DAG中的位置
     pub fn setup_after_insert_into_dag(&mut self, dag_i: DagId, graph_i: NodeIndex) {
         self.dag_id = dag_i;
         self.graph_i = graph_i;
     }
 
+    // 容器启动时,分配的内存
     pub fn container_mem(&self) -> f32 {
         CONTAINER_BASIC_MEM
     }
@@ -155,6 +177,10 @@ pub struct FnContainer {
     /// cpu 利用率
     /// 实际用的计算量/分配到的cpu计算量
     cpu_use_rate: f32,
+
+    // mem使用量
+    pub mem_use: f32,
+    pub last_frame_mem: f32,
 
     state: FnContainerState,
 }
@@ -198,6 +224,7 @@ impl FnContainer {
             / (self.recent_frames_working_cnt.len() as f32)
     }
 
+    // 判断一定帧数内该容器是否空闲
     pub fn recent_frame_is_idle(&self, mut frame_cnt: usize) -> bool {
         for working_cnt in self.recent_frames_working_cnt.iter().rev() {
             if *working_cnt > 0 {
@@ -235,6 +262,8 @@ impl FnContainer {
             used_times: 0,
             this_frame_used: false,
             cpu_use_rate: 0.0,
+            mem_use: CONTAINER_BASIC_MEM,
+            last_frame_mem: 0.0,
             state: FnContainerState::Starting {
                 left_frame: sim_env.func(fn_id).cold_start_time,
             },
@@ -335,15 +364,23 @@ impl RunningTask {
 }
 
 impl SimEnv {
+    // 创建一个Func实例
     fn fn_gen_rand_fn(&self) -> FnId {
+        // 获得fnid
         let id = self.help.fn_next_id();
-        let (cpu, out_put_size) = if self.help.config().fntype_cpu() {
+        // 根据不同的函数类型确定cpu和输出数据量
+        let (cpu, out_put_size) = 
+        if self.help.config().fntype_cpu() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
-        } else if self.help.config().fntype_data() {
+        } 
+        else if self.help.config().fntype_data() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
-        } else {
+        } 
+        else {
             panic!("not support fntype");
         };
+
+        // 创建一个Func实例并加入到core中
         self.core.fns_mut().push(Func {
             fn_id: id,
             cpu,
@@ -388,6 +425,7 @@ impl SimEnv {
 
     pub fn fn_gen_fn_dags(&self, env: &SimEnv) {
         let env = self;
+
         // for _ in 0..10 {
         //     let dag_i = env.dags.borrow().len();
         //     let dag = FnDAG::instance_map_reduce(dag_i, env, util::rand_i(2, 10));
@@ -397,22 +435,33 @@ impl SimEnv {
         //     // (&self, apptype: &APPConfig, env: &SimEnv)
         //     self.gen_dags_for_apptype(app, env);
         // }
+
+        // 检查配置中的dag_type
         if self.help.config().dag_type_dag() {
+            // 如果dag_type为dag，则创建6个具有多个子节点的复杂DAG实例
             for _ in 0..6 {
+                // 随机确定每个图中节点的数量
                 let mapcnt = env.env_rand_i(2, 5); //2-4
                 let dag_i = env.core.dags().len();
+
+                // 创建一个复杂DAG实例
                 let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
                 log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
                 env.core.dags_mut().push(dag);
             }
-        } else if self.help.config().dag_type_single() {
+        } 
+        // 如果dag_type为single，则创建10个只包含单个节点的简单DAG实例
+        else if self.help.config().dag_type_single() {
             for _ in 0..10 {
                 let dag_i = env.core.dags().len();
+
+                // 创建一个简单DAG实例
                 let dag = FnDAG::instance_single_fn(dag_i, env);
                 env.core.dags_mut().push(dag);
             }
-        } else {
+        } 
+        else {
             panic!("not support dag type {}", self.help.config().dag_type);
         }
     }

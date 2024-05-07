@@ -180,7 +180,7 @@ impl Scheduler for FaasFlowScheduler {
         }
 
         let mut to_scale_down = vec![];
-        // 回收空闲container
+        // 超时策略，回收空闲container
         for n in env.core.nodes().iter() {
             for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {

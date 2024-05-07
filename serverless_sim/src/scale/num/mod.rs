@@ -3,6 +3,7 @@ pub mod down_filter;
 pub mod hpa;
 pub mod lass;
 pub mod no;
+pub mod temp_scaler;
 
 use crate::{
     actions::ESActionWrapper,
@@ -17,7 +18,7 @@ use std::{
     collections::HashSet,
 };
 
-use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum};
+use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, temp_scaler::TempScaleNum};
 
 pub trait ScaleNum: Send {
     /// return target scale count
@@ -43,6 +44,9 @@ pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
         }
         "lass" => {
             return Some(Box::new(LassScaleNum::new()));
+        }
+        "temp_scaler" => {
+            return Some(Box::new(TempScaleNum::new()));
         }
         _ => {
             return None;

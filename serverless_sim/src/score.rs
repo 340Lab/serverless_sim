@@ -3,7 +3,7 @@ use crate::sim_env::SimEnv;
 impl SimEnv {
     /// req_done_avg 平均每个请求处理完的时间 越低越好
     pub fn req_done_time_avg(&self) -> f32 {
-        if self.core.requests().len() == 0
+        if self.core.done_requests().len() == 0
         //  &&
         // self.real_time.requests().len() == 0
         {

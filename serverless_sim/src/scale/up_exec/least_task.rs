@@ -22,8 +22,11 @@ impl ScaleUpExec for LeastTaskScaleUpExec {
             .collect::<Vec<_>>();
 
         let nodes_with_container_cnt = env.nodes().len() - nodes_no_container.len();
-        if nodes_with_container_cnt < target_cnt {
-            let to_scale_up_cnt = target_cnt - nodes_with_container_cnt;
+
+        // log::info!("nodes_no_container.len(): {}", nodes_no_container.len());
+        // MARK 修复了一个扩容bug
+        if nodes_with_container_cnt < target_cnt  && nodes_no_container.len() > 0 {
+            let to_scale_up_cnt = std::cmp::min(target_cnt - nodes_with_container_cnt, nodes_no_container.len());
             // 对不含容器的节点按照其所有任务数量进行降序排序
             nodes_no_container.sort_by(|&a, &b| {
                 let acnt = mech_metric().node_task_new_cnt(a);

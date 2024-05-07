@@ -207,7 +207,7 @@ impl SimEnv {
                 cpu: n.rsc_limit.cpu,
                 mem: n.rsc_limit.mem,
                 used_cpu: n.cpu,
-                used_mem: n.mem(),
+                used_mem: n.unready_mem(),
                 running_req_fns,
             });
         }

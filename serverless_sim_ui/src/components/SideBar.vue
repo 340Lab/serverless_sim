@@ -43,9 +43,18 @@ export default {
 
 <template>
   <div class="col_container sidebar">
-    <div v-for="(value, key) in records" :key="key" @click="item_click(key)">
-      {{ "_" + key in selected_keys ? ">" : "" }}{{ value }}
-    </div>
+    <el-tooltip
+        v-for="(value, key) in records" :key="key" 
+        class="box-item"
+        effect="dark"
+        :content=value
+        placement="right"
+      >
+      <div @click="item_click(key)">
+        {{ "_" + key in selected_keys ? ">" : "" }}{{ value }}
+      </div>
+    </el-tooltip>
+    
   </div>
 </template>
 
