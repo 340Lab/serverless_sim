@@ -24,6 +24,7 @@ use crate::{
     },
     sche, sim_loop,
     sim_run::Scheduler,
+    util, CONTAINER_BASIC_MEM,
 };
 
 pub struct SimEnvHelperState {
@@ -237,12 +238,17 @@ impl SimEnv {
             timers: HashMap::new().into(),
         };
 
+        // 为模拟环境创建所有的dag、node、func
         newenv.init();
         newenv
     }
-
+    pub fn reset(&mut self) {
+        let config=self.help.config.clone();
+        *self=SimEnv::new(config);
+    }
     // 初始化方法，进一步设置仿真环境的状态
     fn init(&self) {
+        // 创建 NODE_CNT 个节点并初始化网速图和连接图
         self.node_init_node_graph();
         // # # init databases
         // # databases_cnt=5
@@ -257,7 +263,7 @@ impl SimEnv {
         // #             break
         // #     self.databases.append(db)
 
-        // # init dags
+        // 创建 DAG 实例，并将其加入到 dags 列表中
         self.fn_gen_fn_dags(self);
     }
 
@@ -294,25 +300,39 @@ impl SimEnv {
 
     // 在模拟一帧开始时调用，更新节点状态、清空已完成请求、重置性能指标等
     pub fn on_frame_begin(&self) {
+
+        // 遍历每个节点，更新状态
         for n in self.core.nodes_mut().iter_mut() {
+
+            // 将当前帧的 CPU 使用量保存为上一帧的 CPU 使用量
             n.last_frame_cpu = n.cpu;
+            n.last_frame_mem = n.unready_mem();
+            // 将当前帧的 CPU 使用量重置为0.0
             n.cpu = 0.0;
-            *n.mem.borrow_mut() = n
+
+            // 更新节点的内存使用量,重新计算
+            *n.unready_mem_mut() = n
                 .fn_containers
                 .borrow()
                 .iter()
-                .map(|(_, c)| c.container_basic_mem(self))
+                .map(|(_, c)| {c.container_basic_mem(self)})
                 .sum();
+            
+            // 对节点上的每个容器的mem_use和last_frame_mem重设
+            for (_, c) in n.fn_containers.borrow_mut().iter_mut() {
+                c.last_frame_mem = c.mem_use;
+                c.mem_use = CONTAINER_BASIC_MEM;
+            }
 
             //有些变为运行状态 内存占用变大很正常
             assert!(
-                n.mem() <= n.rsc_limit.mem,
+                n.unready_mem() <= n.rsc_limit.mem,
                 "mem {} > limit {}",
-                n.mem(),
+                n.unready_mem(),
                 n.rsc_limit.mem
             );
         }
-        // metric
+        // metric，将这一帧已完成的请求数清空
         self.help.metric.borrow_mut().on_frame_begin();
 
         // timer
@@ -327,21 +347,27 @@ impl SimEnv {
 
     // 在模拟一帧结束时调用，更新节点成本和本帧使用过的容器的使用次数，增加帧数
     pub fn on_frame_end(&self) {
+        // 遍历环境中的每个请求，清空该请求的当前帧已完成函数表
         for (_req_i, req) in self.core.requests_mut().iter_mut() {
             req.cur_frame_done.clear();
         }
 
+        // 遍历环境中的每个节点
         for n in self.core.nodes_mut().iter_mut() {
+            // 遍历节点上的每个容器
             for (_, c) in n.fn_containers.borrow_mut().iter_mut() {
+                // 更新容器的使用情况
                 if c.this_frame_used {
                     c.this_frame_used = false;
                     c.used_times += 1;
                 }
             }
+            // 更新模拟环境的总成本
             let mut cost = self.help.cost_mut();
-            *cost += n.cpu * 0.00001 + n.mem() * 0.00001;
+            *cost += n.cpu * 0.00001 + n.unready_mem() * 0.00001;
         }
 
+        // 将这一帧的数据记录到表中
         self.help.metric_record_mut().add_frame(self);
 
         // 自增 frame

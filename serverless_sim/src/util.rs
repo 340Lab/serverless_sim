@@ -15,8 +15,12 @@ use crate::sim_env::SimEnv;
 //     a
 // }
 
+// 滑动窗口
 pub struct Window {
+    // 存储的浮点数
     queue: VecDeque<f32>,
+
+    // 窗口容量
     cap: usize,
 }
 

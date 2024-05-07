@@ -240,6 +240,7 @@ impl Scheduler for PosScheduler {
         let mut sche_cmds = vec![];
         let mut down_cmds = vec![];
 
+        // 遍历每个函数，看是否需要缩容
         for func in env.core.fns().iter() {
             let target = env.new_mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);

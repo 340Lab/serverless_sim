@@ -44,17 +44,26 @@ pub struct Node {
     pub cpu: f32,
 
     // 使用了的内存
-    pub mem: RefCell<f32>,
+    // 具体函数使用内存在算法执行后才计算, 算法中需要使用last_frame_mem
+    mem: RefCell<f32>,
 
     // 上一帧使用的cpu
     pub last_frame_cpu: f32,
+
+    // 上一帧使用的mem
+    pub last_frame_mem: f32,
 
     pub frame_run_count: usize,
 }
 
 impl Node {
+    // 具体函数使用内存在算法执行后才计算, 算法中需要使用last_frame_mem
     // 返回已使用的mem量
-    pub fn mem(&self) -> f32 {
+    pub fn unready_mem_mut<'a>(&'a self) -> RefMut<'a, f32> {
+        self.mem.borrow_mut()
+    }
+    // 具体函数使用内存在算法执行后才计算, 算法中需要使用last_frame_mem
+    pub fn unready_mem(&self) -> f32 {
         *self.mem.borrow()
     }
     fn new(node_id: NodeId) -> Self {
@@ -70,6 +79,7 @@ impl Node {
             last_frame_cpu: 0.0,
             frame_run_count: 0,
             pending_tasks: BTreeSet::new().into(),
+            last_frame_mem: 0.0,
         }
     }
 
@@ -78,14 +88,19 @@ impl Node {
         self.pending_tasks.borrow_mut().insert((req_id, fn_id));
     }
 
+    
+    pub fn unready_left_mem(&self) -> f32 {
+        self.rsc_limit.mem - self.unready_mem()
+    }
+
     // 返回剩余的mem量
     pub fn left_mem(&self) -> f32 {
-        self.rsc_limit.mem - self.mem()
+        self.rsc_limit.mem - self.last_frame_mem
     }
 
     // 返回剩余的可用于部署容器的mem量
     pub fn left_mem_for_place_container(&self) -> f32 {
-        self.rsc_limit.mem - self.mem() - NODE_LEFT_MEM_THRESHOLD
+        self.rsc_limit.mem - self.unready_mem() - NODE_LEFT_MEM_THRESHOLD
     }
 
     // 判断剩余的可用于部署容器的mem量是否足够部署特定函数的容器
@@ -105,8 +120,8 @@ impl Node {
     //     Greater,
     // }
     pub fn cmp_rsc_used(&self, other: &Self) -> Ordering {
-        (self.cpu * NODE_SCORE_CPU_WEIGHT + self.mem() * NODE_SCORE_MEM_WEIGHT)
-            .partial_cmp(&(other.cpu * NODE_SCORE_CPU_WEIGHT + other.mem() * NODE_SCORE_MEM_WEIGHT))
+        (self.cpu * NODE_SCORE_CPU_WEIGHT + self.unready_mem() * NODE_SCORE_MEM_WEIGHT)
+            .partial_cmp(&(other.cpu * NODE_SCORE_CPU_WEIGHT + other.unready_mem() * NODE_SCORE_MEM_WEIGHT))
             .unwrap()
     }
 
@@ -230,8 +245,11 @@ impl Node {
     // 尝试加载节点上所有待处理任务的容器
     // 如果内存足够且容器不存在，则创建新容器，将任务状态添加到容器，并从待处理任务集合中移除
     pub fn load_container(&self, env: &SimEnv) {
+        // 用于存储已移除的待处理任务
         let mut removed_pending = vec![];
+        // 遍历该节点上的所有待处理任务
         for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
+            // 尝试加载函数容器
             self.try_load_container(fnid, env);
 
             if let Some(mut fncon) = self.container_mut(fnid) {
@@ -250,7 +268,10 @@ impl Node {
 }
 
 impl SimEnv {
+    // 初始化节点之间的图数据结构，包括节点之间的连接数计数和带宽图，并为每个节点设置随机速度
     pub fn node_init_node_graph(&self) {
+
+        // 初始化一个节点
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id);
             // let node_i = nodecnt;
@@ -260,10 +281,12 @@ impl SimEnv {
 
             for i in 0..nodecnt - 1 {
                 let randspeed = env.env_rand_f(8000.0, 10000.0);
+                // 设置节点间网速
                 env.node_set_speed_btwn(i, nodecnt - 1, randspeed);
             }
         }
 
+        // 初始化节点图
         // # init nodes graph
         let dim = NODE_CNT;
         *self.core.node2node_connection_count_mut() = vec![vec![0; dim]; dim];

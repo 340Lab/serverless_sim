@@ -109,25 +109,38 @@ impl SimEnv {
         //     panic!("Node {} suppose to have fn {} container.", nodeid, fnid);
         // })
         self.node_mut(nodeid).add_task(req.req_id, fnid);
+
         req.fn_node.insert(fnid, nodeid);
     }
 
+    // 模拟两个节点之间的数据传输过程
     fn sim_transfer_btwn_nodes(&self, node_a: NodeId, node_b: NodeId, transmap: &mut NodeTransMap) {
+        // 两个节点不能是同一个节点
         assert_ne!(node_a, node_b);
 
         // 两个node之间的数据传输
         let a2b = transmap.remove(&mut (node_a, node_b)).unwrap();
         let _b2a = transmap.remove(&mut (node_b, node_a)).unwrap();
+
+        // 获取节点间的网速带宽
         let total_bandwith = self.node_get_speed_btwn(node_a, node_b);
+
+        // 单个路径的带宽
         let each_path_bandwith = total_bandwith / (a2b.path_cnt() as f32);
 
+        // 更新传输信息，模拟数据在节点间的传输过程
         let updata_trans = |from: NodeId, to: NodeId, t: &TransPath| {
             let mut env_nodes = self.core.nodes_mut();
+
+            // 获取 to 节点中的 t 路径所包含的函数的对应容器的可变引用
             let mut container = env_nodes[to]
                 .container_mut(t.fn_id)
                 .unwrap_or_else(|| panic!("node {} has no fn container for fn {}", to, t.fn_id));
+            
+            // 将容器在这一帧中的使用情况更新为 true
             container.this_frame_used = true;
 
+            // 得到该请求放进容器中执行时,这个请求一共需要接收多少数据,还差多少数据没处理完
             let (all, recved) = container
                 .req_fn_state
                 .get_mut(&t.req_id)
@@ -143,6 +156,7 @@ impl SimEnv {
                     t.fn_id
                 );
             } else {
+                // 没处理完毕则根据带宽进行模拟传输
                 *recved += each_path_bandwith;
             }
         };
@@ -163,6 +177,7 @@ impl SimEnv {
         // 模拟传输时，一个一个路径遍历过来，
         //   两边一定有一个网速更快，那么选择慢的；然后快的那边可以把带宽分给其他的传输路径
         //
+        // 对所有节点建立一个网络传输图
         let mut node2node_trans: NodeTransMap = HashMap::new();
         for x in 0..self.core.nodes().len() {
             for y in 0..self.core.nodes().len() {
@@ -179,17 +194,22 @@ impl SimEnv {
         }
 
         // go through all the fn task scheduled on node, and collect the transfer paths
+        // 遍历所有节点
         for node in self.core.nodes_mut().iter_mut() {
             let node_id = node.node_id();
+            // 遍历该节点上的所有函数和对应的容器
             for (fnid, fn_container) in node.fn_containers.borrow_mut().iter_mut() {
+                // 遍历容器上的所有请求和对应的运行状态
                 for (req_id, fnrun) in &mut fn_container.req_fn_state {
+                    // 遍历运行状态中，所有需要传输的数据，包括数据发送节点，数据接受总量、已接受量
                     for (send_node, (all, recved)) in &mut fnrun.data_recv {
                         // 数据还没接受完才需要传输
                         if *recved < *all {
                             if *send_node == node_id {
-                                // data transfer on same node can be done immediately
+                                // 如果是自己发送的数据，则标记传输完毕，不计传输时延
                                 *recved = *all + 0.001;
-                            } else {
+                            } 
+                            else {
                                 let path = TransPath {
                                     req_id: *req_id,
                                     fn_id: *fnid,
@@ -209,6 +229,7 @@ impl SimEnv {
             }
         }
         // go through all the transfer paths, and simulate the transfer
+        
         let nodes_cnt = self.nodes().len();
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
@@ -218,6 +239,8 @@ impl SimEnv {
                 }
             }
         }
+
+        // 遍历所有的传输路径，并模拟传输
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
                 if x > y {
@@ -316,11 +339,15 @@ impl SimEnv {
             })
             .count();
 
-        for (&fnid, fc) in n.fn_containers.borrow().iter() {
+        for (&fnid, fc) in n.fn_containers.borrow_mut().iter_mut() {
             if let FnContainerState::Running { .. } = fc.state() {
                 for (&req_id, fn_running_state) in &fc.req_fn_state {
-                    if fn_running_state.data_recv_done() && n.left_mem() > self.func(fnid).mem {
-                        *n.mem.borrow_mut() += self.func(fnid).mem;
+                    if fn_running_state.data_recv_done() && n.unready_left_mem() > self.func(fnid).mem {
+                        *n.unready_mem_mut() += self.func(fnid).mem;
+                        
+                        // 增加该节点上被调度该函数的容器的内存使用量
+                        fc.mem_use += self.func(fnid).mem;
+
                         req_fns_2_run.insert((fnid, req_id));
                     }
                 }
@@ -358,9 +385,9 @@ impl SimEnv {
                             self.sim_compute_container_starting(*fnid, fc, cpu_for_one_task);
                             if let FnContainerState::Running = fc.state() {
                                 // starting -> running
-                                *n.mem.borrow_mut() -=
+                                *n.unready_mem_mut() -=
                                     self.func(*fnid).cold_start_container_mem_use;
-                                *n.mem.borrow_mut() += self.func(*fnid).container_mem();
+                                *n.unready_mem_mut() += self.func(*fnid).container_mem();
                             }
                         }
                         _ => {}

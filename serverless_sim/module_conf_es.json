@@ -5,22 +5,23 @@
     "scale_sche_joint": null
   },
   "scale_num": {
+    "lass": null,
     "hpa": null,
     "no": null,
-    "lass": null
+    "temp_scaler": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "least_task": null,
-    "no": null
+    "no": null,
+    "least_task": null
   },
   "sche": {
-    "fnsche": null,
-    "pos": null,
     "pass": null,
-    "faasflow": null
+    "faasflow": null,
+    "pos": null,
+    "fnsche": null
   },
   "filter": {
     "careful_down": null
