@@ -1,10 +1,7 @@
 use crate::{config::Config, sim_run::Scheduler};
 
 use self::{
-    faasflow::FaasFlowScheduler,
-    fnsche::FnScheScheduler,
-    pass::PassScheduler,
-    pos::PosScheduler,
+    faasflow::FaasFlowScheduler, fnsche::FnScheScheduler, greedy::GreedyScheduler, pass::PassScheduler, pos::PosScheduler, random::RandomScheduler
     // rule_based::{RuleBasedScheduler, ScheduleRule},
     // time_aware::TimeScheduler,
 };
@@ -13,6 +10,8 @@ pub mod faasflow;
 pub mod fnsche;
 pub mod pass;
 pub mod pos;
+pub mod random;
+pub mod greedy;
 // pub mod rule_based;
 // pub mod time_aware;
 
@@ -34,6 +33,12 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "fnsche" => {
             return Some(Box::new(FnScheScheduler::new()));
+        }
+        "random" => {
+            return Some(Box::new(RandomScheduler::new()));
+        }
+        "greedy" => {
+            return Some(Box::new(GreedyScheduler::new()));
         }
         _ => {
             return None;
