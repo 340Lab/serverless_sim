@@ -1,26 +1,28 @@
 {
   "mech_type": {
+    "scale_sche_joint": null,
     "no_scale": null,
-    "scale_sche_separated": null,
-    "scale_sche_joint": null
+    "scale_sche_separated": null
   },
   "scale_num": {
+    "lass": null,
     "hpa": null,
-    "no": null,
-    "lass": null
+    "no": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "least_task": null,
-    "no": null
+    "no": null,
+    "least_task": null
   },
   "sche": {
-    "fnsche": null,
+    "greedy": null,
     "pos": null,
+    "random": null,
+    "faasflow": null,
     "pass": null,
-    "faasflow": null
+    "fnsche": null
   },
   "filter": {
     "careful_down": null

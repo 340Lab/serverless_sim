@@ -30,10 +30,12 @@ impl ModuleMechConf {
             filter: FILTER_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
         })
     }
+    ///将结构体中的配置数据导出为一个JSON文件
     pub fn export_module_file(&self) {
         let file = File::create("module_conf_es.json").unwrap();
         serde_json::to_writer_pretty(file, &self.0).unwrap();
     }
+    ///检查提供的MechConfig配置是否与模块的预期配置匹配
     pub fn check_conf_by_module(&self, conf: &MechConfig) -> bool {
         fn compare_sub_hashmap(
             module: &HashMap<String, Option<String>>,

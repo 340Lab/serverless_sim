@@ -39,8 +39,8 @@ pub struct ScheCmd {
     pub memlimit: Option<f32>,
 }
 
-pub const SCHE_NAMES: [&'static str; 4] = [
-    "faasflow", "pass", "pos", "fnsche",
+pub const SCHE_NAMES: [&'static str; 6] = [
+    "faasflow", "pass", "pos", "fnsche", "random", "greedy"
     // "gofs",
     // "load_least",
     // "random",
@@ -105,7 +105,8 @@ impl ConfigNewMec for Config {
             }
             if !allow_scale_up_exec.contains(&&*conf.scale_up_exec_conf().0) {
                 log::warn!(
-                    "mech_type no_scale not support scale_up_exec {}",
+                    "mech_type {} no_scale not support scale_up_exec {}",
+                    conf.mech_type().0,
                     conf.scale_up_exec_conf().0
                 );
                 return false;
@@ -115,7 +116,7 @@ impl ConfigNewMec for Config {
         // check conf relation
         match &*self.mech.mech_type().0 {
             "no_scale" => {
-                let allow_sche = vec!["faasflow", "pass", "fnsche"];
+                let allow_sche = vec!["faasflow", "pass", "fnsche", "random", "greedy"];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["no"];
