@@ -48,7 +48,7 @@ impl ScaleNum for HpaScaleNum {
                             avg_mem_use_rate +=
                                 env.node(c.node_id).last_frame_mem / env.node(c.node_id).rsc_limit.mem;
                         });
-                        avg_mem_use_rate /= container_cnt as f32;
+                        // avg_mem_use_rate /= container_cnt as f32;
 
                         {
                             // current divide target
@@ -70,7 +70,7 @@ impl ScaleNum for HpaScaleNum {
                     0
                 };
 
-                if mech_metric.fn_unsche_req_cnt(fnid) > 0 {
+                if mech_metric.fn_unsche_req_cnt(fnid) > 0 && desired_container_cnt == 0 {
                     desired_container_cnt = 1;
                 }
 
