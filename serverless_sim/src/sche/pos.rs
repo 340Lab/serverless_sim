@@ -96,7 +96,8 @@ impl PosScheduler {
         let mech_metric = || env.help.mech_metric_mut();
 
         let mut sche_cmds = vec![];
-        let scale_up_cmds = vec![];
+        // let scale_up_cmds = vec![];
+        let mut scale_up_cmds = vec![];
 
         for &fnid in &schedule_able_fns {
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
@@ -109,6 +110,7 @@ impl PosScheduler {
             for cmd in scale_up_cmds_fn.iter() {
                 self.record_new_scale_up_node(cmd.fnid, cmd.nid);
             }
+            scale_up_cmds.extend(scale_up_cmds_fn);
 
             // 选择节点算法，首先选出包含当前函数容器的节点
             let mut nodes2select: Vec<NodeId> = env
