@@ -6,9 +6,9 @@ CUR_FDIR = os.path.dirname(CUR_FPATH)
 # chdir to the directory of this script
 os.chdir(CUR_FDIR)
 
-# req_freqs=["low"]
+req_freqs=["low"]
 # req_freqs=["middle"]
-req_freqs=["high"]
+# req_freqs=["high"]
 
 import threading
 from proxy_env3 import ProxyEnv3
@@ -54,7 +54,8 @@ class Task:
 algos=[
     # mechtype, scale_num, scale_down_exec, scale_up_exec, sche
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
-    [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
+    # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
+    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["consistenthash",""],[{'careful_down':''}]],
     # [['scale_sche_joint',''],["lass",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
 
     # [['no_scale',''],['no',''],["default",""],['no',''],['faasflow','']],
