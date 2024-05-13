@@ -39,8 +39,8 @@ pub struct ScheCmd {
     pub memlimit: Option<f32>,
 }
 
-pub const SCHE_NAMES: [&'static str; 6] = [
-    "faasflow", "pass", "pos", "fnsche", "random", "greedy"
+pub const SCHE_NAMES: [&'static str; 7] = [
+    "faasflow", "pass", "pos", "fnsche", "random", "greedy", "consistenthash"
     // "gofs",
     // "load_least",
     // "random",
@@ -136,7 +136,7 @@ impl ConfigNewMec for Config {
                 return None;
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos"];
+                let allow_sche = vec!["pos", "consistenthash"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
