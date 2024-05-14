@@ -117,7 +117,7 @@ impl ConfigNewMec for Config {
         // check conf relation
         match &*self.mech.mech_type().0 {
             "no_scale" => {
-                let allow_sche = vec!["faasflow", "pass", "fnsche", "random", "greedy"];
+                let allow_sche = vec!["faasflow", "pass", "fnsche", "random", "greedy", "consistenthash"];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["no"];
@@ -136,7 +136,7 @@ impl ConfigNewMec for Config {
                 return None;
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos", "consistenthash"];
+                let allow_sche = vec!["pos"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
