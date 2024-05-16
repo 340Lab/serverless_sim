@@ -1,9 +1,11 @@
+use std::borrow::Borrow;
+
 use rand::prelude::SliceRandom;
 
 use crate::{
-    mechanism::{DownCmd, ScheCmd, UpCmd}, 
-    sim_env::SimEnv,
-    sim_run::{schedule_helper, Scheduler},
+    mechanism::{DownCmd, MechType, ScheCmd, UpCmd}, 
+    sim_env::SimEnv, 
+    sim_run::{schedule_helper, Scheduler}
 };
 
 
@@ -11,7 +13,7 @@ pub struct RandomScheduler {
 }
 
 impl RandomScheduler {
-    pub fn new() -> Self {
+    pub fn new( ) -> Self {
         Self {
         }
     }
@@ -26,13 +28,28 @@ impl Scheduler for RandomScheduler {
                 env,
                 schedule_helper::CollectTaskConfig::All,
             );
-            let nodes = env.nodes();
+            
             for fnid in fns {
-                let node = nodes.choose(&mut rand::thread_rng()).expect("No available nodes for scheduling");
+                let nodesid = match env.new_mech.mech_type(env) {
+                    MechType::ScaleScheSeparated => {
+                        env.nodes()
+                            .iter()
+                            .filter(|n| n.fn_containers.borrow().contains_key(&fnid))
+                            .map(|n| n.node_id())
+                            .collect::<Vec<_>>()
+                    }
+                    _ => env.nodes()
+                            .borrow()
+                            .iter()
+                            .map(|n| n.node_id())
+                            .collect::<Vec<_>>(),
+                };
+
+                let nodeid = nodesid.choose(&mut rand::thread_rng()).expect("No available nodes for scheduling");
                 
                 // 创建调度命令
                 sche_cmds.push(ScheCmd {
-                    nid: node.node_id(),
+                    nid: *nodeid,
                     reqid: req.req_id,
                     fnid,
                     memlimit: None,

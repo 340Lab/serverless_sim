@@ -1,9 +1,7 @@
-use std::cmp::Ordering;
+use std::{borrow::Borrow, cmp::Ordering};
 
 use crate::{
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    sim_env::SimEnv,
-    sim_run::{schedule_helper, Scheduler},
+    mechanism::{DownCmd, MechType, ScheCmd, UpCmd}, node::Node, sim_env::SimEnv, sim_run::{schedule_helper, Scheduler}
 };
 
 pub struct GreedyScheduler{
@@ -25,9 +23,22 @@ impl Scheduler for GreedyScheduler {
                 env,
                 schedule_helper::CollectTaskConfig::All,
             );
+
+            let all_nodes = env.nodes();
             //迭代请求中的函数，选择最合适的节点进行调度
             for fnid in fns {
-                let nodes = env.nodes(); // 将临时值存储到变量nodes中
+                let nodes = match env.new_mech.mech_type(env) {
+                    MechType::ScaleScheSeparated => {
+                        all_nodes
+                            .iter()
+                            .filter(|n| n.fn_containers.borrow().contains_key(&fnid))
+                            .collect::<Vec<_>>()
+                    }
+                    _ => all_nodes
+                            .iter()
+                            .collect::<Vec<_>>(),
+                };
+                
                 //使用贪婪算法选择最合适的节点
                 let best_node = nodes.iter()
                     .filter(|node| node.mem_enough_for_container(&env.func(fnid)))
