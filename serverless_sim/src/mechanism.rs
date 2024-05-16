@@ -133,7 +133,20 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_separated" => {
-                return None;
+                let allow_sche = vec!["random", "greedy"];
+                let allow_scale_num = vec!["hpa", "lass", "temp_scaler"];
+                let allow_scale_down_exec = vec!["default"];
+                let allow_scale_up_exec = vec!["least_task"];
+
+                if !check_config(
+                    &self.mech,
+                    &allow_sche,
+                    &allow_scale_num,
+                    &allow_scale_down_exec,
+                    &allow_scale_up_exec,
+                ) {
+                    return None;
+                }
             }
             "scale_sche_joint" => {
                 let allow_sche = vec!["pos"];
@@ -202,7 +215,6 @@ pub struct MechanismImpl {
 }
 
 impl Mechanism for MechanismImpl {
-
     // 执行步进操作前的准备，根据配置选择调度、扩缩容模式
     fn step(
         &self,
@@ -225,7 +237,26 @@ impl Mechanism for MechanismImpl {
     }
 }
 
+pub enum MechType{
+    NoScale,
+    ScaleScheSeparated,
+    ScaleScheJoint
+}
+
 impl MechanismImpl {
+    pub fn mech_type(&self, env: &SimEnv) -> MechType {
+        match &*env.help.config().mech.mech_type().0 {
+            "no_scale" => MechType::NoScale,
+            "scale_sche_separated" => MechType::ScaleScheSeparated,
+            "scale_sche_joint" => MechType::ScaleScheSeparated,
+            _ => {
+                panic!(
+                    "mech_type not supported {}",
+                    env.help.config().mech.mech_type().0
+                )
+            }
+        }
+    }
     pub fn scale_down_exec<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleDownExec>> {
         self.scale_down_exec.borrow_mut()
     }
