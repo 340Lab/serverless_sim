@@ -22,15 +22,18 @@ use crate::{
     sim_env::SimEnv,
     sim_run::Scheduler,
 };
-
+#[derive(Clone)]
 pub struct UpCmd {
     pub nid: NodeId,
     pub fnid: FnId,
 }
+
+#[derive(Clone)]
 pub struct DownCmd {
     pub nid: NodeId,
     pub fnid: FnId,
 }
+
 pub struct ScheCmd {
     pub nid: NodeId,
     pub reqid: ReqId,
@@ -39,8 +42,52 @@ pub struct ScheCmd {
     pub memlimit: Option<f32>,
 }
 
-pub const SCHE_NAMES: [&'static str; 7] = [
-    "faasflow", "pass", "pos", "fnsche", "random", "greedy", "consistenthash"
+pub trait SameTarget: Sized {
+    fn same_target(&self, other: &Self) -> bool;
+}
+
+impl SameTarget for UpCmd {
+    fn same_target(&self, other: &Self) -> bool {
+        self.fnid == other.fnid && self.nid == other.fnid
+    }
+}
+impl SameTarget for DownCmd {
+    fn same_target(&self, other: &Self) -> bool {
+        self.fnid == other.fnid && self.nid == other.nid
+    }
+}
+
+impl SameTarget for ScheCmd {
+    fn same_target(&self, other: &Self) -> bool {
+        self.fnid == other.fnid && self.nid == other.nid && self.reqid == other.reqid
+    }
+}
+
+pub trait CheckDup {
+    fn check_dup(&self) -> bool;
+}
+
+impl<S: SameTarget> CheckDup for Vec<S> {
+    fn check_dup(&self) -> bool {
+        let first = &self[0];
+        for v in &self[1..] {
+            if !v.same_target(first) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+pub const SCHE_NAMES: [&'static str; 8] = [
+    "faasflow",
+    "pass",
+    "pos",
+    "fnsche",
+    "random",
+    "greedy",
+    "bp_balance", 
+    "consistenthash"
     // "gofs",
     // "load_least",
     // "random",
@@ -149,7 +196,7 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos"];
+                let allow_sche = vec!["pos", "bp_balance"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
@@ -318,7 +365,7 @@ impl MechanismImpl {
                         .exec_scale_up(target, func.fn_id, env),
                 );
             }
-            // 缩容 
+            // 缩容
             else if target < cur {
                 down_cmds.extend(self.scale_down_exec.borrow_mut().exec_scale_down(
                     env,
@@ -330,7 +377,7 @@ impl MechanismImpl {
 
         // 进行调度
         let (up, sche_cmds, down) = self.sche.borrow_mut().schedule_some(env);
-        
+
         // 扩缩容和调度分离，所以要求调度后不能再主动调节容器数量
         assert!(up.is_empty());
         assert!(down.is_empty());
@@ -344,7 +391,6 @@ impl MechanismImpl {
         env: &SimEnv,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
-        
         // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
         for func in env.core.fns().iter() {
             self.update_scale_num(env, func.fn_id, &raw_action);
@@ -357,10 +403,12 @@ impl MechanismImpl {
             // 不进行扩缩容，在调度时候一起进行
             log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
         }
-        
+
         // 获得扩容、调度、缩容指令
         let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);
-
+        // if down_cmds.check_dup() {
+        //     log::warn!("down_cmds has dup cmd");
+        // }
         (up_cmds, down_cmds, sche_cmds)
     }
 }

@@ -180,7 +180,11 @@ impl Node {
         // env.set_scale_down_result(fnid, self.node_id());
 
         let nodeid = self.node_id();
-        let cont = self.fn_containers.borrow_mut().remove(&fnid).unwrap();
+        let Some(cont) = self.fn_containers.borrow_mut().remove(&fnid)else{
+            log::info!("try_unload_container not found {}", fnid);
+            return;
+        };
+        
         env.core
             .fn_2_nodes_mut()
             .get_mut(&fnid)
@@ -188,7 +192,7 @@ impl Node {
             .remove(&nodeid);
         match cont.state() {
             FnContainerState::Starting { .. } => {
-                *env.node_mut(nodeid).mem.borrow_mut() -=
+                *self.mem.borrow_mut() -=
                     env.func(fnid).cold_start_container_mem_use;
             }
             FnContainerState::Running => {

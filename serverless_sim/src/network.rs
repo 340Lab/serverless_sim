@@ -11,6 +11,7 @@ use crate::{
 use async_trait::async_trait;
 use axum::{http::StatusCode, routing::post, Json, Router};
 use moka::sync::Cache;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::format;
@@ -19,7 +20,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Read,
-    sync::{Arc, Mutex, RwLock},
+    sync::Arc,
 };
 
 pub async fn start() {
@@ -63,17 +64,10 @@ impl ApiHandler for ApiHandlerImpl {
         let env_ids_response = self.handle_get_env_id().await;
         if let GetEnvIdResp::Exist { env_id } = env_ids_response {
             if let Some(first_env_id) = env_id.first() {
-                let sim_envs = match SIM_ENVS.read() {
-                    Ok(guard) => guard,
-                    Err(_) => {
-                        return GetNetworkTopoResp::NotFound {
-                            msg: "Lock acquisition failed".to_string(),
-                        }
-                    }
-                };
+                let sim_envs =  SIM_ENVS.read() ;
                 return match sim_envs.get(first_env_id) {
                     Some(env_mutex) => {
-                        let env = env_mutex.lock().unwrap();
+                        let env = env_mutex.lock();
                         let node_count = env.node_cnt();
                         let mut topo = Vec::with_capacity(node_count);
                         for i in 0..node_count {
@@ -102,7 +96,7 @@ impl ApiHandler for ApiHandlerImpl {
     }
 
     async fn handle_get_env_id(&self) -> GetEnvIdResp {
-        let read_guard = SIM_ENVS.read().unwrap();
+        let read_guard = SIM_ENVS.read();
         let env_ids: Vec<String> = read_guard.keys().cloned().collect();
         if env_ids.is_empty() {
             GetEnvIdResp::NotFound {
@@ -122,11 +116,11 @@ impl ApiHandler for ApiHandlerImpl {
                 let key = config.str();
                 {
                     // 获取全局SIM_ENVS的写入锁
-                    let sim_envs = SIM_ENVS.read().unwrap();
+                    let sim_envs = SIM_ENVS.read();
 
                     // 如果找到了已有的模拟环境实例，则获取其独占锁，以便更新模拟环境
                     if let Some(sim_env) = sim_envs.get(&key) {
-                        let mut sim_env = sim_env.lock().unwrap();
+                        let mut sim_env = sim_env.lock();
                         // 调用模拟环境的帮助方法来记录指标，并刷新记录
                         sim_env.help.metric_record().flush(&sim_env);
                         // 用新的配置创建一个新的模拟环境实例
@@ -136,7 +130,7 @@ impl ApiHandler for ApiHandlerImpl {
                         // 释放读锁
                         drop(sim_envs);
                         // 获取写锁
-                        let mut sim_envs = SIM_ENVS.write().unwrap();
+                        let mut sim_envs = SIM_ENVS.write();
                         // 向模拟环境映射中插入一个新的模拟环境实例
                         sim_envs.insert(key.clone(), SimEnv::new(config).into());
                     }
@@ -154,12 +148,12 @@ impl ApiHandler for ApiHandlerImpl {
         // log::info!("Step sim env");
 
         // 获取全局SIM_ENVS的读取锁
-        let sim_envs = SIM_ENVS.read().unwrap();
+        let sim_envs = SIM_ENVS.read();
 
         // 尝试获取指定env_id对应的SimEnv实例
         if let Some(sim_env) = sim_envs.get(&key) {
             // 尝试获取该SimEnv实例的独占锁
-            let mut sim_env = sim_env.lock().unwrap();
+            let mut sim_env = sim_env.lock();
 
             // 调用SimEnv实例的step方法
             let (score, state) = tokio::task::block_in_place(|| sim_env.step(action as u32));

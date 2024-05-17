@@ -1,4 +1,6 @@
-use std::sync::{ Arc, Mutex };
+use std::sync::{ Arc };
+
+use parking_lot::Mutex;
 
 use crate::sim_env::SimEnv;
 
@@ -15,9 +17,9 @@ impl SimEnv {
             // 如果键已存在, 则对相应的值进行修改
             .and_modify(|v| {
                 let shared = shared.clone();
-                v.push(Box::new(shared.lock().unwrap().take().unwrap()));
+                v.push(Box::new(shared.lock().take().unwrap()));
             })
             // 如果键不存在, 则插入一个新的键值对
-            .or_insert_with(|| { vec![Box::new(shared.lock().unwrap().take().unwrap())] });
+            .or_insert_with(|| { vec![Box::new(shared.lock().take().unwrap())] });
     }
 }
