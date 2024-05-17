@@ -1,0 +1,10 @@
+version: '3'
+services:
+  ui:
+    image: serverless_sim_ui
+    # 使用 host 网络模式
+    network_mode: host
+    # 挂载项目目录到容器中
+    volumes:
+      - .:/usr/src/app
+    entrypoint: python3 run_dev.py

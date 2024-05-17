@@ -19,12 +19,12 @@ pub fn start_gc() {
                 let now = start.duration_since(UNIX_EPOCH).unwrap();
 
                 // 获取 SIM_ENVS 中的所有模拟环境
-                let mut sim_envs = SIM_ENVS.write().unwrap();
+                let mut sim_envs = SIM_ENVS.write();
                 // 用于存储待移除的模拟环境的键
                 let mut to_remove = vec![];
 
                 for e in sim_envs.iter() {
-                    let env = e.1.lock().unwrap();
+                    let env = e.1.lock();
                     // 检查当前时间是否已经超过环境最近使用时间加上 60 秒
                     if now > Duration::from_secs(60) + env.recent_use_time {
                         let key = env.help.config().str();
