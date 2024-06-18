@@ -10,6 +10,7 @@ use rand_seeder::Seeder;
 
 use crate::{
     actions::ESActionWrapper,
+    cache::lru::LRUCache,
     config::Config,
     fn_dag::{FnDAG, FnId, Func},
     mechanism::{ConfigNewMec, Mechanism, MechanismImpl},
@@ -194,6 +195,8 @@ pub struct SimEnv {
     pub core: SimEnvCoreState,
     // pub mechanisms: SimEnvMechanisms,
     pub new_mech: MechanismImpl,
+
+    pub lru: LRUCache<FnId>,
 }
 
 impl SimEnv {
@@ -236,6 +239,7 @@ impl SimEnv {
             recent_use_time,
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
             timers: HashMap::new().into(),
+            lru: LRUCache::new(8),
         };
 
         // 为模拟环境创建所有的dag、node、func
@@ -243,8 +247,8 @@ impl SimEnv {
         newenv
     }
     pub fn reset(&mut self) {
-        let config=self.help.config.clone();
-        *self=SimEnv::new(config);
+        let config = self.help.config.clone();
+        *self = SimEnv::new(config);
     }
     // 初始化方法，进一步设置仿真环境的状态
     fn init(&self) {
@@ -300,10 +304,8 @@ impl SimEnv {
 
     // 在模拟一帧开始时调用，更新节点状态、清空已完成请求、重置性能指标等
     pub fn on_frame_begin(&self) {
-
         // 遍历每个节点，更新状态
         for n in self.core.nodes_mut().iter_mut() {
-
             // 将当前帧的 CPU 使用量保存为上一帧的 CPU 使用量
             n.last_frame_cpu = n.cpu;
             n.last_frame_mem = n.unready_mem();
@@ -315,9 +317,9 @@ impl SimEnv {
                 .fn_containers
                 .borrow()
                 .iter()
-                .map(|(_, c)| {c.container_basic_mem(self)})
+                .map(|(_, c)| c.container_basic_mem(self))
                 .sum();
-            
+
             // 对节点上的每个容器的mem_use和last_frame_mem重设
             for (_, c) in n.fn_containers.borrow_mut().iter_mut() {
                 c.last_frame_mem = c.mem_use;

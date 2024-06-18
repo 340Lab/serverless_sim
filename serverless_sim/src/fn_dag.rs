@@ -42,7 +42,7 @@ impl FnDAG {
             .setup_after_insert_into_dag(dag_i, begin);
 
         Self {
-            dag_i, 
+            dag_i,
             begin_fn_g_i: begin,
             dag_inner: dag,
         }
@@ -369,14 +369,11 @@ impl SimEnv {
         // 获得fnid
         let id = self.help.fn_next_id();
         // 根据不同的函数类型确定cpu和输出数据量
-        let (cpu, out_put_size) = 
-        if self.help.config().fntype_cpu() {
+        let (cpu, out_put_size) = if self.help.config().fntype_cpu() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(0.1, 20.0))
-        } 
-        else if self.help.config().fntype_data() {
+        } else if self.help.config().fntype_data() {
             (self.env_rand_f(10.0, 100.0), self.env_rand_f(30.0, 100.0))
-        } 
-        else {
+        } else {
             panic!("not support fntype");
         };
 
@@ -450,7 +447,7 @@ impl SimEnv {
 
                 env.core.dags_mut().push(dag);
             }
-        } 
+        }
         // 如果dag_type为single，则创建10个只包含单个节点的简单DAG实例
         else if self.help.config().dag_type_single() {
             for _ in 0..10 {
@@ -460,8 +457,7 @@ impl SimEnv {
                 let dag = FnDAG::instance_single_fn(dag_i, env);
                 env.core.dags_mut().push(dag);
             }
-        } 
-        else {
+        } else {
             panic!("not support dag type {}", self.help.config().dag_type);
         }
     }

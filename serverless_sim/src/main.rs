@@ -1,6 +1,7 @@
 mod actions;
 mod algos;
 mod apis;
+mod cache;
 mod config;
 mod env_gc;
 mod fn_dag;
