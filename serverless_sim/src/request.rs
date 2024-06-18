@@ -1,9 +1,11 @@
 use std::{
-    cell::{Ref, RefMut},
-    collections::{HashMap, HashSet},
+    borrow::Borrow, cell::{Ref, RefMut}, collections::{HashMap, HashSet}
 };
 
 use daggy::petgraph::visit::Topo;
+use rand::{thread_rng, Rng};
+use rand_distr::{Distribution, Normal};
+
 
 use crate::{
     fn_dag::{DagId, FnId},
@@ -153,52 +155,92 @@ impl Request {
 }
 
 impl SimEnv {
+    // 获取随机的 IAT 频率，用于模拟真实负载
+    fn get_random_frequency(avg_freq: f64, cv: f64) -> f64 {
+        // Calculate the standard deviation in terms of IAT
+        let standard_deviation = avg_freq * cv;
+        // Create a normal distribution with the given mean and standard deviation
+        let normal = Normal::new(avg_freq, standard_deviation).unwrap();
+    
+        loop {
+            // Generate a normally distributed IAT
+            let freq = normal.sample(&mut thread_rng());
+            // Ensure the IAT is greater than zero
+            if freq > 0.0 {
+                // Return the inverse of IAT to get the frequency
+                return freq;
+            }
+        }
+    }
     // 生成请求
     pub fn req_sim_gen_requests(&self) {
+        
         let env = self;
 
-        // 每 REQUEST_GEN_FRAME_INTERVAL 帧生成一次请求
         if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
+            let mut total_req_cnt = 0;
 
-            // 根据负载情况生成请求
-            let scale = 
-            if env.help.config().dag_type_dag() {
-                // log::info!("DAG类型");
-                if env.help.config().request_freq_high() {
-                    30
-                } else if env.help.config().request_freq_middle() {
-                    20
-                } else {
-                    10
+            for (dag_i, &(avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
+                let random_frequency = Self::get_random_frequency(avg_frequency, cv);
+                let req_cnt = random_frequency.round() as usize;
+
+                total_req_cnt += req_cnt;
+
+                println!("DAG Index: {}, Avg Frequency: {}, CV: {}, Random Frequency: {}, Request Count: {}", dag_i, avg_frequency, cv, random_frequency, req_cnt);
+
+                for _ in 0..req_cnt {
+                    let request = Request::new(env, *dag_i, *env.core.current_frame());
+                    let req_id = request.req_id;
+                    env.core.requests_mut().insert(req_id, request);
                 }
-            } 
-            else {
-                // log::info!("其他类型");
-                if env.help.config().request_freq_high() {
-                    120
-                } else if env.help.config().request_freq_middle() {
-                    75
-                } else {
-                    30
-                }
-            };
-
-            // 根据 scale 的值和环境中存在的应用数量来生成一个随机数，用来确定要生成的请求的数量
-            let req_cnt = env.env_rand_i(scale, scale * env.core.dags().len());
-
-            // 对每一个请求：随机选择一个应用（dag_i）、创建一个新的请求对象、将新请求添加到环境对象的请求映射中
-            for _ in 0..req_cnt {
-                let dag_i = env.env_rand_i(0, env.core.dags().len() - 1);
-
-                // 创建一个请求实例，一个请求相当于就是一个DAG
-                let request = Request::new(env, dag_i, *env.core.current_frame());
-                
-                let req_id = request.req_id;
-                env.core.requests_mut().insert(req_id, request);
             }
 
-            log::info!("Gen requests {req_cnt} at frame {}", env.current_frame());
+            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
+
+        //let env = self;
+        
+        // //每 REQUEST_GEN_FRAME_INTERVAL 帧生成一次请求
+        // if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
+
+        //     let scale = 
+        //     if env.help.config().dag_type_dag() {
+        //         // log::info!("DAG类型");
+        //         if env.help.config().request_freq_high() {
+        //             30
+        //         } else if env.help.config().request_freq_middle() {
+        //             20
+        //         } else {
+        //             10
+        //         }
+        //     } 
+        //     else {
+        //         // log::info!("其他类型");
+        //         if env.help.config().request_freq_high() {
+        //             120
+        //         } else if env.help.config().request_freq_middle() {
+        //             75
+        //         } else {
+        //             30
+        //         }
+        //     };
+
+        //     // 根据 scale 的值和环境中存在的应用数量来生成一个随机数，用来确定要生成的请求的数量
+        //     let req_cnt = env.env_rand_i(scale, scale * env.core.dags().len());
+
+        //     // 对每一个请求：随机选择一个应用（dag_i）、创建一个新的请求对象、将新请求添加到环境对象的请求映射中
+        //     for _ in 0..req_cnt {
+        //         let dag_i = env.env_rand_i(0, env.core.dags().len() - 1);
+
+        //         // 创建一个请求实例，一个请求相当于就是一个DAG
+        //         let request = Request::new(env, dag_i, *env.core.current_frame());
+                
+        //         let req_id = request.req_id;
+        //         env.core.requests_mut().insert(req_id, request);
+        //     }
+
+        //     log::info!("Gen requests {req_cnt} at frame {}", env.current_frame());
+        // }
     }
 
     pub fn on_request_done(&self, req_id: ReqId) {
