@@ -304,7 +304,7 @@ impl MechanismImpl {
         match &*env.help.config().mech.mech_type().0 {
             "no_scale" => MechType::NoScale,
             "scale_sche_separated" => MechType::ScaleScheSeparated,
-            "scale_sche_joint" => MechType::ScaleScheSeparated,
+            "scale_sche_joint" => MechType::ScaleScheJoint,
             _ => {
                 panic!(
                     "mech_type not supported {}",

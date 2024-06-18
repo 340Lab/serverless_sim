@@ -1,7 +1,9 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::{BTreeMap, HashMap, HashSet},
+    cell::{Ref, RefCell, RefMut}, 
+    collections::{BTreeMap, HashMap, HashSet}, 
+    process::Command, 
     time::{Duration, SystemTime, UNIX_EPOCH},
+    str
 };
 
 use daggy::petgraph;
@@ -12,7 +14,7 @@ use crate::{
     actions::ESActionWrapper,
     cache::lru::LRUCache,
     config::Config,
-    fn_dag::{FnDAG, FnId, Func},
+    fn_dag::{DagId, FnDAG, FnId, Func},
     mechanism::{ConfigNewMec, Mechanism, MechanismImpl},
     metric::{MechMetric, OneFrameMetric, Records},
     node::{Node, NodeId},
@@ -25,9 +27,36 @@ use crate::{
     },
     sche, sim_loop,
     sim_run::Scheduler,
-    util, CONTAINER_BASIC_MEM,
+    util,
+    CONTAINER_BASIC_MEM,
 };
 
+// 定义 call_python_script 函数
+pub fn call_python_script(arg: &str, rng: f32) -> f64 {
+    // 将 f32 转换为 String 以传递给 Python 脚本
+    let rng_str = format!("{}", rng);
+    let output = Command::new("python")
+        .arg("src/real-world-emulation/RealWorldAppEmulation.py")
+        .arg(arg)
+        .arg(rng_str)
+        .output()
+        .expect("Failed to execute Python script");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        stdout
+            .trim()
+            .parse::<f64>()
+            .expect("Failed to parse Python script output")
+    } else {
+        panic!(
+            "Python script error:\nStandard Output: {}\nStandard Error: {}",
+            stdout, stderr
+        );
+    }
+}
 pub struct SimEnvHelperState {
     config: Config,
     req_next_id: RefCell<ReqId>,
@@ -36,7 +65,9 @@ pub struct SimEnvHelperState {
     metric: RefCell<OneFrameMetric>,
     metric_record: RefCell<Records>,
     mech_metric: RefCell<MechMetric>,
+    fn_call_frequency: RefCell<HashMap<DagId, (f64, f64)>>,
 }
+
 impl SimEnvHelperState {
     pub fn fn_next_id(&self) -> FnId {
         let ret = *self.fn_next_id.borrow_mut();
@@ -75,6 +106,12 @@ impl SimEnvHelperState {
     }
     pub fn mech_metric_mut<'a>(&'a self) -> RefMut<'a, MechMetric> {
         self.mech_metric.borrow_mut()
+    }
+    pub fn fn_call_frequency<'a>(&'a self) -> Ref<'a, HashMap<DagId, (f64, f64)>> {
+        self.fn_call_frequency.borrow()
+    }
+    pub fn fn_call_frequency_mut<'a>(&'a self) -> RefMut<'a, HashMap<DagId, (f64, f64)>> {
+        self.fn_call_frequency.borrow_mut()
     }
 }
 
@@ -216,6 +253,7 @@ impl SimEnv {
                 metric_record: RefCell::new(Records::new(config.str())),
                 config: config.clone(),
                 mech_metric: RefCell::new(MechMetric::new()),
+                fn_call_frequency: RefCell::new(HashMap::new()),
             },
             core: SimEnvCoreState {
                 node2node_graph: RefCell::new(Vec::new()),
@@ -269,6 +307,14 @@ impl SimEnv {
 
         // 创建 DAG 实例，并将其加入到 dags 列表中
         self.fn_gen_fn_dags(self);
+        
+        //为每个dag生成调用频率和CV
+        for dag in self.core.dags().iter() {
+            let rng = self.env_rand_f(0.0, 1.0);
+            let avg_freq = call_python_script("IAT", rng);
+            let cv = call_python_script("CV", rng);
+            self.help.fn_call_frequency_mut().insert(dag.dag_i, (avg_freq, cv));
+        }
     }
 
     // 获取当前模拟帧数

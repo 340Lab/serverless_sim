@@ -44,8 +44,14 @@ impl Scheduler for RandomScheduler {
                             .map(|n| n.node_id())
                             .collect::<Vec<_>>(),
                 };
-
-                let nodeid = nodesid.choose(&mut rand::thread_rng()).expect("No available nodes for scheduling");
+                
+                let nodeid = if let Some(node) = nodesid.choose(&mut rand::thread_rng()) {
+                    node
+                } else {
+                    // 处理没有可用节点的情况，例如记录日志或返回错误
+                    eprintln!("No available nodes for scheduling");
+                    return (vec![], vec![], vec![]);
+                };
                 
                 // 创建调度命令
                 sche_cmds.push(ScheCmd {
