@@ -329,7 +329,7 @@ pub fn group_records_by_seed() {
                         map
                     });
                 different_confs
-                    .entry(record_file.config.str())
+                    .entry(record_file.file_name.to_string())
                     .and_modify(|v| {
                         if record_file.time_str > v.time_str {
                             *v = record_file.clone();
