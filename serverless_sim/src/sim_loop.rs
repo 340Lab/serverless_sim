@@ -11,6 +11,7 @@ use crate::{
     sim_run::Scheduler,
 };
 use enum_as_inner::EnumAsInner;
+use moka::sync::Cache;
 use std::{
     cell::RefMut,
     collections::{BTreeMap, VecDeque},
@@ -43,11 +44,12 @@ impl SimEnv {
                 self.schedule_reqfn_on_node(&mut self.request_mut(sche.reqid), sche.fnid, sche.nid);
             }
             for down in downs.iter() {
+                //更新cache
                 self.node_mut(down.nid)
                     .try_unload_container(down.fnid, self);
             }
             for up in ups.iter() {
-                self.node(up.nid).try_load_container(up.fnid, self);
+                self.node_mut(up.nid).try_load_container(up.fnid, self);
             }
 
             self.sim_run();

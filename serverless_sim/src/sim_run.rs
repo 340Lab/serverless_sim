@@ -366,7 +366,7 @@ impl SimEnv {
         }
     }
 
-    fn sim_load_container(&self) {
+    fn sim_load_container(&mut self) {
         let mut nodes_mut = self.nodes_mut();
         for n in nodes_mut.iter_mut() {
             n.load_container(&self);
@@ -424,7 +424,7 @@ impl SimEnv {
         }
     }
 
-    pub fn sim_run(&self) {
+    pub fn sim_run(&mut self) {
         self.sim_load_container();
         self.sim_transfers();
         self.sim_computes();

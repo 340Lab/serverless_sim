@@ -1,13 +1,23 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
     cell::{Ref, RefCell, RefMut},
-    cmp::Ordering,
-    collections::{BTreeSet, HashMap, HashSet},
+    clone,
+    cmp::{Eq, Ordering},
+    collections::{BTreeSet, HashMap, HashSet, LinkedList},
+    fmt::Debug,
+    hash::Hash,
+    ptr::NonNull,
+    rc::Rc,
 };
 
+use axum::http::header::SEC_WEBSOCKET_KEY;
+use moka::sync::Cache;
+
 use crate::{
+    cache::lru::LRUCache,
     fn_dag::{FnContainer, FnContainerState, FnId, Func},
     request::ReqId,
-    sim_env::SimEnv,
+    sim_env::{self, SimEnv},
     util, NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
 };
 
@@ -54,7 +64,199 @@ pub struct Node {
     pub last_frame_mem: f32,
 
     pub frame_run_count: usize,
+
+    //LRU置换策略
+    pub lru: RefCell<LRUCache<FnId>>,
 }
+
+// // 双向链表节点
+// pub struct ListNode<Payload> {
+//     key: Option<Payload>, // None when dummy
+//     // value: Option<FnContainer>,
+//     prev: Option<Rc<RefCell<ListNode<Payload>>>>,
+//     next: Option<Rc<RefCell<ListNode<Payload>>>>,
+// }
+
+// unsafe impl<Payload> Send for ListNode<Payload> {}
+// unsafe impl<Payload> Sync for ListNode<Payload> {}
+
+// impl<Payload> ListNode<Payload> {
+//     fn new(key: Option<Payload>) -> Rc<RefCell<Self>> {
+//         Rc::new(RefCell::new(ListNode {
+//             key,
+//             prev: None,
+//             next: None,
+//         }))
+//     }
+// }
+
+// // LRU缓存结构
+// pub struct LRUCache<Payload: Eq + Hash + Clone + Debug> {
+//     capacity: usize,
+//     cache: HashMap<Payload, Rc<RefCell<ListNode<Payload>>>>,
+//     head: Rc<RefCell<ListNode<Payload>>>,
+//     tail: Rc<RefCell<ListNode<Payload>>>,
+//     // dummy: Rc<RefCell<ListNode<Payload>>>,
+// }
+
+// unsafe impl<Payload: Eq + Hash + Clone + Debug> Send for LRUCache<Payload> {}
+
+// impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
+//     pub fn new(capacity: usize) -> Self {
+//         // let dummy = ListNode::new(None);
+//         // dummy.borrow_mut().prev = Some(dummy.clone());
+//         // dummy.borrow_mut().next = Some(dummy.clone());
+//         let head = ListNode::new(None);
+//         let tail = ListNode::new(None);
+//         //let head_borrow_mut = head.borrow_mut();
+//         //let tail_borrow_mut = tail.borrow_mut();
+//         head.as_ref().borrow_mut().next = Some(tail.clone());
+//         tail.as_ref().borrow_mut().prev = Some(head.clone());
+//         LRUCache {
+//             capacity,
+//             cache: HashMap::new(),
+//             head,
+//             tail,
+//             // dummy,
+//         }
+//     }
+//     pub fn get(&mut self, key: Payload) -> Option<Payload> {
+//         if let Some(rc_node) = self.cache.get(&key) {
+//             let node = rc_node.clone();
+//             //let value = Some(node.borrow().value.clone());
+//             self.removeNode(node.clone());
+//             self.moveToHead(node);
+//             return Some(key);
+//         }
+//         None
+//     }
+
+//     // return Some(payload) if one is evcited
+//     pub fn put(
+//         &mut self,
+//         key: Payload,
+//         mut can_be_evict: impl FnMut(&Payload) -> bool,
+//     ) -> (Option<Payload>, bool) {
+//         if self.cache.contains_key(&key) {
+//             let listnode = self.cache.get(&key).unwrap().clone();
+//             //listnode.borrow_mut().value = Some(value);
+//             self.removeNode(listnode.clone());
+//             self.moveToHead(listnode);
+//             return (None, true);
+//             //找到了，id为None，put成功
+//         }
+//         let lsnode = ListNode::new(Some(key.clone()));
+//         self.cache.insert(key.clone(), lsnode.clone());
+//         self.moveToHead(lsnode.clone()); // 放在最上面
+//         if self.cache.len() > self.capacity {
+//             let mut back_node = self.tail.as_ref().borrow().prev.clone().unwrap();
+//             while back_node.as_ref().borrow().key.is_some() {
+//                 if can_be_evict(back_node.as_ref().borrow().key.as_ref().unwrap()) {
+//                     // 取出并返回被淘汰节点的键（Payload），以便外部使用
+//                     let key_to_remove = back_node.as_ref().borrow().key.clone().unwrap();
+//                     self.cache.remove(&key_to_remove);
+//                     self.removeNode(back_node);
+//                     return (Some(key_to_remove), true);
+//                     //找到要删除的，返回id，put成功
+//                 } else {
+//                     let next_back_node = back_node.as_ref().borrow().prev.clone().unwrap();
+//                     back_node = next_back_node;
+//                 }
+//             }
+//             self.removeNode(lsnode);
+//             self.cache.remove(&key);
+//             return (None, false);
+//         }
+//         (None, true)
+//     }
+
+//     fn moveToHead(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
+//         let next = self.head.as_ref().borrow().next.clone();
+//         node.as_ref().borrow_mut().prev = Some(self.head.clone());
+//         node.as_ref().borrow_mut().next = next.clone();
+//         self.head.as_ref().borrow_mut().next = Some(node.clone());
+//         next.unwrap().as_ref().borrow_mut().prev = Some(node);
+//     }
+
+//     fn removeNode(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
+//         let prev = node.as_ref().borrow().prev.clone().unwrap();
+//         let next = node.as_ref().borrow().next.clone().unwrap();
+//         prev.as_ref().borrow_mut().next = Some(next.clone());
+//         next.as_ref().borrow_mut().prev = Some(prev);
+//     }
+
+//     #[cfg(test)]
+//     fn cmp_list(&self, list: Vec<Payload>) {
+//         assert_eq!(self.cache.len(), list.len());
+//         let mut cur = self.head.as_ref().borrow().next.clone();
+//         for i in &list {
+//             if let Some(n) = cur {
+//                 assert_eq!(i, n.as_ref().borrow().key.as_ref().unwrap());
+//                 cur = n.as_ref().borrow().next.clone();
+//             } else {
+//                 panic!();
+//             }
+//         }
+//         assert!(cur.unwrap().as_ref().borrow().key.is_none());
+//     }
+
+//     #[cfg(test)]
+//     fn print_list(&self) {
+//         let mut cur = Some(self.head.clone());
+//         while let Some(n) = cur {
+//             println!("{:?}", n.as_ref().borrow().key);
+//             cur = n.as_ref().borrow().next.clone();
+//         }
+//     }
+// }
+
+// #[test]
+// fn test_lru_cache() {
+//     let mut cache = LRUCache::<usize>::new(3);
+
+//     // 测试 put 方法，当缓存未满时
+//     assert_eq!(cache.put(1, |_| true), (None, true));
+//     assert_eq!(cache.put(2, |_| true), (None, true));
+//     assert_eq!(cache.put(3, |_| true), (None, true));
+//     cache.print_list();
+//     cache.cmp_list(vec![3, 2, 1]);
+
+//     // 测试 get 方法，对于已存在的键
+//     assert_eq!(cache.get(2), Some(2));
+//     cache.cmp_list(vec![2, 3, 1]);
+//     cache.print_list();
+
+//     // 再次 put 已存在的键，应该更新位置但不改变缓存大小
+//     assert_eq!(cache.put(2, |_| true), (None, true));
+//     cache.cmp_list(vec![2, 3, 1]);
+//     cache.print_list();
+
+//     // 当缓存满时，测试 put 方法，应该淘汰最久未使用的元素
+//     assert_eq!(cache.put(4, |_| true), (Some(1), true));
+//     cache.cmp_list(vec![4, 2, 3]);
+//     cache.print_list();
+
+//     // 确认 1 已经被移除，4 是最新加入的
+//     assert_eq!(cache.get(1), None);
+//     cache.print_list();
+//     assert_eq!(cache.get(4), Some(4));
+//     cache.cmp_list(vec![4, 2, 3]);
+//     cache.print_list();
+
+//     // 测试淘汰策略，如果淘汰函数返回false，则不淘汰
+//     let mut can_be_evicted = false; // 初始设置为不淘汰任何元素
+//     assert_eq!(cache.put(5, |_| can_be_evicted), (None, false)); // ，不会淘汰
+//     cache.print_list();
+
+//     can_be_evicted = true; // 设置为允许淘汰
+//     assert_eq!(cache.put(6, |_| can_be_evicted), (Some(3), true)); // 2 应该被淘汰
+//     cache.cmp_list(vec![6, 4, 2]);
+//     cache.print_list();
+
+//     // 确认 2 已经被移除
+//     assert_eq!(cache.get(3), None);
+//     cache.print_list();
+// }
 
 impl Node {
     // 具体函数使用内存在算法执行后才计算, 算法中需要使用last_frame_mem
@@ -80,6 +282,7 @@ impl Node {
             frame_run_count: 0,
             pending_tasks: BTreeSet::new().into(),
             last_frame_mem: 0.0,
+            lru: RefCell::new(LRUCache::new(10)),
         }
     }
 
@@ -88,7 +291,6 @@ impl Node {
         self.pending_tasks.borrow_mut().insert((req_id, fn_id));
     }
 
-    
     pub fn unready_left_mem(&self) -> f32 {
         self.rsc_limit.mem - self.unready_mem()
     }
@@ -121,7 +323,9 @@ impl Node {
     // }
     pub fn cmp_rsc_used(&self, other: &Self) -> Ordering {
         (self.cpu * NODE_SCORE_CPU_WEIGHT + self.unready_mem() * NODE_SCORE_MEM_WEIGHT)
-            .partial_cmp(&(other.cpu * NODE_SCORE_CPU_WEIGHT + other.unready_mem() * NODE_SCORE_MEM_WEIGHT))
+            .partial_cmp(
+                &(other.cpu * NODE_SCORE_CPU_WEIGHT + other.unready_mem() * NODE_SCORE_MEM_WEIGHT),
+            )
             .unwrap()
     }
 
@@ -175,16 +379,24 @@ impl Node {
     //     self.fn_containers.get(&fnid)
     // }
 
-    pub fn try_unload_container(&mut self, fnid: FnId, env: &SimEnv) {
+    pub fn try_unload_container(&self, fnid: FnId, env: &SimEnv) {
         log::info!("scale down fn {fnid} from node {}", self.node_id());
         // env.set_scale_down_result(fnid, self.node_id());
 
+        // let mut lrucache = self.lru.borrow_mut();
+        // let lrunode = lrucache.cache.get(&fnid).unwrap().clone();
+        // lrucache.removeNode(lrunode);
+        // lrucache.cache.remove(&fnid);
+
         let nodeid = self.node_id();
-        let Some(cont) = self.fn_containers.borrow_mut().remove(&fnid)else{
+        let Some(cont) = self.fn_containers.borrow_mut().remove(&fnid) else {
             log::info!("try_unload_container not found {}", fnid);
             return;
         };
-        
+
+        let mut lrucache = self.lru.borrow_mut();
+        assert!(lrucache.removeAll(&fnid));
+
         env.core
             .fn_2_nodes_mut()
             .get_mut(&fnid)
@@ -192,8 +404,7 @@ impl Node {
             .remove(&nodeid);
         match cont.state() {
             FnContainerState::Starting { .. } => {
-                *self.mem.borrow_mut() -=
-                    env.func(fnid).cold_start_container_mem_use;
+                *self.mem.borrow_mut() -= env.func(fnid).cold_start_container_mem_use;
             }
             FnContainerState::Running => {
                 *self.mem.borrow_mut() -= env.func(fnid).container_mem();
@@ -215,15 +426,90 @@ impl Node {
     }
 
     // 尝试在节点上加载指定函数ID的容器。如果内存足够且容器不存在，则创建新容器并更新节点状态
+    // pub fn try_load_container(&mut self, fnid: FnId, env: &SimEnv) {
+    //     if self.container(fnid).is_none() {
+    //         // try cold start
+    //         // 首先从lru_cache中寻找可用容器
+    //         if let Some(cached_container) = self.lru.get(fnid) {
+    //             // 缓存命中,deploy it to the node
+    //             self.fn_containers.borrow_mut().insert(fnid);
+    //             let node_id = self.node_id();
+    //             env.core
+    //                 .fn_2_nodes_mut()
+    //                 .entry(fnid)
+    //                 .and_modify(|v| {
+    //                     v.insert(node_id);
+    //                 })
+    //                 .or_insert_with(|| {
+    //                     let mut set = HashSet::new();
+    //                     set.insert(node_id);
+    //                     set
+    //                 });
+    //             // Update memory usage immediately as it's a reused container
+    //             *self.mem.borrow_mut() += cached_container.unwrap().mem_take(env);
+    //         } else {
+    //             //缓存未命中，冷启动！
+    //             if self.mem_enough_for_container(&env.func(fnid)) {
+    //                 let fncon = FnContainer::new(fnid, self.node_id(), env);
+    //                 let con_mem_take = fncon.mem_take(env);
+    //                 self.fn_containers.borrow_mut().insert(fnid, fncon.clone());
+    //                 // log::info!("expand fn: {fn_id} to node: {node_id}");
+    //                 // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
+    //                 let node_id = self.node_id();
+    //                 env.core
+    //                     .fn_2_nodes_mut()
+    //                     .entry(fnid)
+    //                     .and_modify(|v| {
+    //                         v.insert(node_id);
+    //                     })
+    //                     .or_insert_with(|| {
+    //                         let mut set = HashSet::new();
+    //                         set.insert(node_id);
+    //                         set
+    //                     });
+
+    //                 // will recalc next frame begin
+    //                 // but we need to add mem to node in this frame because it's new container
+    //                 *self.mem.borrow_mut() += con_mem_take;
+    //                 // self.nodes.borrow_mut()[node_id].mem +=
+    //                 //     self.func(fn_id).cold_start_container_mem_use;
+    //                 // 增加新创建的容器到 lru_cache
+    //                 &self.lru.put(fnid);
+    //             }
+    //         }
+    //     }
+    // }
+
     pub fn try_load_container(&self, fnid: FnId, env: &SimEnv) {
-        if self.container(fnid).is_none() {
+        if self.container(fnid).is_some() {
+            //self.lru.borrow_mut().get(fnid);
+            return;
+        }
+
+        let (old, flag) = self.lru.borrow_mut().put(fnid, |to_replace| {
+            log::info!("节点{}要移除的容器{}", self.node_id, to_replace,);
+            for (k, v) in self.fn_containers.borrow().iter() {
+                log::info!("{}", v.fn_id);
+            }
+            self.container(*to_replace).unwrap().is_idle()
+        });
+
+        // 可以增加该容器
+        if flag {
+            // 1. 将old unload掉
+            if old.is_some() {
+                self.try_unload_container(old.unwrap(), env);
+                log::info!("节点{}移除容器{}", self.node_id, old.unwrap());
+            }
+            // 2. load 当前fnid
             // try cold start
+            // 首先从lru_cache中寻找可用容器
             if self.mem_enough_for_container(&env.func(fnid)) {
+                //let fncon = FnContainer::new(fnid, self.node_id(), env);
                 let fncon = FnContainer::new(fnid, self.node_id(), env);
                 let con_mem_take = fncon.mem_take(env);
                 self.fn_containers.borrow_mut().insert(fnid, fncon);
-                // log::info!("expand fn: {fn_id} to node: {node_id}");
-                // 1. 更新 fn 到nodes的map，用于查询fn 对应哪些节点有部署
+                log::info!("节点{}添加容器{}", self.node_id, fnid);
                 let node_id = self.node_id();
                 env.core
                     .fn_2_nodes_mut()
@@ -232,7 +518,7 @@ impl Node {
                         v.insert(node_id);
                     })
                     .or_insert_with(|| {
-                        let mut set = HashSet::new();
+                        let mut set: HashSet<usize> = HashSet::new();
                         set.insert(node_id);
                         set
                     });
@@ -242,21 +528,33 @@ impl Node {
                 *self.mem.borrow_mut() += con_mem_take;
                 // self.nodes.borrow_mut()[node_id].mem +=
                 //     self.func(fn_id).cold_start_container_mem_use;
+                // 增加新创建的容器到 lru_cache
+            } else {
+                // let mut lrucache = self.lru.borrow_mut();
+                // let lrunode = lrucache.cache.get(&fnid).unwrap().clone();
+                // lrucache.removeNode(lrunode);
+                // lrucache.cache.remove(&fnid);
+                let mut lrucache = self.lru.borrow_mut();
+                assert!(lrucache.removeAll(&fnid));
             }
         }
     }
-
     // 尝试加载节点上所有待处理任务的容器
     // 如果内存足够且容器不存在，则创建新容器，将任务状态添加到容器，并从待处理任务集合中移除
     pub fn load_container(&self, env: &SimEnv) {
         // 用于存储已移除的待处理任务
         let mut removed_pending = vec![];
+
+        //let mut tasks = self.pending_tasks.borrow_mut().clone();
+
         // 遍历该节点上的所有待处理任务
-        for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
+        for &(req_id, fnid) in self.pending_tasks.borrow_mut().iter() {
             // 尝试加载函数容器
             self.try_load_container(fnid, env);
 
             if let Some(mut fncon) = self.container_mut(fnid) {
+                //6.14新增任务
+                self.lru.borrow_mut().get(fnid);
                 // add to container
                 fncon.req_fn_state.insert(
                     req_id,
@@ -265,8 +563,29 @@ impl Node {
                 removed_pending.push((req_id, fnid));
             }
         }
-        for r in removed_pending {
-            self.pending_tasks.borrow_mut().remove(&r);
+
+        // let mut abcd: HashMap<usize, usize> = HashMap::new();
+
+        // for &(req_id, fnid) in self.pending_tasks.borrow().iter() {
+        //     abcd.insert(req_id.clone(), fnid.clone());
+        // }
+
+        // for (req_id, fnid) in abcd.iter() {
+        //     // 尝试加载函数容器
+        //     self.try_load_container(*fnid, env);
+
+        //     if let Some(mut fncon) = self.container_mut(*fnid) {
+        //         // add to container
+        //         fncon.req_fn_state.insert(
+        //             *req_id,
+        //             env.fn_new_fn_running_state(&env.request(*req_id), *fnid),
+        //         );
+        //         removed_pending.push((req_id, fnid));
+        //     }
+        // }
+
+        for (req_id, fnid) in removed_pending {
+            self.pending_tasks.borrow_mut().remove(&(req_id, fnid));
         }
     }
 }
@@ -274,7 +593,6 @@ impl Node {
 impl SimEnv {
     // 初始化节点之间的图数据结构，包括节点之间的连接数计数和带宽图，并为每个节点设置随机速度
     pub fn node_init_node_graph(&self) {
-
         // 初始化一个节点
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id);

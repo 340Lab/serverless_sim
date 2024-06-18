@@ -1,6 +1,9 @@
 use std::{
     cell::{RefCell, RefMut},
     collections::HashMap,
+    fmt::Debug,
+    hash::Hash,
+    rc::Rc,
 };
 
 use crate::{
@@ -86,11 +89,10 @@ pub const SCHE_NAMES: [&'static str; 8] = [
     "fnsche",
     "random",
     "greedy",
-    "bp_balance", 
-    "consistenthash"
-    // "gofs",
-    // "load_least",
-    // "random",
+    "bp_balance",
+    "consistenthash", // "gofs",
+                      // "load_least",
+                      // "random",
 ];
 pub const SCALE_NUM_NAMES: [&'static str; 4] = ["no", "hpa", "lass", "temp_scaler"];
 pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
@@ -164,7 +166,14 @@ impl ConfigNewMec for Config {
         // check conf relation
         match &*self.mech.mech_type().0 {
             "no_scale" => {
-                let allow_sche = vec!["faasflow", "pass", "fnsche", "random", "greedy", "consistenthash"];
+                let allow_sche = vec![
+                    "faasflow",
+                    "pass",
+                    "fnsche",
+                    "random",
+                    "greedy",
+                    "consistenthash",
+                ];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["no"];
@@ -284,10 +293,10 @@ impl Mechanism for MechanismImpl {
     }
 }
 
-pub enum MechType{
+pub enum MechType {
     NoScale,
     ScaleScheSeparated,
-    ScaleScheJoint
+    ScaleScheJoint,
 }
 
 impl MechanismImpl {
