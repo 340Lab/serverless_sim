@@ -1,19 +1,17 @@
-use std::{collections::HashMap, u128::MAX};
+use std::{collections::HashMap};
 
 use daggy::{
-    petgraph::visit::{EdgeRef, IntoEdgeReferences},
-    EdgeIndex, Walker,
+    Walker,
 };
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 
 use crate::{
-    fn_dag::{DagId, FnId},
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    node::NodeId,
-    request::{ReqId, Request},
-    sim_env::SimEnv,
+    fn_dag::{DagId, EnvFnExt, FnId},
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    node::{EnvNodeExt, NodeId},
+    request::{Request},
     sim_run::Scheduler,
-    util,
+    with_env_sub::WithEnvCore,
 };
 
 struct RequestSchedulePlan {
@@ -32,7 +30,7 @@ impl PassScheduler {
         }
     }
 
-    fn prepare_priority_for_dag(&mut self, req: &mut Request, env: &SimEnv) {
+    fn prepare_priority_for_dag(&mut self, req: &Request, env: &SimEnvObserve) {
         let dag = env.dag(req.dag_i);
 
         //计算函数的优先级：当函数i有多个后继，则优先分配选择传输时间+执行时间最大的后继函数
@@ -88,11 +86,11 @@ impl PassScheduler {
         schedule_to_map: &mut HashMap<FnId, NodeId>,
         schedule_to: &mut Vec<(FnId, NodeId)>,
         func_id: FnId,
-        req: &mut Request,
-        env: &SimEnv,
+        _req: &Request,
+        env: &SimEnvObserve,
     ) {
         let func = env.func(func_id);
-        let nodes = env.core.nodes();
+        let nodes = env.core().nodes();
 
         let func_pres_id = func.parent_fns(env);
         log::info!("func {} pres {:?}", func_id, func_pres_id);
@@ -121,7 +119,7 @@ impl PassScheduler {
                         // 计算从上个节点到当前节点的数据传输时间，取最小
                         let t_tran: f32 =
                             func_pre.out_put_size / env.node_get_speed_btwn(node_id, i);
-                        if (t_tran > t_tran_max) {
+                        if t_tran > t_tran_max {
                             t_tran_max = t_tran;
                         }
                     }
@@ -148,7 +146,7 @@ impl PassScheduler {
         }
     }
 
-    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) -> Vec<ScheCmd> {
+    fn schedule_for_one_req(&mut self, req: &Request, env: &SimEnvObserve) -> Vec<ScheCmd> {
         self.prepare_priority_for_dag(req, env);
 
         let dag = env.dag(req.dag_i);
@@ -191,9 +189,13 @@ impl PassScheduler {
 //  最后，调度算法将采用装箱策略，根据节点容量为每个函数组选择适当的工作节点（第21-23行）。
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for PassScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        _mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
         let mut sche_cmds = vec![];
-        for (_, req) in env.core.requests_mut().iter_mut() {
+        for (_, req) in env.core().requests().iter() {
             if req.fn_node.len() == 0 {
                 sche_cmds.extend(self.schedule_for_one_req(req, env));
             }

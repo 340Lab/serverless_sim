@@ -1,12 +1,9 @@
-use core::panic;
-use std::{
-    collections::{hash_map, HashMap},
-    fs::File,
-};
 
-use clap::builder::Str;
+
+
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+
 
 use crate::mechanism_conf::MechConfig;
 
@@ -38,6 +35,7 @@ pub struct APPConfig {
 pub struct Config {
     /// for the different algos, should use the same seed
     pub rand_seed: String,
+    pub total_frame: usize,
     /// low middle high
     pub request_freq: String,
     /// dag type: single, chain, dag, mix
@@ -54,6 +52,19 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn new_test() -> Config {
+        Config {
+            total_frame: 100,
+            rand_seed: "test".to_string(),
+            request_freq: "low".to_string(),
+            dag_type: "single".to_string(),
+            cold_start: "high".to_string(),
+            fn_type: "cpu".to_string(),
+            mech: MechConfig::new_test(),
+            no_log: true,
+        }
+    }
+
     pub fn request_freq_low(&self) -> bool {
         if &*self.request_freq == "low" {
             return true;

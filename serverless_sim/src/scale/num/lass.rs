@@ -4,8 +4,7 @@ use super::{
     ScaleNum,
 };
 use crate::{
-    actions::ESActionWrapper,fn_dag::FnId, 
-    sim_env::SimEnv,
+    actions::ESActionWrapper,fn_dag::FnId, node::EnvNodeExt, mechanism::SimEnvObserve, with_env_sub::{WithEnvHelp, WithEnvCore},
 };
 
 pub struct LassScaleNum {
@@ -27,7 +26,7 @@ impl LassScaleNum {
 // unsafe impl Send for LassEFScaler {}
 
 impl ScaleNum for LassScaleNum {
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> usize {
+    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, _action: &ESActionWrapper) -> usize {
         // 请求时间=请求数/(当前容器数(cc)*每个容器请求处理速率(r/t))
         let desired_container_cnt =
             // if metric.ready_2_schedule_fn_count() + metric.scheduled_fn_count == 0 {
@@ -39,7 +38,7 @@ impl ScaleNum for LassScaleNum {
                     let mut recent_speed_sum = 0.0;
                     let mut recent_speed_cnt = 0;
 
-                    if let Some(nodes) = env.core.fn_2_nodes().get(&fnid) {
+                    if let Some(nodes) = env.core().fn_2_nodes().get(&fnid) {
                         nodes.iter().for_each(|&nodeid| {
                             let node = env.node(nodeid);
                             let container = node.container(fnid).unwrap();
@@ -60,7 +59,7 @@ impl ScaleNum for LassScaleNum {
                 if recent_speed < 0.00001 {
                     1
                 } else {
-                    (env.help.mech_metric().fn_recent_req_cnt(fnid)
+                    (env.help().mech_metric().fn_recent_req_cnt(fnid)
                         / (self.latency_required * recent_speed).ceil())
                         as usize
                 }

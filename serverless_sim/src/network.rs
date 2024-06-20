@@ -2,6 +2,7 @@ use crate::apis::{
     ApiHandler, GetEnvIdResp, GetNetworkTopoReq, GetNetworkTopoResp, ResetReq, ResetResp, StepReq,
     StepResp,
 };
+use crate::node::EnvNodeExt;
 use crate::{
     apis,
     config::Config,
@@ -14,7 +15,7 @@ use moka::sync::Cache;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt::format;
+
 use std::{
     cmp::min,
     collections::HashMap,
@@ -60,11 +61,11 @@ pub struct ApiHandlerImpl;
 
 #[async_trait]
 impl ApiHandler for ApiHandlerImpl {
-    async fn handle_get_network_topo(&self, req: GetNetworkTopoReq) -> GetNetworkTopoResp {
+    async fn handle_get_network_topo(&self, _req: GetNetworkTopoReq) -> GetNetworkTopoResp {
         let env_ids_response = self.handle_get_env_id().await;
         if let GetEnvIdResp::Exist { env_id } = env_ids_response {
             if let Some(first_env_id) = env_id.first() {
-                let sim_envs =  SIM_ENVS.read() ;
+                let sim_envs = SIM_ENVS.read();
                 return match sim_envs.get(first_env_id) {
                     Some(env_mutex) => {
                         let env = env_mutex.lock();
@@ -125,8 +126,7 @@ impl ApiHandler for ApiHandlerImpl {
                         sim_env.help.metric_record().flush(&sim_env);
                         // 用新的配置创建一个新的模拟环境实例
                         *sim_env = SimEnv::new(config);
-                    } 
-                    else {
+                    } else {
                         // 释放读锁
                         drop(sim_envs);
                         // 获取写锁

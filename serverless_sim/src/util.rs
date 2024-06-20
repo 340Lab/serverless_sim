@@ -15,6 +15,7 @@ use crate::sim_env::SimEnv;
 //     a
 // }
 
+#[derive(Clone)]
 // 滑动窗口
 pub struct Window {
     // 存储的浮点数
@@ -205,7 +206,7 @@ impl DirectedGraph {
             for &neighbor in neighbors {
                 let weight = a2bdist(node, neighbor);
                 let distance_through_current = dist + weight;
-                let mut dist_info = dists.get_mut(&neighbor).unwrap();
+                let dist_info = dists.get_mut(&neighbor).unwrap();
                 if distance_through_current < dist_info.0 {
                     dist_info.0 = distance_through_current;
                     dist_info.1 = Some(node);
@@ -239,4 +240,11 @@ impl SimEnv {
         let mut rng = self.rander.borrow_mut();
         rng.gen_range(min..max)
     }
+}
+
+pub fn now_ms() -> u64 {
+    let now = std::time::SystemTime::now();
+    now.duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }

@@ -1,22 +1,4 @@
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    clone,
-    cmp::{Eq, Ordering},
-    collections::{BTreeSet, HashMap, HashSet, LinkedList},
-    fmt::Debug,
-    hash::Hash,
-    ptr::NonNull,
-    rc::Rc,
-};
-
-use moka::sync::Cache;
-
-use crate::{
-    fn_dag::{FnContainer, FnContainerState, FnId, Func},
-    request::ReqId,
-    sim_env::{self, SimEnv},
-    util, NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
-};
+use std::{cell::RefCell, cmp::Eq, collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
 
 // 双向链表节点
 pub struct ListNode<Payload> {
@@ -73,8 +55,8 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
         if let Some(rc_node) = self.cache.get(&key) {
             let node: Rc<RefCell<ListNode<Payload>>> = rc_node.clone();
             //let value = Some(node.borrow().value.clone());
-            self.removeNode(node.clone());
-            self.moveToHead(node);
+            self.remove_node(node.clone());
+            self.move_to_head(node);
             return Some(key);
         }
         None
@@ -89,14 +71,14 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
         if self.cache.contains_key(&key) {
             let listnode = self.cache.get(&key).unwrap().clone();
             //listnode.borrow_mut().value = Some(value);
-            self.removeNode(listnode.clone());
-            self.moveToHead(listnode);
+            self.remove_node(listnode.clone());
+            self.move_to_head(listnode);
             return (None, true);
             //找到了，id为None，put成功
         }
         let lsnode = ListNode::new(Some(key.clone()));
         self.cache.insert(key.clone(), lsnode.clone());
-        self.moveToHead(lsnode.clone()); // 放在最上面
+        self.move_to_head(lsnode.clone()); // 放在最上面
         if self.cache.len() > self.capacity {
             let mut back_node = self.tail.borrow().prev.clone().unwrap();
             while back_node.borrow().key.is_some() {
@@ -104,7 +86,7 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
                     // 取出并返回被淘汰节点的键（Payload），以便外部使用
                     let key_to_remove = back_node.borrow().key.clone().unwrap();
                     self.cache.remove(&key_to_remove);
-                    self.removeNode(back_node);
+                    self.remove_node(back_node);
                     return (Some(key_to_remove), true);
                     //找到要删除的，返回id，put成功
                 } else {
@@ -112,7 +94,7 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
                     back_node = next_back_node;
                 }
             }
-            self.removeNode(lsnode);
+            self.remove_node(lsnode);
             self.cache.remove(&key);
             return (None, false);
         }
@@ -126,15 +108,15 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
     // }
 
     /// 从 LRU 缓存中删除一个节点
-    pub fn removeAll(&mut self, key: &Payload) -> bool {
+    pub fn remove_all(&mut self, key: &Payload) -> bool {
         if let Some(node) = self.cache.remove(key) {
-            self.removeNode(node);
+            self.remove_node(node);
             return true;
         }
         false
     }
 
-    fn moveToHead(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
+    fn move_to_head(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
         let next = self.head.borrow().next.clone();
         node.borrow_mut().prev = Some(self.head.clone());
         node.borrow_mut().next = next.clone();
@@ -142,7 +124,7 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
         next.unwrap().borrow_mut().prev = Some(node);
     }
 
-    fn removeNode(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
+    fn remove_node(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
         let prev = node.borrow().prev.clone().unwrap();
         let next = node.borrow().next.clone().unwrap();
         prev.borrow_mut().next = Some(next.clone());

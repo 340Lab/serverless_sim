@@ -1,13 +1,11 @@
-use std::collections::HashMap;
+
 
 use crate::{
-    actions::ESActionWrapper,
-    algos::ContainerMetric,
     fn_dag::FnId,
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    node::NodeId,
-    sim_env::SimEnv,
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    node::{EnvNodeExt, NodeId},
     sim_run::{schedule_helper, Scheduler},
+    with_env_sub::WithEnvCore,
 };
 
 pub struct FnScheScheduler {
@@ -23,7 +21,7 @@ impl FnScheScheduler {
 }
 
 impl FnScheScheduler {
-    fn select_node_for_fn(&mut self, env: &SimEnv, fnid: FnId) -> NodeId {
+    fn select_node_for_fn(&mut self, env: &SimEnvObserve, _fnid: FnId) -> NodeId {
         for n in 0..env.node_cnt() {
             if env.node(n).last_frame_cpu < 0.8 {
                 // self.fn_default.insert(fnid,n);
@@ -39,9 +37,13 @@ impl FnScheScheduler {
 }
 
 impl Scheduler for FnScheScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        _mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
         let mut sche_cmds = vec![];
-        for (_req_id, req) in env.core.requests_mut().iter_mut() {
+        for (_req_id, req) in env.core().requests().iter() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
                 env,

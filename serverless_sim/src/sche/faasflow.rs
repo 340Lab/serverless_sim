@@ -1,20 +1,19 @@
 use crate::{
-    fn_dag::FnId,
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    node::NodeId,
-    request::{ReqId, Request},
-    scale::down_exec::ScaleDownExec,
-    sim_env::SimEnv,
+    fn_dag::{EnvFnExt, FnId},
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    node::{EnvNodeExt, NodeId},
+    request::{Request},
     sim_run::Scheduler,
     util,
+    with_env_sub::WithEnvCore,
 };
 use daggy::{
     petgraph::visit::{EdgeRef, IntoEdgeReferences},
     EdgeIndex,
 };
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap, HashSet},
-    hash::{self, Hash, Hasher},
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
 };
 
 struct RequestSchedulePlan {
@@ -60,14 +59,14 @@ impl FaasFlowScheduler {
     //     }
     // }
 
-    fn schedule_for_one_req(&mut self, req: &mut Request, env: &SimEnv) -> Vec<ScheCmd> {
+    fn schedule_for_one_req(&mut self, req: &Request, env: &SimEnvObserve) -> Vec<ScheCmd> {
         if req.fn_count(env) == req.fn_node.len() {
             return vec![];
         }
 
         log::info!("faasflow start generate schedule for req {}", req.req_id);
         let mut nodes_left_mem = env
-            .core
+            .core()
             .nodes()
             .iter()
             .map(|n| n.left_mem_for_place_container())
@@ -173,15 +172,19 @@ impl FaasFlowScheduler {
 //  最后，调度算法将采用装箱策略，根据节点容量为每个函数组选择适当的工作节点（第21-23行）。
 // 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for FaasFlowScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        _mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
         let mut sche_cmds = vec![];
-        for (_, req) in env.core.requests_mut().iter_mut() {
+        for (_, req) in env.core().requests_mut().iter_mut() {
             sche_cmds.extend(self.schedule_for_one_req(req, env));
         }
 
         let mut to_scale_down = vec![];
         // 超时策略，回收空闲container
-        for n in env.core.nodes().iter() {
+        for n in env.nodes().iter() {
             for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
                     // to_scale_down.push((n.node_id(), c.fn_id));

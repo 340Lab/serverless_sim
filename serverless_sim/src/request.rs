@@ -1,16 +1,18 @@
 use std::{
-    borrow::Borrow, cell::{Ref, RefMut}, collections::{HashMap, HashSet}
+    borrow::Borrow,
+    cell::{Ref, RefMut},
+    collections::{HashMap, HashSet},
 };
 
 use daggy::petgraph::visit::Topo;
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
 use rand_distr::{Distribution, Normal};
 
-
 use crate::{
-    fn_dag::{DagId, FnId},
+    fn_dag::{DagId, EnvFnExt, FnId},
     node::NodeId,
     sim_env::SimEnv,
+    with_env_sub::WithEnvCore,
     REQUEST_GEN_FRAME_INTERVAL,
 };
 
@@ -30,6 +32,7 @@ pub type ReqId = usize;
 //     pub fn_node: HashMap<FnId, NodeId>,
 // }
 
+#[derive(Clone)]
 pub struct Request {
     /// 请求id
     pub req_id: ReqId,
@@ -145,8 +148,8 @@ impl Request {
         }
     }
     // 返回请求对应DAG中节点（函数）的数量
-    pub fn fn_count(&self, env: &SimEnv) -> usize {
-        env.core.dags()[self.dag_i].dag_inner.node_count()
+    pub fn fn_count(&self, env: &impl WithEnvCore) -> usize {
+        env.core().dags()[self.dag_i].dag_inner.node_count()
     }
     // 判断请求是否已完成
     pub fn is_done(&self, env: &SimEnv) -> bool {
@@ -161,7 +164,7 @@ impl SimEnv {
         let standard_deviation = avg_freq * cv;
         // Create a normal distribution with the given mean and standard deviation
         let normal = Normal::new(avg_freq, standard_deviation).unwrap();
-    
+
         loop {
             // Generate a normally distributed IAT
             let freq = normal.sample(&mut thread_rng());
@@ -174,10 +177,9 @@ impl SimEnv {
     }
     // 生成请求
     pub fn req_sim_gen_requests(&self) {
-        
         let env = self;
 
-        if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
+        if env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
             let mut total_req_cnt = 0;
 
             for (dag_i, &(avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
@@ -186,24 +188,27 @@ impl SimEnv {
 
                 total_req_cnt += req_cnt;
 
-                println!("DAG Index: {}, Avg Frequency: {}, CV: {}, Random Frequency: {}, Request Count: {}", dag_i, avg_frequency, cv, random_frequency, req_cnt);
+                // println!("DAG Index: {}, Avg Frequency: {}, CV: {}, Random Frequency: {}, Request Count: {}", dag_i, avg_frequency, cv, random_frequency, req_cnt);
 
                 for _ in 0..req_cnt {
-                    let request = Request::new(env, *dag_i, *env.core.current_frame());
+                    let request = Request::new(env, *dag_i, env.core.current_frame());
                     let req_id = request.req_id;
                     env.core.requests_mut().insert(req_id, request);
                 }
             }
 
-            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
+            log::info!(
+                "Gen requests {total_req_cnt} at frame {}",
+                env.current_frame()
+            );
         }
 
         //let env = self;
-        
+
         // //每 REQUEST_GEN_FRAME_INTERVAL 帧生成一次请求
         // if *env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
 
-        //     let scale = 
+        //     let scale =
         //     if env.help.config().dag_type_dag() {
         //         // log::info!("DAG类型");
         //         if env.help.config().request_freq_high() {
@@ -213,7 +218,7 @@ impl SimEnv {
         //         } else {
         //             10
         //         }
-        //     } 
+        //     }
         //     else {
         //         // log::info!("其他类型");
         //         if env.help.config().request_freq_high() {
@@ -234,7 +239,7 @@ impl SimEnv {
 
         //         // 创建一个请求实例，一个请求相当于就是一个DAG
         //         let request = Request::new(env, dag_i, *env.core.current_frame());
-                
+
         //         let req_id = request.req_id;
         //         env.core.requests_mut().insert(req_id, request);
         //     }

@@ -1,28 +1,22 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
     cell::{Ref, RefCell, RefMut},
-    clone,
-    cmp::{Eq, Ordering},
-    collections::{BTreeSet, HashMap, HashSet, LinkedList},
-    fmt::Debug,
-    hash::Hash,
-    ptr::NonNull,
-    rc::Rc,
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap, HashSet},
 };
-
-use axum::http::header::SEC_WEBSOCKET_KEY;
-use moka::sync::Cache;
 
 use crate::{
     cache::lru::LRUCache,
-    fn_dag::{FnContainer, FnContainerState, FnId, Func},
+    fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId, Func},
+    mechanism::SimEnvObserve,
     request::ReqId,
-    sim_env::{self, SimEnv},
-    util, NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
+    sim_env::SimEnv,
+    with_env_sub::WithEnvCore,
+    NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
 };
 
 pub type NodeId = usize;
 
+#[derive(Clone)]
 pub struct NodeRscLimit {
     // 节点cpu上限
     pub cpu: f32,
@@ -30,6 +24,7 @@ pub struct NodeRscLimit {
     pub mem: f32,
 }
 
+// #[derive(Clone)]
 pub struct Node {
     node_id: NodeId,
     // #数据库容器
@@ -66,7 +61,24 @@ pub struct Node {
     pub frame_run_count: usize,
 
     //LRU置换策略
-    pub lru: RefCell<LRUCache<FnId>>,
+    lru: RefCell<LRUCache<FnId>>,
+}
+
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Node {
+            node_id: self.node_id,
+            rsc_limit: self.rsc_limit.clone(),
+            fn_containers: self.fn_containers.clone(),
+            pending_tasks: self.pending_tasks.clone(),
+            cpu: self.cpu,
+            mem: self.mem.clone(),
+            last_frame_cpu: self.last_frame_cpu,
+            last_frame_mem: self.last_frame_mem,
+            frame_run_count: self.frame_run_count,
+            lru: RefCell::new(LRUCache::new(10)),
+        }
+    }
 }
 
 // // 双向链表节点
@@ -395,7 +407,7 @@ impl Node {
         };
 
         let mut lrucache = self.lru.borrow_mut();
-        assert!(lrucache.removeAll(&fnid));
+        assert!(lrucache.remove_all(&fnid));
 
         env.core
             .fn_2_nodes_mut()
@@ -488,7 +500,7 @@ impl Node {
 
         let (old, flag) = self.lru.borrow_mut().put(fnid, |to_replace| {
             log::info!("节点{}要移除的容器{}", self.node_id, to_replace,);
-            for (k, v) in self.fn_containers.borrow().iter() {
+            for (_k, v) in self.fn_containers.borrow().iter() {
                 log::info!("{}", v.fn_id);
             }
             self.container(*to_replace).unwrap().is_idle()
@@ -535,7 +547,7 @@ impl Node {
                 // lrucache.removeNode(lrunode);
                 // lrucache.cache.remove(&fnid);
                 let mut lrucache = self.lru.borrow_mut();
-                assert!(lrucache.removeAll(&fnid));
+                assert!(lrucache.remove_all(&fnid));
             }
         }
     }
@@ -634,46 +646,6 @@ impl SimEnv {
         }
     }
 
-    /// 获取节点间网速
-    /// - speed: MB/s
-    pub fn node_get_speed_btwn(&self, n1: NodeId, n2: NodeId) -> f32 {
-        let _get_speed_btwn =
-            |nbig: usize, nsmall: usize| self.core.node2node_graph()[nbig][nsmall];
-        if n1 > n2 {
-            _get_speed_btwn(n1, n2)
-        } else {
-            _get_speed_btwn(n2, n1)
-        }
-    }
-
-    //获取计算速度最慢的节点
-    pub fn node_get_lowest(&self) -> NodeId {
-        let nodes = self.core.nodes();
-        let res = nodes
-            .iter()
-            .min_by(|x, y| x.cpu.partial_cmp(&y.cpu).unwrap())
-            .unwrap();
-        res.node_id
-    }
-
-    //获取最低带宽
-    pub fn node_btw_get_lowest(&self) -> f32 {
-        let mut low_btw = None;
-
-        for i in 0..self.core.nodes().len() {
-            for j in i + 1..self.core.nodes().len() {
-                let btw = self.node_get_speed_btwn(i, j);
-                if let Some(low_btw_) = low_btw.take() {
-                    low_btw = Some(btw.min(low_btw_));
-                } else {
-                    low_btw = Some(btw);
-                }
-            }
-        }
-
-        low_btw.unwrap()
-    }
-
     pub fn node_set_connection_count_between(&self, n1: NodeId, n2: NodeId, count: usize) {
         let _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
             self.core.node2node_connection_count_mut()[nbig][nsmall] = count;
@@ -725,33 +697,76 @@ impl SimEnv {
             _set_connection_count_between(n2, n1, count);
         }
     }
+}
 
+impl EnvNodeExt for SimEnv {}
+impl EnvNodeExt for SimEnvObserve {}
+pub trait EnvNodeExt: WithEnvCore {
     // 返回节点数量
-    pub fn node_cnt(&self) -> usize {
-        self.core.nodes().len()
+    fn node_cnt(&self) -> usize {
+        self.core().nodes().len()
     }
 
     // 返回对节点列表的不可变引用
-    pub fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
-        self.core.nodes()
+    fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
+        self.core().nodes()
     }
 
     // 返回对节点列表的可变引用
-    pub fn nodes_mut<'a>(&'a self) -> RefMut<'a, Vec<Node>> {
-        self.core.nodes_mut()
+    fn nodes_mut<'a>(&'a self) -> RefMut<'a, Vec<Node>> {
+        self.core().nodes_mut()
     }
 
     // 返回对指定节点ID的不可变引用
-    pub fn node<'a>(&'a self, i: NodeId) -> Ref<'a, Node> {
+    fn node<'a>(&'a self, i: NodeId) -> Ref<'a, Node> {
         let b = self.nodes();
 
         Ref::map(b, |vec| &vec[i])
     }
 
     // 返回对指定节点ID的可变引用
-    pub fn node_mut<'a>(&'a self, i: NodeId) -> RefMut<'a, Node> {
+    fn node_mut<'a>(&'a self, i: NodeId) -> RefMut<'a, Node> {
         let b = self.nodes_mut();
 
         RefMut::map(b, |vec| &mut vec[i])
+    }
+    /// 获取节点间网速
+    /// - speed: MB/s
+    fn node_get_speed_btwn(&self, n1: NodeId, n2: NodeId) -> f32 {
+        let _get_speed_btwn =
+            |nbig: usize, nsmall: usize| self.core().node2node_graph()[nbig][nsmall];
+        if n1 > n2 {
+            _get_speed_btwn(n1, n2)
+        } else {
+            _get_speed_btwn(n2, n1)
+        }
+    }
+
+    //获取计算速度最慢的节点
+    fn node_get_lowest(&self) -> NodeId {
+        let nodes = self.core().nodes();
+        let res = nodes
+            .iter()
+            .min_by(|x, y| x.cpu.partial_cmp(&y.cpu).unwrap())
+            .unwrap();
+        res.node_id
+    }
+
+    //获取最低带宽
+    fn node_btw_get_lowest(&self) -> f32 {
+        let mut low_btw = None;
+
+        for i in 0..self.core().nodes().len() {
+            for j in i + 1..self.core().nodes().len() {
+                let btw = self.node_get_speed_btwn(i, j);
+                if let Some(low_btw_) = low_btw.take() {
+                    low_btw = Some(btw.min(low_btw_));
+                } else {
+                    low_btw = Some(btw);
+                }
+            }
+        }
+
+        low_btw.unwrap()
     }
 }
