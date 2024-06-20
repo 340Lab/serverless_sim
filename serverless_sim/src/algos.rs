@@ -1,12 +1,11 @@
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    hash::Hash,
 };
 
 use crate::{
-    fn_dag::FnId,
-    node::{Node, NodeId},
-    request::{ReqId, Request},
+    fn_dag::{EnvFnExt, FnId},
+    node::{EnvNodeExt},
+    request::{ReqId},
     sim_env::SimEnv,
 };
 
@@ -160,6 +159,4 @@ impl SimEnv {
         }
         collect_map
     }
-
-    
 }

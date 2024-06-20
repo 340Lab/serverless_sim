@@ -7,6 +7,7 @@ mod env_gc;
 mod fn_dag;
 mod mechanism;
 mod mechanism_conf;
+mod mechanism_thread;
 mod metric;
 mod network;
 mod node;
@@ -21,8 +22,10 @@ mod sim_run;
 mod sim_timer;
 mod state;
 mod util;
+mod with_env_sub;
 
 use mechanism_conf::ModuleMechConf;
+
 use std::{env::set_var, time::Duration};
 
 #[macro_use]
@@ -30,10 +33,10 @@ extern crate lazy_static;
 
 #[tokio::main]
 async fn main() {
-    // 指定要记录的日志级别
     set_var("RUST_LOG", "debug,error,warn,info");
     // 遇到 panic 时自动打印回溯信息
     set_var("RUST_BACKTRACE", "1");
+    // 指定要记录的日志级别
     // 读取之前设置的 RUST_LOG 环境变量, 初始化 env_logger 日志记录器
     env_logger::init();
     std::thread::sleep(Duration::from_secs(1));
@@ -44,8 +47,6 @@ async fn main() {
     // parse_arg::parse_arg();
     network::start().await;
 }
-
-const SPEED_SIMILAR_THRESHOLD: f32 = 0.1;
 
 const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
 

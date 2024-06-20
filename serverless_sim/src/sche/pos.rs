@@ -1,13 +1,14 @@
-use std::collections::{HashMap, HashSet};
-
+use crate::fn_dag::EnvFnExt;
+use crate::node::EnvNodeExt;
+use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
 use crate::{
     fn_dag::FnId,
-    mechanism::{DownCmd, ScheCmd, UpCmd},
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
     node::NodeId,
-    request::{ReqId, Request},
-    sim_env::SimEnv,
+    request::{Request},
     sim_run::{schedule_helper, Scheduler},
 };
+use std::collections::{HashMap, HashSet};
 
 pub struct PosScheduler {
     new_scale_up_nodes: HashMap<FnId, HashSet<NodeId>>,
@@ -27,7 +28,7 @@ impl PosScheduler {
 }
 
 impl PosScheduler {
-    fn collect_scheable_fns_for_req(&mut self, env: &SimEnv, req: &Request) {
+    fn collect_scheable_fns_for_req(&mut self, env: &SimEnvObserve, req: &Request) {
         let dag_i = req.dag_i;
         let mut dag_walker = env.dag(dag_i).new_dag_walker();
         // let mut schedule_able_fns = vec![];
@@ -74,7 +75,8 @@ impl PosScheduler {
     // }
     fn schedule_one_req_fns(
         &mut self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
         req: &mut Request,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
@@ -92,8 +94,8 @@ impl PosScheduler {
                 .reverse()
         });
 
-        let scale_up_exec = env.new_mech.scale_up_exec();
-        let mech_metric = || env.help.mech_metric_mut();
+        let scale_up_exec = mech.scale_up_exec();
+        let mech_metric = || env.help().mech_metric_mut();
 
         let mut sche_cmds = vec![];
         // let scale_up_cmds = vec![];
@@ -101,7 +103,7 @@ impl PosScheduler {
 
         for &fnid in &schedule_able_fns {
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
-            let mut target_cnt = env.new_mech.scale_num(fnid);
+            let mut target_cnt = mech.scale_num(fnid);
             if target_cnt == 0 {
                 target_cnt = 1;
             }
@@ -119,7 +121,7 @@ impl PosScheduler {
                 .filter(|n| n.container(fnid).is_some())
                 .map(|n| n.node_id())
                 .collect();
-            let nodes_with_container_cnt = nodes2select.len();
+            let _nodes_with_container_cnt = nodes2select.len();
             nodes2select.extend(self.new_scale_up_nodes(fnid));
 
             // let nodes = env.fn_running_containers_nodes(fnid);
@@ -193,7 +195,7 @@ impl PosScheduler {
             let best_node = *nodes2select
                 .iter()
                 .enumerate()
-                .max_by(|(idx1, n1), (idx2, n2)| {
+                .max_by(|(idx1, _n1), (idx2, _n2)| {
                     let score1 = score_of_idx(*idx1);
                     let score2 = score_of_idx(*idx2);
                     score1.partial_cmp(&score2).unwrap()
@@ -226,10 +228,14 @@ impl PosScheduler {
 }
 
 impl Scheduler for PosScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
         self.new_scale_up_nodes.clear();
         self.schealeable_fns.clear();
-        for (_req_id, req) in env.core.requests().iter() {
+        for (_req_id, req) in env.core().requests().iter() {
             self.collect_scheable_fns_for_req(env, req);
         }
         // log::info!("try put fn");
@@ -243,11 +249,11 @@ impl Scheduler for PosScheduler {
         let mut down_cmds = vec![];
 
         // 遍历每个函数，看是否需要缩容
-        for func in env.core.fns().iter() {
-            let target = env.new_mech.scale_num(func.fn_id);
+        for func in env.core().fns().iter() {
+            let target = mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);
             if target < cur {
-                down_cmds.extend(env.new_mech.scale_down_exec().exec_scale_down(
+                down_cmds.extend(mech.scale_down_exec().exec_scale_down(
                     env,
                     func.fn_id,
                     cur - target,
@@ -255,8 +261,8 @@ impl Scheduler for PosScheduler {
             }
         }
 
-        for (_req_id, req) in env.core.requests_mut().iter_mut() {
-            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, req);
+        for (_req_id, req) in env.core().requests_mut().iter_mut() {
+            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, mech, req);
             up_cmds.extend(sub_up);
             down_cmds.extend(sub_down);
             sche_cmds.extend(sub_sche);

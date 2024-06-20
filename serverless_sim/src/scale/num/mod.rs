@@ -7,30 +7,26 @@ pub mod temp_scaler;
 
 use crate::{
     actions::ESActionWrapper,
-    algos::ContainerMetric,
     config::Config,
-    fn_dag::{FnContainer, FnContainerState, FnId},
-    node::NodeId,
+    fn_dag::{FnId},
+    mechanism::SimEnvObserve,
     sim_env::SimEnv,
 };
-use std::{
-    cell::{Ref, RefMut},
-    collections::HashSet,
-};
+
 
 use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, temp_scaler::TempScaleNum};
 
 pub trait ScaleNum: Send {
     /// return target scale count
     /// - action_is_done: need prepare next state and wait for new action
-    fn scale_for_fn(&mut self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) -> usize;
+    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) -> usize;
 
     // fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize;
 }
 
 pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
     let es = &c.mech;
-    let (scale_num_name, scale_num_attr) = es.scale_num_conf();
+    let (scale_num_name, _scale_num_attr) = es.scale_num_conf();
 
     match &*scale_num_name {
         // "ai" => {

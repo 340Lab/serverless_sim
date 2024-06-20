@@ -24,7 +24,10 @@ MILLISECONDS_PER_SECOND = 1000
 
 
 # Config parameters
-config = yaml.load(open(os.path.join(os.path.dirname(__file__),'config.yaml')), yaml.FullLoader)
+try:
+    config = yaml.load(open(os.path.join(os.path.dirname(__file__),'config.yaml')), yaml.FullLoader)
+except:
+    config=yaml.safe_load(open(os.path.join(os.path.dirname(__file__),'config.yaml')))
 
 TOTAL_RUN_TIME = int(config['total_run_time'])
 RESULT_FILENAME = config['result_file']

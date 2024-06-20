@@ -1,31 +1,32 @@
-use std::cmp::Ordering;
+
 
 use crate::{
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    sim_env::SimEnv,
+    fn_dag::EnvFnExt,
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    node::EnvNodeExt,
+    request::{Request},
     sim_run::{schedule_helper, Scheduler},
-    request::{ReqId, Request},
+    with_env_sub::WithEnvCore,
 };
 
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap, HashSet},
-    hash::{self, Hash, Hasher},
+    collections::{hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
 };
 
-pub struct ConsistentHashScheduler{
-    upper_limit: f32
+pub struct ConsistentHashScheduler {
+    upper_limit: f32,
 }
 
 impl ConsistentHashScheduler {
     pub fn new() -> Self {
-        Self{
-            upper_limit: 0.8
-        }
+        Self { upper_limit: 0.8 }
     }
 
     fn schedule_one_req_fns(
         &mut self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
         req: &mut Request,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         let fns = schedule_helper::collect_task_to_sche(
@@ -38,7 +39,7 @@ impl ConsistentHashScheduler {
         let mut scale_up_cmds = vec![];
 
         for fnid in fns {
-            let mut target_cnt = env.new_mech.scale_num(fnid);
+            let mut target_cnt = mech.scale_num(fnid);
             if target_cnt == 0 {
                 target_cnt = 1;
             }
@@ -48,8 +49,8 @@ impl ConsistentHashScheduler {
             let mut node_id = hasher.finish() as usize % env.node_cnt();
             let mut node = env.node(node_id);
             let mut node_mem_use_rate = node.unready_mem() / node.rsc_limit.mem;
-            let mut nodes_left_mem = env
-                .core
+            let _nodes_left_mem = env
+                .core()
                 .nodes()
                 .iter()
                 .map(|n| n.left_mem_for_place_container())
@@ -67,10 +68,7 @@ impl ConsistentHashScheduler {
             });
             while target_cnt != 0 {
                 if node.container(fnid).is_none() {
-                    scale_up_cmds.push(UpCmd {
-                        nid: node_id,
-                        fnid,
-                    });
+                    scale_up_cmds.push(UpCmd { nid: node_id, fnid });
                 }
                 node_id = (node_id + 1) % env.node_cnt();
                 node = env.node(node_id);
@@ -82,16 +80,20 @@ impl ConsistentHashScheduler {
 }
 
 impl Scheduler for ConsistentHashScheduler {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
         let mut up_cmds = vec![];
         let mut sche_cmds = vec![];
         let mut down_cmds = vec![];
 
-        for func in env.core.fns().iter() {
-            let target = env.new_mech.scale_num(func.fn_id);
+        for func in env.core().fns().iter() {
+            let target = mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);
             if target < cur {
-                down_cmds.extend(env.new_mech.scale_down_exec().exec_scale_down(
+                down_cmds.extend(mech.scale_down_exec().exec_scale_down(
                     env,
                     func.fn_id,
                     cur - target,
@@ -99,8 +101,8 @@ impl Scheduler for ConsistentHashScheduler {
             }
         }
 
-        for (_req_id, req) in env.core.requests_mut().iter_mut() {
-            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, req);
+        for (_req_id, req) in env.core().requests_mut().iter_mut() {
+            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, mech, req);
             up_cmds.extend(sub_up);
             down_cmds.extend(sub_down);
             sche_cmds.extend(sub_sche);

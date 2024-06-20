@@ -52,7 +52,7 @@ impl ModuleMechConf {
                 return false;
             }
             // only one can be some
-            let somecnt = conf.iter().filter(|(k, v)| v.is_some()).count();
+            let somecnt = conf.iter().filter(|(_k, v)| v.is_some()).count();
             if must_one_some && somecnt != 1 {
                 log::warn!("Sub conf with multi some, cnt:{}", somecnt);
                 return false;
@@ -94,6 +94,94 @@ pub struct MechConfig {
 }
 
 impl MechConfig {
+    pub fn new_test() -> Self {
+        MechConfig {
+            scale_num: {
+                SCALE_NUM_NAMES
+                    .iter()
+                    .map(|v| {
+                        (
+                            v.to_string(),
+                            if *v == "hpa" {
+                                Some("".to_string())
+                            } else {
+                                None
+                            },
+                        )
+                    })
+                    .collect()
+            },
+            scale_down_exec: SCALE_DOWN_EXEC_NAMES
+                .iter()
+                .map(|v| {
+                    (
+                        v.to_string(),
+                        if *v == "default" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
+            scale_up_exec: SCALE_UP_EXEC_NAMES
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (
+                        v.to_string(),
+                        if *v == "least_task" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
+            sche: SCHE_NAMES
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (
+                        v.to_string(),
+                        if *v == "random" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
+            mech_type: MECH_NAMES
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (
+                        v.to_string(),
+                        if *v == "scale_sche_separated" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
+            filter: FILTER_NAMES
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (
+                        v.to_string(),
+                        if *v == "careful_down" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
     pub fn mech_type(&self) -> (String, String) {
         self.mech_type
             .iter()

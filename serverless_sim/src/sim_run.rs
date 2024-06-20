@@ -3,22 +3,28 @@ use std::{
     vec,
 };
 
-use daggy::Walker;
-
 use crate::{
-    fn_dag::{FnContainer, FnContainerState, FnId},
-    mechanism::{DownCmd, ScheCmd, UpCmd},
-    node::{Node, NodeId},
+    fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId},
+    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    node::{EnvNodeExt, Node, NodeId},
     request::{ReqId, Request},
     sim_env::SimEnv,
 };
 
 pub trait Scheduler: Send {
-    fn schedule_some(&mut self, env: &SimEnv) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>);
+    fn schedule_some(
+        &mut self,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
+    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>);
 }
 
 pub mod schedule_helper {
-    use crate::{fn_dag::FnId, request::Request, sim_env::SimEnv};
+    use crate::{
+        fn_dag::{EnvFnExt, FnId},
+        mechanism::SimEnvObserve,
+        request::Request,
+    };
     pub enum CollectTaskConfig {
         All,
         PreAllDone,
@@ -27,7 +33,7 @@ pub mod schedule_helper {
 
     pub fn collect_task_to_sche(
         req: &Request,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         config: CollectTaskConfig,
     ) -> Vec<FnId> {
         let mut collect = vec![];
@@ -130,13 +136,13 @@ impl SimEnv {
 
         // 更新传输信息，模拟数据在节点间的传输过程
         let updata_trans = |from: NodeId, to: NodeId, t: &TransPath| {
-            let mut env_nodes = self.core.nodes_mut();
+            let env_nodes = self.core.nodes_mut();
 
             // 获取 to 节点中的 t 路径所包含的函数的对应容器的可变引用
             let mut container = env_nodes[to]
                 .container_mut(t.fn_id)
                 .unwrap_or_else(|| panic!("node {} has no fn container for fn {}", to, t.fn_id));
-            
+
             // 将容器在这一帧中的使用情况更新为 true
             container.this_frame_used = true;
 
@@ -208,8 +214,7 @@ impl SimEnv {
                             if *send_node == node_id {
                                 // 如果是自己发送的数据，则标记传输完毕，不计传输时延
                                 *recved = *all + 0.001;
-                            } 
-                            else {
+                            } else {
                                 let path = TransPath {
                                     req_id: *req_id,
                                     fn_id: *fnid,
@@ -229,7 +234,7 @@ impl SimEnv {
             }
         }
         // go through all the transfer paths, and simulate the transfer
-        
+
         let nodes_cnt = self.nodes().len();
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
@@ -342,9 +347,11 @@ impl SimEnv {
         for (&fnid, fc) in n.fn_containers.borrow_mut().iter_mut() {
             if let FnContainerState::Running { .. } = fc.state() {
                 for (&req_id, fn_running_state) in &fc.req_fn_state {
-                    if fn_running_state.data_recv_done() && n.unready_left_mem() > self.func(fnid).mem {
+                    if fn_running_state.data_recv_done()
+                        && n.unready_left_mem() > self.func(fnid).mem
+                    {
                         *n.unready_mem_mut() += self.func(fnid).mem;
-                        
+
                         // 增加该节点上被调度该函数的容器的内存使用量
                         fc.mem_use += self.func(fnid).mem;
 

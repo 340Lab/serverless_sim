@@ -11,10 +11,11 @@ use enum_as_inner::EnumAsInner;
 
 use crate::{
     config::APPConfig,
-    node::{Node, NodeId},
+    mechanism::SimEnvObserve,
+    node::{EnvNodeExt, NodeId},
     request::{ReqId, Request},
     sim_env::SimEnv,
-    util, CONTAINER_BASIC_MEM,
+    CONTAINER_BASIC_MEM,
 };
 
 pub type FnId = usize;
@@ -22,6 +23,8 @@ pub type FnId = usize;
 pub type DagId = usize;
 
 pub type FnDagInner = Dag<FnId, f32>;
+
+#[derive(Clone)]
 
 pub struct FnDAG {
     pub dag_i: DagId,
@@ -110,6 +113,7 @@ impl FnDAG {
     }
 }
 
+#[derive(Clone)]
 pub struct Func {
     pub fn_id: FnId,
 
@@ -138,7 +142,7 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn parent_fns(&self, env: &SimEnv) -> Vec<FnId> {
+    pub fn parent_fns(&self, env: &impl EnvFnExt) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.parents(self.graph_i);
         ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
@@ -156,7 +160,7 @@ impl Func {
     }
 }
 
-#[derive(EnumAsInner)]
+#[derive(EnumAsInner, Clone)]
 pub enum FnContainerState {
     // 创建
     Starting { left_frame: usize },
@@ -164,6 +168,7 @@ pub enum FnContainerState {
     Running,
 }
 
+#[derive(Clone)]
 pub struct FnContainer {
     pub node_id: NodeId,
     pub fn_id: FnId,
@@ -238,7 +243,7 @@ impl FnContainer {
         true
     }
 
-    pub fn record_this_frame(&mut self, sim_env: &SimEnv, done_cnt: usize, working_cnt: usize) {
+    pub fn record_this_frame(&mut self, _sim_env: &SimEnv, done_cnt: usize, working_cnt: usize) {
         // log::info!(
         //     "container record at frame: {} done cnt:{done_cnt} working cnt:{working_cnt}",
         //     sim_env.current_frame()
@@ -338,6 +343,7 @@ impl FnContainer {
     }
 }
 
+#[derive(Clone)]
 pub struct RunningTask {
     /// nodeid - (need,recv)
     pub data_recv: HashMap<NodeId, (f32, f32)>,
@@ -420,7 +426,7 @@ impl SimEnv {
         }
     }
 
-    pub fn fn_gen_fn_dags(&self, env: &SimEnv) {
+    pub fn fn_gen_fn_dags(&self, _env: &SimEnv) {
         let env = self;
 
         // for _ in 0..10 {
@@ -497,45 +503,6 @@ impl SimEnv {
         }
     }
 
-    pub fn func<'a>(&'a self, i: FnId) -> Ref<'a, Func> {
-        let b = self.core.fns();
-
-        Ref::map(b, |vec| &vec[i])
-    }
-
-    pub fn func_mut<'a>(&'a self, i: FnId) -> RefMut<'a, Func> {
-        let fns = self.core.fns_mut();
-
-        RefMut::map(fns, |fns| &mut fns[i])
-    }
-
-    pub fn dag_inner<'a>(&'a self, i: usize) -> Ref<'a, FnDagInner> {
-        let b = self.core.dags();
-
-        Ref::map(b, |vec| &vec[i].dag_inner)
-    }
-
-    pub fn dag<'a>(&'a self, i: usize) -> Ref<'a, FnDAG> {
-        let b = self.core.dags();
-
-        Ref::map(b, |vec| &vec[i])
-    }
-
-    pub fn fn_container_cnt(&self, fnid: FnId) -> usize {
-        let map = self.core.fn_2_nodes();
-        map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
-    }
-
-    pub fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {
-        let map = self.core.fn_2_nodes();
-        if let Some(nodes) = map.get(&fnid) {
-            for node in nodes.iter() {
-                let node = self.node(*node);
-                f(&node.container(fnid).unwrap());
-            }
-        }
-    }
-
     // pub fn fn_running_containers_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
     //     let mut nodes = HashSet::<NodeId>::new();
     //     self.fn_containers_for_each(fnid, |c| {
@@ -545,4 +512,48 @@ impl SimEnv {
     //     });
     //     nodes
     // }
+}
+
+impl EnvFnExt for SimEnv {}
+impl EnvFnExt for SimEnvObserve {}
+
+pub trait EnvFnExt: EnvNodeExt {
+    fn func<'a>(&'a self, i: FnId) -> Ref<'a, Func> {
+        let b = self.core().fns();
+
+        Ref::map(b, |vec| &vec[i])
+    }
+
+    fn func_mut<'a>(&'a self, i: FnId) -> RefMut<'a, Func> {
+        let fns = self.core().fns_mut();
+
+        RefMut::map(fns, |fns| &mut fns[i])
+    }
+
+    fn dag_inner<'a>(&'a self, i: usize) -> Ref<'a, FnDagInner> {
+        let b = self.core().dags();
+
+        Ref::map(b, |vec| &vec[i].dag_inner)
+    }
+
+    fn dag<'a>(&'a self, i: usize) -> Ref<'a, FnDAG> {
+        let b = self.core().dags();
+
+        Ref::map(b, |vec| &vec[i])
+    }
+
+    fn fn_container_cnt(&self, fnid: FnId) -> usize {
+        let map = self.core().fn_2_nodes();
+        map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
+    }
+
+    fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {
+        let map = self.core().fn_2_nodes();
+        if let Some(nodes) = map.get(&fnid) {
+            for node in nodes.iter() {
+                let node = self.node(*node);
+                f(&node.container(fnid).unwrap());
+            }
+        }
+    }
 }

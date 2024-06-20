@@ -1,11 +1,18 @@
 use crate::{
-    config::Config, fn_dag::FnId, mechanism_conf::ModuleMechConf, sim_env::SimEnv, util::Window,
+    config::Config,
+    fn_dag::{EnvFnExt, FnId},
+    mechanism_conf::ModuleMechConf,
+    node::EnvNodeExt,
+    sim_env::SimEnv,
+    util::Window,
 };
 use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    borrow::BorrowMut, collections::{BTreeMap, HashMap}, fs::{self, File}, io::{Read, Write}
+    collections::{BTreeMap, HashMap},
+    fs::{self, File},
+    io::{Read, Write},
 };
 
 // #[derive(Serialize, Deserialize)]
@@ -39,6 +46,7 @@ use std::{
 //     cost: f32,
 //     score:f32,
 // }
+#[derive(Clone)]
 pub struct MechMetric {
     // 函数-窗口，窗口中记录了该函数在 窗口长度 中被请求但还未被调度的次数
     fn_recent_req_cnt_window: HashMap<FnId, Window>,
@@ -62,7 +70,6 @@ impl MechMetric {
     // FIX 滑动窗口有问题，需要重新设计
     // 新请求生成之后
     pub fn on_new_req_generated(&mut self, env: &SimEnv) {
-
         // 清空数据表
         self.fn_unsche_req_cnt.clear();
         self.node_task_new_cnt.clear();
@@ -75,7 +82,7 @@ impl MechMetric {
             // MARK 对每个函数都进行统计
             fn_count.entry(func.fn_id).or_insert(0);
         }
-        
+
         // 遍历每个请求
         for (_, req) in env.core.requests().iter() {
             // DAG的迭代器
@@ -83,13 +90,11 @@ impl MechMetric {
 
             // 遍历DAG的每个节点
             while let Some(fngid) = walker.next(&env.dag(req.dag_i).dag_inner) {
-
                 // 获取函数节点id
                 let fnid = env.dag_inner(req.dag_i)[fngid];
 
                 // 若该函数没有被调度到节点上
                 if req.get_fn_node(fnid) == None {
-
                     // 如果fnid在fn_unsche_req_cnt中存在，则将其值加一，否则插入一个新值1
                     self.fn_unsche_req_cnt
                         .entry(fnid)
@@ -103,7 +108,7 @@ impl MechMetric {
                 }
             }
         }
- 
+
         // 遍历所有函数，将其未完成的函数请求数量记录到窗口中
         for (fnid, count) in fn_count.iter() {
             // 如果目前对该函数没有记录，则先创建一个窗口
@@ -111,7 +116,9 @@ impl MechMetric {
                 self.fn_recent_req_cnt_window.insert(*fnid, Window::new(10));
             }
             // 更新记录
-            self.fn_recent_req_cnt_window.entry(*fnid).and_modify(|window| window.push(*count as f32));
+            self.fn_recent_req_cnt_window
+                .entry(*fnid)
+                .and_modify(|window| window.push(*count as f32));
         }
 
         // 遍历模拟环境中的每个节点
@@ -142,6 +149,7 @@ impl MechMetric {
     }
 }
 
+#[derive(Clone)]
 pub struct OneFrameMetric {
     // pub frame: usize,
     done_request_count: usize,
@@ -168,7 +176,7 @@ impl OneFrameMetric {
 
 #[derive(Serialize, Deserialize)]
 pub struct Records {
-    record_name: String,
+    pub record_name: String,
     // 0 frame,
     // 1 running_reqs,
     // 2 nodes,
@@ -216,7 +224,7 @@ impl Records {
     // 将模拟环境中的一帧数据添加到记录中
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
-        frame[FRAME_IDX_FRAME] = (*sim_env.core.current_frame()).into();
+        frame[FRAME_IDX_FRAME] = (sim_env.core.current_frame()).into();
         frame[FRAME_IDX_RUNNING_REQS] = sim_env
             .core
             .requests()
@@ -285,11 +293,11 @@ impl RecordFile {
             return None;
         }
         let mut utciter = file_name.split("UTC");
-        let front_utc = utciter.next().unwrap().to_owned();
+        let _front_utc = utciter.next().unwrap().to_owned();
         let back_utc = utciter.next().unwrap().to_owned();
 
-        let mut idx = 0;
-        let mut config = Config {
+        let _idx = 0;
+        let config = Config {
             rand_seed: "".to_owned(),
             request_freq: "".to_owned(),
             dag_type: "".to_owned(),
@@ -297,7 +305,9 @@ impl RecordFile {
             fn_type: "".to_owned(),
             // app_types: vec![],
             no_log: false,
+
             mech: ModuleMechConf::new().0,
+            total_frame: 1000,
         };
 
         Some(Self {
@@ -350,7 +360,7 @@ pub fn group_records_by_seed() {
         if !seeds_metrics_cache.contains_key(&seed) {
             seeds_metrics_cache.insert(seed.clone(), get_seed_metrics(&seed).map_or(vec![], |v| v));
         }
-        let mut config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
+        let config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
         for (configstr, f) in recordfiles.iter().rev() {
             let mut read_data = || {
                 let mut records: Records = serde_json::from_str(
@@ -366,12 +376,15 @@ pub fn group_records_by_seed() {
                 if records.frames.len() < 999 {
                     return None;
                 }
+                let (cost_per_req, time_per_req, score) = {
+                    let last_frame = records.frames.iter_mut().rev().next().unwrap();
+                    let cost_per_req = last_frame[FRAME_IDX_COST].take();
+                    let time_per_req = last_frame[FRAME_IDX_REQ_DONE_TIME_AVG].take();
+                    let score = last_frame[FRAME_IDX_SCORE].clone();
+                    // drop(last_frame);
+                    (cost_per_req, time_per_req, score)
+                };
 
-                let last_frame = records.frames.iter_mut().rev().next().unwrap();
-                let cost_per_req = last_frame[FRAME_IDX_COST].take();
-                let time_per_req = last_frame[FRAME_IDX_REQ_DONE_TIME_AVG].take();
-                let score = last_frame[FRAME_IDX_SCORE].clone();
-                drop(last_frame);
                 // let req_done = last_frame[FRAME_IDX_DONE_REQ_COUNT].take();
                 let rps = records
                     .frames

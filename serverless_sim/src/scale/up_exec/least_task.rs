@@ -1,5 +1,10 @@
 use super::ScaleUpExec;
-use crate::{fn_dag::FnId, mechanism::UpCmd, sim_env::SimEnv};
+use crate::node::EnvNodeExt;
+use crate::with_env_sub::WithEnvHelp;
+use crate::{
+    fn_dag::FnId,
+    mechanism::{SimEnvObserve, UpCmd},
+};
 
 pub struct LeastTaskScaleUpExec;
 
@@ -10,8 +15,8 @@ impl LeastTaskScaleUpExec {
 }
 
 impl ScaleUpExec for LeastTaskScaleUpExec {
-    fn exec_scale_up(&self, target_cnt: usize, fnid: FnId, env: &SimEnv) -> Vec<UpCmd> {
-        let mech_metric = || env.help.mech_metric_mut();
+    fn exec_scale_up(&self, target_cnt: usize, fnid: FnId, env: &SimEnvObserve) -> Vec<UpCmd> {
+        let mech_metric = || env.help().mech_metric_mut();
         let mut up_cmds = vec![];
 
         let mut nodes_no_container = env
@@ -25,8 +30,11 @@ impl ScaleUpExec for LeastTaskScaleUpExec {
 
         // log::info!("nodes_no_container.len(): {}", nodes_no_container.len());
         // MARK 修复了一个扩容bug
-        if nodes_with_container_cnt < target_cnt  && nodes_no_container.len() > 0 {
-            let to_scale_up_cnt = std::cmp::min(target_cnt - nodes_with_container_cnt, nodes_no_container.len());
+        if nodes_with_container_cnt < target_cnt && nodes_no_container.len() > 0 {
+            let to_scale_up_cnt = std::cmp::min(
+                target_cnt - nodes_with_container_cnt,
+                nodes_no_container.len(),
+            );
             // 对不含容器的节点按照其所有任务数量进行降序排序
             nodes_no_container.sort_by(|&a, &b| {
                 let acnt = mech_metric().node_task_new_cnt(a);

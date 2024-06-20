@@ -1,12 +1,13 @@
 use std::{
-    cell::{Ref, RefCell, RefMut}, 
-    collections::{BTreeMap, HashMap, HashSet}, 
-    process::Command, 
+    cell::{Ref, RefCell, RefMut},
+    collections::{BTreeMap, HashMap, HashSet},
+    process::Command,
+    str,
+    sync::mpsc,
     time::{Duration, SystemTime, UNIX_EPOCH},
-    str
 };
 
-use daggy::petgraph;
+
 use rand_pcg::Pcg64;
 use rand_seeder::Seeder;
 
@@ -15,19 +16,18 @@ use crate::{
     cache::lru::LRUCache,
     config::Config,
     fn_dag::{DagId, FnDAG, FnId, Func},
-    mechanism::{ConfigNewMec, Mechanism, MechanismImpl},
+    mechanism::{ConfigNewMec},
+    mechanism_thread::{self, MechScheduleOnce},
     metric::{MechMetric, OneFrameMetric, Records},
     node::{Node, NodeId},
     request::{ReqId, Request},
     scale::{
-        self,
         down_exec::DefaultScaleDownExec,
-        num::{new_scale_num, ScaleNum},
-        up_exec::{least_task::LeastTaskScaleUpExec, ScaleUpExec},
+        num::{ScaleNum},
+        up_exec::{ScaleUpExec},
     },
-    sche, sim_loop,
     sim_run::Scheduler,
-    util,
+    with_env_sub::WithEnvHelp,
     CONTAINER_BASIC_MEM,
 };
 
@@ -35,7 +35,13 @@ use crate::{
 pub fn call_python_script(arg: &str, rng: f32) -> f64 {
     // 将 f32 转换为 String 以传递给 Python 脚本
     let rng_str = format!("{}", rng);
-    let output = Command::new("python")
+    // linux use python3
+    // windows use python
+    #[cfg(target_os = "windows")]
+    let python = Command::new("python");
+    #[cfg(not(target_os = "windows"))]
+    let mut python = Command::new("python3");
+    let output = python
         .arg("src/real-world-emulation/RealWorldAppEmulation.py")
         .arg(arg)
         .arg(rng_str)
@@ -57,6 +63,13 @@ pub fn call_python_script(arg: &str, rng: f32) -> f64 {
         );
     }
 }
+
+impl WithEnvHelp for SimEnv {
+    fn help(&self) -> &SimEnvHelperState {
+        &self.help
+    }
+}
+
 pub struct SimEnvHelperState {
     config: Config,
     req_next_id: RefCell<ReqId>,
@@ -66,6 +79,23 @@ pub struct SimEnvHelperState {
     metric_record: RefCell<Records>,
     mech_metric: RefCell<MechMetric>,
     fn_call_frequency: RefCell<HashMap<DagId, (f64, f64)>>,
+}
+
+impl Clone for SimEnvHelperState {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            req_next_id: self.req_next_id.clone(),
+            fn_next_id: self.fn_next_id.clone(),
+            cost: self.cost.clone(),
+            metric: self.metric.clone(),
+            metric_record: RefCell::new(Records::new(
+                self.metric_record.borrow().record_name.clone(),
+            )),
+            fn_call_frequency: self.fn_call_frequency.clone(),
+            mech_metric: self.mech_metric.clone(),
+        }
+    }
 }
 
 impl SimEnvHelperState {
@@ -127,6 +157,25 @@ pub struct SimEnvCoreState {
     requests: RefCell<BTreeMap<ReqId, Request>>,
     done_requests: RefCell<Vec<Request>>,
 }
+
+impl Clone for SimEnvCoreState {
+    fn clone(&self) -> Self {
+        Self {
+            fn_2_nodes: RefCell::new(self.fn_2_nodes.borrow().clone()),
+            dags: RefCell::new(self.dags.borrow().clone()),
+            fns: RefCell::new(self.fns.borrow().clone()),
+            node2node_graph: RefCell::new(self.node2node_graph.borrow().clone()),
+            node2node_connection_count: RefCell::new(
+                self.node2node_connection_count.borrow().clone(),
+            ),
+            nodes: RefCell::new(self.nodes.borrow().clone()),
+            current_frame: RefCell::new(*self.current_frame.borrow()),
+            requests: RefCell::new(self.requests.borrow().clone()),
+            done_requests: RefCell::new(self.done_requests.borrow().clone()),
+        }
+    }
+}
+
 impl SimEnvCoreState {
     pub fn dags<'a>(&'a self) -> Ref<'a, Vec<FnDAG>> {
         self.dags.borrow()
@@ -156,8 +205,8 @@ impl SimEnvCoreState {
     pub fn nodes<'a>(&'a self) -> Ref<'a, Vec<Node>> {
         self.nodes.borrow()
     }
-    pub fn current_frame<'a>(&'a self) -> Ref<'a, usize> {
-        self.current_frame.borrow()
+    pub fn current_frame<'a>(&'a self) -> usize {
+        *self.current_frame.borrow()
     }
     pub fn requests<'a>(&'a self) -> Ref<'a, BTreeMap<ReqId, Request>> {
         self.requests.borrow()
@@ -231,9 +280,10 @@ pub struct SimEnv {
     pub help: SimEnvHelperState,
     pub core: SimEnvCoreState,
     // pub mechanisms: SimEnvMechanisms,
-    pub new_mech: MechanismImpl,
-
+    // pub new_mech: MechanismImpl,
+    pub master_mech_not_running: bool,
     pub lru: LRUCache<FnId>,
+    pub mech_caller: mpsc::Sender<MechScheduleOnce>,
 }
 
 impl SimEnv {
@@ -272,12 +322,13 @@ impl SimEnv {
             //     spec_scheduler: RefCell::new(sche::prepare_spec_scheduler(&config)),
             //     spec_scale_num: RefCell::new(new_scale_num(&config)),
             // },
-            new_mech: config.new_mec().unwrap(),
-
+            // new_mech: ,
+            master_mech_not_running: true,
             recent_use_time,
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
             timers: HashMap::new().into(),
             lru: LRUCache::new(8),
+            mech_caller: mechanism_thread::spawn(config.new_mec().unwrap()),
         };
 
         // 为模拟环境创建所有的dag、node、func
@@ -307,13 +358,15 @@ impl SimEnv {
 
         // 创建 DAG 实例，并将其加入到 dags 列表中
         self.fn_gen_fn_dags(self);
-        
+
         //为每个dag生成调用频率和CV
         for dag in self.core.dags().iter() {
             let rng = self.env_rand_f(0.0, 1.0);
             let avg_freq = call_python_script("IAT", rng);
             let cv = call_python_script("CV", rng);
-            self.help.fn_call_frequency_mut().insert(dag.dag_i, (avg_freq, cv));
+            self.help
+                .fn_call_frequency_mut()
+                .insert(dag.dag_i, (avg_freq, cv));
         }
     }
 
@@ -345,7 +398,7 @@ impl SimEnv {
     pub fn step(&mut self, raw_action: u32) -> (f32, String) {
         // update to current time
         self.avoid_gc();
-        self.step_es(ESActionWrapper::Int(raw_action))
+        self.step_es(ESActionWrapper::Int(raw_action), None, None)
     }
 
     // 在模拟一帧开始时调用，更新节点状态、清空已完成请求、重置性能指标等

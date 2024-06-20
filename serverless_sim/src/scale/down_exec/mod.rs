@@ -1,15 +1,18 @@
 use crate::{
     config::Config,
     fn_dag::FnId,
-    mechanism::DownCmd,
-    node::{Node, NodeId},
-    sim_env::SimEnv,
-    SPEED_SIMILAR_THRESHOLD,
+    mechanism::{DownCmd, SimEnvObserve},
+    node::{NodeId}, with_env_sub::WithEnvCore,
 };
 
 // 原 ScaleExecutor
 pub trait ScaleDownExec: Send {
-    fn exec_scale_down(&mut self, sim_env: &SimEnv, fnid: FnId, scale_cnt: usize) -> Vec<DownCmd>;
+    fn exec_scale_down(
+        &mut self,
+        sim_env: &SimEnvObserve,
+        fnid: FnId,
+        scale_cnt: usize,
+    ) -> Vec<DownCmd>;
 
     // /// return success scale up cnt
     // fn scale_up(&mut self, sim_env: &SimEnv, fnid: FnId, scale_cnt: usize) -> usize;
@@ -17,7 +20,7 @@ pub trait ScaleDownExec: Send {
 
 pub fn new_scale_down_exec(c: &Config) -> Option<Box<dyn ScaleDownExec>> {
     let es = &c.mech;
-    let (scale_down_exec_name, scale_down_exec_attr) = es.scale_down_exec_conf();
+    let (scale_down_exec_name, _scale_down_exec_attr) = es.scale_down_exec_conf();
 
     match &*scale_down_exec_name {
         "default" => {
@@ -32,10 +35,10 @@ pub fn new_scale_down_exec(c: &Config) -> Option<Box<dyn ScaleDownExec>> {
 pub struct DefaultScaleDownExec;
 
 impl DefaultScaleDownExec {
-    fn collect_idle_containers(&self, env: &SimEnv) -> Vec<(NodeId, FnId)> {
+    fn collect_idle_containers(&self, env: &SimEnvObserve) -> Vec<(NodeId, FnId)> {
         let mut idle_container_node_fn = Vec::new();
 
-        for n in env.core.nodes().iter() {
+        for n in env.core().nodes().iter() {
             for (fnid, fn_ct) in n.fn_containers.borrow().iter() {
                 if fn_ct.is_idle() {
                     idle_container_node_fn.push((n.node_id(), *fnid));
@@ -48,7 +51,7 @@ impl DefaultScaleDownExec {
 
     fn scale_down_for_fn(
         &mut self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         fnid: FnId,
         mut scale_cnt: usize,
     ) -> Vec<DownCmd> {
@@ -70,7 +73,12 @@ impl DefaultScaleDownExec {
 }
 
 impl ScaleDownExec for DefaultScaleDownExec {
-    fn exec_scale_down(&mut self, env: &SimEnv, fnid: FnId, scale_cnt: usize) -> Vec<DownCmd> {
+    fn exec_scale_down(
+        &mut self,
+        env: &SimEnvObserve,
+        fnid: FnId,
+        scale_cnt: usize,
+    ) -> Vec<DownCmd> {
         self.scale_down_for_fn(env, fnid, scale_cnt)
     }
 }

@@ -1,15 +1,12 @@
 use std::{
     cell::{RefCell, RefMut},
     collections::HashMap,
-    fmt::Debug,
-    hash::Hash,
-    rc::Rc,
 };
 
 use crate::{
     actions::ESActionWrapper,
     config::Config,
-    fn_dag::FnId,
+    fn_dag::{EnvFnExt, FnId},
     mechanism_conf::{MechConfig, ModuleMechConf},
     node::NodeId,
     request::ReqId,
@@ -22,8 +19,9 @@ use crate::{
         up_exec::{new_scale_up_exec, ScaleUpExec},
     },
     sche::prepare_spec_scheduler,
-    sim_env::SimEnv,
+    sim_env::{SimEnvCoreState, SimEnvHelperState},
     sim_run::Scheduler,
+    with_env_sub::{WithEnvCore, WithEnvHelp},
 };
 #[derive(Clone)]
 pub struct UpCmd {
@@ -103,7 +101,7 @@ pub const FILTER_NAMES: [&'static str; 1] = ["careful_down"];
 pub trait Mechanism: Send {
     fn step(
         &self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>);
 }
@@ -257,11 +255,13 @@ impl ConfigNewMec for Config {
             scale_up_exec: RefCell::new(scale_up_exec),
             filters,
             fn_scale_num: RefCell::new(HashMap::new()),
+            config: self.clone(),
         })
     }
 }
 
 pub struct MechanismImpl {
+    config: Config,
     sche: RefCell<Box<dyn Scheduler>>,
     scale_num: RefCell<Box<dyn ScaleNum>>,
     scale_down_exec: RefCell<Box<dyn ScaleDownExec>>,
@@ -270,15 +270,37 @@ pub struct MechanismImpl {
     fn_scale_num: RefCell<HashMap<FnId, usize>>,
 }
 
+pub struct SimEnvObserve {
+    core: SimEnvCoreState,
+    help: SimEnvHelperState,
+}
+
+impl SimEnvObserve {
+    pub fn new(core: SimEnvCoreState, help: SimEnvHelperState) -> Self {
+        Self { core, help }
+    }
+}
+
+impl WithEnvHelp for SimEnvObserve {
+    fn help(&self) -> &SimEnvHelperState {
+        &self.help
+    }
+}
+impl WithEnvCore for SimEnvObserve {
+    fn core(&self) -> &SimEnvCoreState {
+        &self.core
+    }
+}
+
 impl Mechanism for MechanismImpl {
     // 执行步进操作前的准备，根据配置选择调度、扩缩容模式
     fn step(
         &self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
-        match &*env.help.config().mech.mech_type().0 {
-            "no_scale" => self.step_no_scaler(env, raw_action),
+        match &*self.config.mech.mech_type().0 {
+            "no_scale" => self.step_no_scaler(env, self, raw_action),
             "scale_sche_separated" => self.step_scale_sche_separated(env, raw_action),
 
             // 目前只实现了这个
@@ -300,16 +322,13 @@ pub enum MechType {
 }
 
 impl MechanismImpl {
-    pub fn mech_type(&self, env: &SimEnv) -> MechType {
-        match &*env.help.config().mech.mech_type().0 {
+    pub fn mech_type(&self) -> MechType {
+        match &*self.config.mech.mech_type().0 {
             "no_scale" => MechType::NoScale,
             "scale_sche_separated" => MechType::ScaleScheSeparated,
             "scale_sche_joint" => MechType::ScaleScheJoint,
             _ => {
-                panic!(
-                    "mech_type not supported {}",
-                    env.help.config().mech.mech_type().0
-                )
+                panic!("mech_type not supported {}", self.config.mech.mech_type().0)
             }
         }
     }
@@ -326,15 +345,17 @@ impl MechanismImpl {
     // 表示只进行调度，不主动对容器数量进行干涉
     fn step_no_scaler(
         &self,
-        env: &SimEnv,
-        raw_action: ESActionWrapper,
+        env: &SimEnvObserve,
+        mech: &MechanismImpl,
+
+        _raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         log::info!("step_no_scaler");
-        let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);
+        let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env, mech);
         (up_cmds, down_cmds, sche_cmds)
     }
 
-    fn update_scale_num(&self, env: &SimEnv, fnid: FnId, action: &ESActionWrapper) {
+    fn update_scale_num(&self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) {
         let mut target = self.scale_num.borrow_mut().scale_for_fn(env, fnid, action);
         for filter in self.filters.iter() {
             target = filter
@@ -352,7 +373,7 @@ impl MechanismImpl {
     // 先进行扩缩容，再进行调度
     fn step_scale_sche_separated(
         &self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         log::info!("step_separated");
@@ -385,7 +406,7 @@ impl MechanismImpl {
         }
 
         // 进行调度
-        let (up, sche_cmds, down) = self.sche.borrow_mut().schedule_some(env);
+        let (up, sche_cmds, down) = self.sche.borrow_mut().schedule_some(env, self);
 
         // 扩缩容和调度分离，所以要求调度后不能再主动调节容器数量
         assert!(up.is_empty());
@@ -397,7 +418,7 @@ impl MechanismImpl {
     // scale and sche joint
     fn step_scale_sche_joint(
         &self,
-        env: &SimEnv,
+        env: &SimEnvObserve,
         raw_action: ESActionWrapper,
     ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
         // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
@@ -414,7 +435,8 @@ impl MechanismImpl {
         }
 
         // 获得扩容、调度、缩容指令
-        let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env);
+        let mut sche = self.sche.borrow_mut();
+        let (up_cmds, sche_cmds, down_cmds) = sche.schedule_some(env, self);
         // if down_cmds.check_dup() {
         //     log::warn!("down_cmds has dup cmd");
         // }
