@@ -53,9 +53,9 @@ class Task:
 
 algos=[
     # mechtype, scale_num, scale_down_exec, scale_up_exec, sche
-    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
-    # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
-    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}]],
+    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
+    [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}]],
+    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}]],
     [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}]],
     
     # [['no_scale',''],['no',''],["default",""],['no',''],['faasflow','']],
@@ -65,22 +65,22 @@ algos=[
     # ["faasflow","faasflow","faasflow"],
 ]
 
-ts=[]
+# ts=[]
 
 for req_freq in req_freqs:    
     for algo in algos:
         def cb(config):
             config["request_freq"]=req_freq
-        def task():
-            Task() \
-                .algo(algo) \
-                .config(cb) \
-                .run()
-        t = threading.Thread(target=task, args=())
-        t.start()
-        ts.append(t)
+        # def task():
+        Task() \
+            .algo(algo) \
+            .config(cb) \
+            .run()
+        # t = threading.Thread(target=task, args=())
+        # t.start()
+        # ts.append(t)
 
-for t in ts:
-    t.join()
+# for t in ts:
+#     t.join()
 
     

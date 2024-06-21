@@ -6,6 +6,7 @@ use std::{
 use crate::{
     fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId},
     mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism_thread::MechCmdDistributor,
     node::{EnvNodeExt, Node, NodeId},
     request::{ReqId, Request},
     sim_env::SimEnv,
@@ -16,7 +17,8 @@ pub trait Scheduler: Send {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>);
+        cmd_distributor: &MechCmdDistributor,
+    );
 }
 
 pub mod schedule_helper {

@@ -5,6 +5,8 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 
+### doc: https://fvd360f8oos.feishu.cn/docx/RMjfdhRutoDmOkx4f4Lcl1sjnzd
+
 class PackedRecord:
     # configstr.clone().into(),
     # cost_per_req,

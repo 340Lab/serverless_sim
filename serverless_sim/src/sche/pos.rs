@@ -1,11 +1,12 @@
 use crate::fn_dag::EnvFnExt;
+use crate::mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes};
 use crate::node::EnvNodeExt;
 use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
 use crate::{
     fn_dag::FnId,
     mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
     node::NodeId,
-    request::{Request},
+    request::Request,
     sim_run::{schedule_helper, Scheduler},
 };
 use std::collections::{HashMap, HashSet};
@@ -78,7 +79,8 @@ impl PosScheduler {
         env: &SimEnvObserve,
         mech: &MechanismImpl,
         req: &mut Request,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
@@ -97,10 +99,6 @@ impl PosScheduler {
         let scale_up_exec = mech.scale_up_exec();
         let mech_metric = || env.help().mech_metric_mut();
 
-        let mut sche_cmds = vec![];
-        // let scale_up_cmds = vec![];
-        let mut scale_up_cmds = vec![];
-
         for &fnid in &schedule_able_fns {
             // 容器预加载下沉到 schedule阶段， scaler阶段只进行容器数的确定
             let mut target_cnt = mech.scale_num(fnid);
@@ -108,11 +106,11 @@ impl PosScheduler {
                 target_cnt = 1;
             }
 
-            let fn_scale_up_cmds = scale_up_exec.exec_scale_up(target_cnt, fnid, env);
+            let fn_scale_up_cmds =
+                scale_up_exec.exec_scale_up(target_cnt, fnid, env, cmd_distributor);
             for cmd in fn_scale_up_cmds.iter() {
                 self.record_new_scale_up_node(cmd.fnid, cmd.nid);
             }
-            scale_up_cmds.extend(fn_scale_up_cmds);
 
             // 选择节点算法，首先选出包含当前函数容器的节点
             let mut nodes2select: Vec<NodeId> = env
@@ -216,14 +214,15 @@ impl PosScheduler {
 
             // env.schedule_reqfn_on_node(req, fnid, best_node);
             mech_metric().add_node_task_new_cnt(best_node);
-            sche_cmds.push(ScheCmd {
-                reqid: req.req_id,
-                fnid,
-                nid: best_node,
-                memlimit: None,
-            })
+            cmd_distributor
+                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                    reqid: req.req_id,
+                    fnid,
+                    nid: best_node,
+                    memlimit: None,
+                }))
+                .unwrap();
         }
-        (scale_up_cmds, vec![], sche_cmds)
     }
 }
 
@@ -232,7 +231,8 @@ impl Scheduler for PosScheduler {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         self.new_scale_up_nodes.clear();
         self.schealeable_fns.clear();
         for (_req_id, req) in env.core().requests().iter() {
@@ -244,30 +244,23 @@ impl Scheduler for PosScheduler {
         //     .iter()
         //     .map(|n| (n.node_id(), n.task_cnt()))
         //     .collect::<HashMap<NodeId, usize>>();
-        let mut up_cmds = vec![];
-        let mut sche_cmds = vec![];
-        let mut down_cmds = vec![];
 
         // 遍历每个函数，看是否需要缩容
         for func in env.core().fns().iter() {
             let target = mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);
             if target < cur {
-                down_cmds.extend(mech.scale_down_exec().exec_scale_down(
+                mech.scale_down_exec().exec_scale_down(
                     env,
                     func.fn_id,
                     cur - target,
-                ));
+                    cmd_distributor,
+                );
             }
         }
 
         for (_req_id, req) in env.core().requests_mut().iter_mut() {
-            let (sub_up, sub_down, sub_sche) = self.schedule_one_req_fns(env, mech, req);
-            up_cmds.extend(sub_up);
-            down_cmds.extend(sub_down);
-            sche_cmds.extend(sub_sche);
+            self.schedule_one_req_fns(env, mech, req, cmd_distributor);
         }
-
-        (up_cmds, sche_cmds, down_cmds)
     }
 }

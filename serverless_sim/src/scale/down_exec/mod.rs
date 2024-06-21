@@ -2,7 +2,9 @@ use crate::{
     config::Config,
     fn_dag::FnId,
     mechanism::{DownCmd, SimEnvObserve},
-    node::{NodeId}, with_env_sub::WithEnvCore,
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
+    node::NodeId,
+    with_env_sub::WithEnvCore,
 };
 
 // 原 ScaleExecutor
@@ -12,6 +14,7 @@ pub trait ScaleDownExec: Send {
         sim_env: &SimEnvObserve,
         fnid: FnId,
         scale_cnt: usize,
+        cmd_distributor: &MechCmdDistributor,
     ) -> Vec<DownCmd>;
 
     // /// return success scale up cnt
@@ -54,6 +57,7 @@ impl DefaultScaleDownExec {
         env: &SimEnvObserve,
         fnid: FnId,
         mut scale_cnt: usize,
+        cmd_distributor: &MechCmdDistributor,
     ) -> Vec<DownCmd> {
         let mut collect_idle_containers = self.collect_idle_containers(env);
         collect_idle_containers.retain(|&(_nodeid, fnid_)| fnid_ == fnid);
@@ -65,10 +69,16 @@ impl DefaultScaleDownExec {
             // );
             scale_cnt = collect_idle_containers.len();
         }
-        collect_idle_containers[0..scale_cnt]
+        let res: Vec<DownCmd> = collect_idle_containers[0..scale_cnt]
             .iter()
             .map(|&(nodeid, fnid)| DownCmd { nid: nodeid, fnid })
-            .collect()
+            .collect();
+        for cmd in res.iter() {
+            cmd_distributor
+                .send(MechScheduleOnceRes::ScaleDownCmd(cmd.clone()))
+                .unwrap();
+        }
+        res
     }
 }
 
@@ -78,7 +88,8 @@ impl ScaleDownExec for DefaultScaleDownExec {
         env: &SimEnvObserve,
         fnid: FnId,
         scale_cnt: usize,
+        cmd_distributor: &MechCmdDistributor,
     ) -> Vec<DownCmd> {
-        self.scale_down_for_fn(env, fnid, scale_cnt)
+        self.scale_down_for_fn(env, fnid, scale_cnt, cmd_distributor)
     }
 }
