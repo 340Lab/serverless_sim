@@ -1,19 +1,16 @@
 use crate::{
     config::Config,
-    fn_dag::{EnvFnExt, FnId},
+    fn_dag::FnId,
     mechanism_conf::ModuleMechConf,
-    node::EnvNodeExt,
     sim_env::SimEnv,
     util::Window,
 };
 use chrono;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use serde_json::Value;
-use std::{
-    collections::{BTreeMap, HashMap},
-    fs::{self, File},
-    io::{Read, Write},
-};
+use std::{ collections::{ BTreeMap, HashMap }, fs::{ self, File }, io::{ Read, Write } };
+use crate::fn_dag::EnvFnExt;
+use crate::node::EnvNodeExt;
 
 // #[derive(Serialize, Deserialize)]
 // pub struct ReqFrame {
@@ -98,13 +95,17 @@ impl MechMetric {
                     // 如果fnid在fn_unsche_req_cnt中存在，则将其值加一，否则插入一个新值1
                     self.fn_unsche_req_cnt
                         .entry(fnid)
-                        .and_modify(|v| *v += 1)
+                        .and_modify(|v| {
+                            *v += 1;
+                        })
                         .or_insert(1);
                 }
 
                 // 如果请求的已完成函数列表中不包含fnid，则计数+1
                 if !req.done_fns.contains_key(&fnid) {
-                    fn_count.entry(fnid).and_modify(|v| *v += 1);
+                    fn_count.entry(fnid).and_modify(|v| {
+                        *v += 1;
+                    });
                 }
             }
         }
@@ -141,7 +142,9 @@ impl MechMetric {
     pub fn add_node_task_new_cnt(&mut self, nodeid: FnId) {
         self.node_task_new_cnt
             .entry(nodeid)
-            .and_modify(|v| *v += 1)
+            .and_modify(|v| {
+                *v += 1;
+            })
             .or_insert(1);
     }
     pub fn node_task_new_cnt(&self, nodeid: FnId) -> usize {
@@ -224,9 +227,8 @@ impl Records {
     // 将模拟环境中的一帧数据添加到记录中
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
-        frame[FRAME_IDX_FRAME] = (sim_env.core.current_frame()).into();
-        frame[FRAME_IDX_RUNNING_REQS] = sim_env
-            .core
+        frame[FRAME_IDX_FRAME] = sim_env.core.current_frame().into();
+        frame[FRAME_IDX_RUNNING_REQS] = sim_env.core
             .requests()
             .iter()
             .map(|(reqid, req)| {
@@ -238,8 +240,7 @@ impl Records {
             })
             .collect::<Vec<_>>()
             .into();
-        frame[FRAME_IDX_NODES] = sim_env
-            .core
+        frame[FRAME_IDX_NODES] = sim_env.core
             .nodes()
             .iter()
             .map(|node| {
@@ -271,8 +272,7 @@ impl Records {
 
             log::info!("flush to target key: {}", self.record_name);
             let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
-            file.write_all(serde_json::to_string(self).unwrap().as_bytes())
-                .unwrap();
+            file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
 
             // 计算几个关键指标，输出到对应seed的文件中
         } else {
@@ -288,6 +288,9 @@ struct RecordFile {
     time_str: String,
 }
 impl RecordFile {
+    fn concat_name_without_time(&self) -> String {
+        self.file_name.split("UTC").next().unwrap().to_owned()
+    }
     fn new(file_name: String) -> Option<Self> {
         if let None = file_name.find("UTC") {
             return None;
@@ -339,7 +342,7 @@ pub fn group_records_by_seed() {
                         map
                     });
                 different_confs
-                    .entry(record_file.config.str())
+                    .entry(record_file.concat_name_without_time())
                     .and_modify(|v| {
                         if record_file.time_str > v.time_str {
                             *v = record_file.clone();
@@ -358,21 +361,19 @@ pub fn group_records_by_seed() {
         // let mut config_metrics = vec![];
         let mut count = recordfiles.len();
         if !seeds_metrics_cache.contains_key(&seed) {
-            seeds_metrics_cache.insert(seed.clone(), get_seed_metrics(&seed).map_or(vec![], |v| v));
+            seeds_metrics_cache.insert(
+                seed.clone(),
+                get_seed_metrics(&seed).map_or(vec![], |v| v)
+            );
         }
         let config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
         for (configstr, f) in recordfiles.iter().rev() {
             let mut read_data = || {
-                let mut records: Records = serde_json::from_str(
-                    &fs::read_to_string(format!("records/{}", f.file_name)).unwrap(),
-                )
-                .unwrap();
+                let mut records: Records = serde_json
+                    ::from_str(&fs::read_to_string(format!("records/{}", f.file_name)).unwrap())
+                    .unwrap();
                 count -= 1;
-                log::info!(
-                    "deserialed one record file: {}, left:{}",
-                    f.file_name,
-                    count
-                );
+                log::info!("deserialed one record file: {}, left:{}", f.file_name, count);
                 if records.frames.len() < 999 {
                     return None;
                 }
@@ -386,12 +387,11 @@ pub fn group_records_by_seed() {
                 };
 
                 // let req_done = last_frame[FRAME_IDX_DONE_REQ_COUNT].take();
-                let rps = records
-                    .frames
-                    .iter()
-                    .map(|f| f[FRAME_IDX_DONE_REQ_COUNT].as_f64().unwrap())
-                    .sum::<f64>()
-                    / records.frames.len() as f64;
+                let rps =
+                    records.frames
+                        .iter()
+                        .map(|f| f[FRAME_IDX_DONE_REQ_COUNT].as_f64().unwrap())
+                        .sum::<f64>() / (records.frames.len() as f64);
 
                 let one_config_info: Vec<Value> = vec![
                     configstr.clone().into(),
@@ -399,14 +399,15 @@ pub fn group_records_by_seed() {
                     time_per_req,
                     score,
                     rps.into(),
-                    f.time_str.clone().into(),
+                    f.time_str.clone().into()
                 ];
                 Some(one_config_info)
             };
-            if let Some(update) = config_metrics
-                .iter_mut()
-                .filter(|config| config[0].as_str().unwrap() == &*configstr)
-                .next()
+            if
+                let Some(update) = config_metrics
+                    .iter_mut()
+                    .filter(|config| config[0].as_str().unwrap() == &*configstr)
+                    .next()
             {
                 if update.len() > 4 {
                     // check time is bigger
@@ -434,15 +435,14 @@ pub fn group_records_by_seed() {
             .truncate(true)
             .open(format!("records/seed_{}.json", seed))
             .unwrap();
-        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes())
-            .unwrap();
+        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes()).unwrap();
     }
 }
 
 /// used sync io operation, use spawn_blocking
 /// return: seed->[[configstr, cost, time, score]...]
 pub fn get_seeds_metrics<'a>(
-    seeds: impl Iterator<Item = &'a String>,
+    seeds: impl Iterator<Item = &'a String>
 ) -> HashMap<String, Vec<Vec<Value>>> {
     let mut seeds_metrics = HashMap::new();
     for seed in seeds {
@@ -456,11 +456,12 @@ pub fn get_seeds_metrics<'a>(
 /// return: [[configstr, cost, time, score]...]
 pub fn get_seed_metrics(seed: &String) -> Option<Vec<Vec<Value>>> {
     let mut seed_metrics = vec![];
-    if let Ok(mut file) = File::options()
-        .read(true)
-        .write(true)
-        .append(false)
-        .open(format!("records/seed_{}.json", seed))
+    if
+        let Ok(mut file) = File::options()
+            .read(true)
+            .write(true)
+            .append(false)
+            .open(format!("records/seed_{}.json", seed))
     {
         let mut content = String::new();
         file.read_to_string(&mut content).unwrap();
