@@ -159,7 +159,12 @@ def to_draw_meta(groups,conf):
                 # score=0.0
                 # rps=0.0
                 # record.
-                return eval(valueconf['trans'])
+                transs=valueconf['trans']
+                if isinstance(transs, list):
+                    
+                    return [eval(trans) for trans in transs]
+                else:
+                    return eval(transs)
             def alias(record):
                 def match_args(args):
                     for argkey in args:
@@ -215,24 +220,84 @@ def draw_with_draw_meta(drawmeta,conf):
         plot.set_xlabel(conf['group']['alias'])
         plot.set_ylabel(meta['value_y'])
 
+        model_value={
+            'v':None
+        }
+        def set_model_value(v):
+            print("set_model_value",v)
+            if isinstance(v, list):
+                model_value['v']=[0 for _ in range(len(v))]
+            else:
+                model_value['v']=0
         value_idx=0
         for target_alias in conf['targets_alias']:
+            # print(model_value)
             values=[]
             value_alias=target_alias[1]
+
+            
             def find_value_in_group(group,value_alias):
                 for value in group['values']:
                     if value[0]==value_alias:
+                        set_model_value(value[1])
                         return value[1]
-                return 0
+                if model_value['v']==None:
+                    # print(group,value_alias)
+                    print("err!!!!!, at least the first data source should be complete")
+                    exit(1)
+                return model_value['v']
 
             #收集对应value alias在不同group里的值
             for group in groups:
+                # print(model_value)
                 values.append(find_value_in_group(group,value_alias))
             
-            plot.bar(index+value_idx*bar_width,values,bar_width,
-                color=colors[value_idx],
-                label=value_alias,edgecolor="black"
-            )
+            
+            # values maybe [[a,b,c],[a,b,c]]
+            # we need to make it into [a,a][b,b][c,c]
+            bars_values=[]
+            if isinstance(values[0], list):
+                # 前缀和
+                for value in values:
+                    for i in range(1,len(value)):
+                        value[i]=value[i-1]+value[i]
+
+                sub_v_cnt=len(values[0])
+                for i in range(sub_v_cnt):
+                    bars_values.append([value[i] for value in values])
+            else:
+                bars_values.append(values)
+            
+            print(meta['value_y'],value_alias,bars_values)
+
+            level=len(bars_values)
+            def leveled_color(color,curlevel):
+                def hex_to_rgb(hex_color):
+                    # 将十六进制颜色转换为 RGB 元组
+                    hex_color = hex_color.lstrip('#')
+                    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+                def rgb_to_hex(rgb_color):
+                    # 将 RGB 元组转换为十六进制颜色
+                    return '#{:02x}{:02x}{:02x}'.format(*rgb_color)
+
+                def adjust_brightness(hex_color, factor):
+                    # 确保因子在 0 到 2 的范围内
+                    factor = max(min(factor, 2.0), 0.0)
+                    # 将十六进制颜色转换为 RGB
+                    rgb = hex_to_rgb(hex_color)
+                    # 调整亮度
+                    new_rgb = tuple(min(int(c * factor), 255) for c in rgb)
+                    # 将新的 RGB 值转换为十六进制颜色
+                    new_color = rgb_to_hex(new_rgb)
+                    return new_color
+
+                return adjust_brightness(color,1-0.15*curlevel)
+            for barlevel,bar_values in reversed(list(enumerate(bars_values))):
+                plot.bar(index+value_idx*bar_width,bar_values,bar_width,
+                    color=(leveled_color(colors[value_idx],barlevel)),
+                    label=value_alias,edgecolor="black"
+                )
             value_idx+=1
         plotidx+=1
     plt.tight_layout()
