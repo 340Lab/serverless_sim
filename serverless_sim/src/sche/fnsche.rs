@@ -1,8 +1,7 @@
-
-
 use crate::{
     fn_dag::FnId,
     mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, NodeId},
     sim_run::{schedule_helper, Scheduler},
     with_env_sub::WithEnvCore,
@@ -41,8 +40,8 @@ impl Scheduler for FnScheScheduler {
         &mut self,
         env: &SimEnvObserve,
         _mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
-        let mut sche_cmds = vec![];
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         for (_req_id, req) in env.core().requests().iter() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
@@ -54,15 +53,16 @@ impl Scheduler for FnScheScheduler {
                 // {
                 // env.schedule_reqfn_on_node(req, fnid, nodeid);
                 // }
-                sche_cmds.push(ScheCmd {
-                    nid: nodeid,
-                    reqid: req.req_id,
-                    fnid,
-                    memlimit: None,
-                })
+                cmd_distributor
+                    .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        nid: nodeid,
+                        reqid: req.req_id,
+                        fnid,
+                        memlimit: None,
+                    }))
+                    .unwrap();
             }
         }
-        (vec![], sche_cmds, vec![])
     }
 
     // fn fn_available_count(&self, fnid: FnId, env: &SimEnv) -> usize {

@@ -392,7 +392,7 @@ impl SimEnv {
             nodes: HashSet::new(),
             cold_start_container_mem_use: self.env_rand_f(100.0, 500.0),
             cold_start_container_cpu_use: self.env_rand_f(0.1, 50.0),
-            cold_start_time: self.env_rand_i(5, 10),
+            cold_start_time: self.env_rand_i(50, 100),
             dag_id: 0,
             graph_i: (0).into(),
         });

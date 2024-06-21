@@ -5,17 +5,26 @@ use crate::mechanism::{DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve
 
 use crate::util;
 
+pub type MechCmdDistributor = mpsc::Sender<MechScheduleOnceRes>;
+
 pub struct MechScheduleOnce {
     pub sim_env: SimEnvObserve,
-    pub responser: mpsc::Sender<MechScheduleOnceRes>,
+    pub responser: MechCmdDistributor,
     pub action: ESActionWrapper,
 }
 
-pub struct MechScheduleOnceRes {
-    pub sche_cmds: Vec<ScheCmd>,
-    pub scale_up_cmds: Vec<UpCmd>,
-    pub scale_down_cmds: Vec<DownCmd>,
-    pub mech_run_ms: u64,
+pub enum MechScheduleOnceRes {
+    ScheCmd(ScheCmd),
+    ScaleUpCmd(UpCmd),
+    ScaleDownCmd(DownCmd),
+    Cmds {
+        sche_cmds: Vec<ScheCmd>,
+        scale_up_cmds: Vec<UpCmd>,
+        scale_down_cmds: Vec<DownCmd>,
+    },
+    End {
+        mech_run_ms: u64,
+    },
 }
 
 pub fn spawn(mech: MechanismImpl) -> mpsc::Sender<MechScheduleOnce> {
@@ -36,13 +45,10 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
             }
         };
         let begin_ms = util::now_ms();
-        let (up, down, sche) = mech.step(&res.sim_env, res.action);
+        mech.step(&res.sim_env, res.action, &res.responser);
         let end_ms = util::now_ms();
         res.responser
-            .send(MechScheduleOnceRes {
-                sche_cmds: sche,
-                scale_up_cmds: up,
-                scale_down_cmds: down,
+            .send(MechScheduleOnceRes::End {
                 mech_run_ms: end_ms - begin_ms,
             })
             .unwrap();
@@ -77,10 +83,7 @@ pub mod tests {
             std::thread::spawn(move || {
                 while let Ok(once) = rx.recv() {
                     once.responser
-                        .send(MechScheduleOnceRes {
-                            sche_cmds: vec![],
-                            scale_up_cmds: vec![],
-                            scale_down_cmds: vec![],
+                        .send(MechScheduleOnceRes::End {
                             mech_run_ms: calltime.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
                         })
                         .unwrap();

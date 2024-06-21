@@ -1,4 +1,5 @@
 use super::ScaleUpExec;
+use crate::mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes};
 use crate::node::EnvNodeExt;
 use crate::with_env_sub::WithEnvHelp;
 use crate::{
@@ -15,7 +16,13 @@ impl LeastTaskScaleUpExec {
 }
 
 impl ScaleUpExec for LeastTaskScaleUpExec {
-    fn exec_scale_up(&self, target_cnt: usize, fnid: FnId, env: &SimEnvObserve) -> Vec<UpCmd> {
+    fn exec_scale_up(
+        &self,
+        target_cnt: usize,
+        fnid: FnId,
+        env: &SimEnvObserve,
+        cmd_distributor: &MechCmdDistributor,
+    ) -> Vec<UpCmd> {
         let mech_metric = || env.help().mech_metric_mut();
         let mut up_cmds = vec![];
 
@@ -45,6 +52,10 @@ impl ScaleUpExec for LeastTaskScaleUpExec {
             nodes_no_container.reverse();
             for _ in 0..to_scale_up_cnt {
                 let node_2_load_contaienr = nodes_no_container.pop().unwrap();
+                cmd_distributor.send(MechScheduleOnceRes::ScaleUpCmd(UpCmd {
+                    nid: node_2_load_contaienr,
+                    fnid,
+                }));
                 up_cmds.push(UpCmd {
                     nid: node_2_load_contaienr,
                     fnid,

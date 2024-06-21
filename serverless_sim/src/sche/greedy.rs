@@ -6,6 +6,7 @@ use std::{
 use crate::{
     fn_dag::{EnvFnExt, FnId},
     mechanism::{DownCmd, MechType, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, Node, NodeId},
     sim_run::{schedule_helper, Scheduler},
     with_env_sub::WithEnvCore,
@@ -86,12 +87,12 @@ impl Scheduler for GreedyScheduler {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         self.node_mem_usage.clear();
         self.node_task_count.clear();
         self.node_funcs.clear();
         self.initialize_node_state(env);
-        let mut sche_cmds = Vec::new();
         for (_req_id, req) in env.core().requests().iter() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
@@ -129,17 +130,18 @@ impl Scheduler for GreedyScheduler {
                 if let Some(node) = best_node {
                     let node_id = node.node_id();
                     self.update_node_state(node_id, env, fnid);
-                    sche_cmds.push(ScheCmd {
-                        nid: node_id,
-                        reqid: req.req_id,
-                        fnid,
-                        memlimit: None,
-                    });
+                    cmd_distributor
+                        .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                            nid: node_id,
+                            reqid: req.req_id,
+                            fnid,
+                            memlimit: None,
+                        }))
+                        .unwrap();
                 } else {
                     log::warn!("No suitable node found for function {}", fnid);
                 }
             }
         }
-        (vec![], sche_cmds, vec![])
     }
 }

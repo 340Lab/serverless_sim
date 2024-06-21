@@ -1,8 +1,9 @@
 use crate::{
     fn_dag::{EnvFnExt, FnId},
     mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, NodeId},
-    request::{Request},
+    request::Request,
     sim_run::Scheduler,
     util,
     with_env_sub::WithEnvCore,
@@ -59,9 +60,14 @@ impl FaasFlowScheduler {
     //     }
     // }
 
-    fn schedule_for_one_req(&mut self, req: &Request, env: &SimEnvObserve) -> Vec<ScheCmd> {
+    fn schedule_for_one_req(
+        &mut self,
+        req: &Request,
+        env: &SimEnvObserve,
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         if req.fn_count(env) == req.fn_node.len() {
-            return vec![];
+            return;
         }
 
         log::info!("faasflow start generate schedule for req {}", req.req_id);
@@ -146,15 +152,22 @@ impl FaasFlowScheduler {
         // self.request_schedule_state
         //     .insert(req.req_id, RequestSchedulePlan { fn_nodes: fn_poses });
         log::info!("faasflow end generate schedule for req {}", req.req_id);
-        fn_poses
-            .into_iter()
-            .map(|(fnid, nid)| ScheCmd {
-                nid,
-                reqid: req.req_id,
-                fnid,
-                memlimit: None,
+        cmd_distributor
+            .send(MechScheduleOnceRes::Cmds {
+                sche_cmds: fn_poses
+                    .into_iter()
+                    .map(|(fnid, nid)| ScheCmd {
+                        nid,
+                        reqid: req.req_id,
+                        fnid,
+                        memlimit: None,
+                    })
+                    .collect(),
+                scale_up_cmds: vec![],
+                scale_down_cmds: vec![],
             })
-            .collect()
+            .unwrap();
+
         // self.scheduled_reqs.insert(req.req_id);
         // self.do_some_schedule(req, env);
     }
@@ -176,26 +189,29 @@ impl Scheduler for FaasFlowScheduler {
         &mut self,
         env: &SimEnvObserve,
         _mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
-        let mut sche_cmds = vec![];
+        cmd_distributor: &MechCmdDistributor,
+    ) {
+        // let mut sche_cmds = vec![];
         for (_, req) in env.core().requests_mut().iter_mut() {
-            sche_cmds.extend(self.schedule_for_one_req(req, env));
+            self.schedule_for_one_req(req, env, cmd_distributor);
         }
 
-        let mut to_scale_down = vec![];
+        // let mut to_scale_down = vec![];
         // 超时策略，回收空闲container
         for n in env.nodes().iter() {
             for (_, c) in n.fn_containers.borrow().iter() {
                 if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
                     // to_scale_down.push((n.node_id(), c.fn_id));
-                    to_scale_down.push(DownCmd {
-                        nid: n.node_id(),
-                        fnid: c.fn_id,
-                    })
+                    cmd_distributor
+                        .send(MechScheduleOnceRes::ScaleDownCmd(DownCmd {
+                            nid: n.node_id(),
+                            fnid: c.fn_id,
+                        }))
+                        .unwrap();
                 }
             }
         }
-        (vec![], sche_cmds, to_scale_down)
+
         // for (n, f) in to_scale_down {
         //     env.mechanisms
         //         .scale_executor_mut()

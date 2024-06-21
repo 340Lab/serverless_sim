@@ -1,15 +1,14 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
-use daggy::{
-    Walker,
-};
-use rand::{Rng};
+use daggy::Walker;
+use rand::Rng;
 
 use crate::{
     fn_dag::{DagId, EnvFnExt, FnId},
     mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, NodeId},
-    request::{Request},
+    request::Request,
     sim_run::Scheduler,
     with_env_sub::WithEnvCore,
 };
@@ -84,9 +83,10 @@ impl PassScheduler {
     fn select_node_for_fn(
         &self,
         schedule_to_map: &mut HashMap<FnId, NodeId>,
-        schedule_to: &mut Vec<(FnId, NodeId)>,
+        // schedule_to: &mut Vec<(FnId, NodeId)>,
+        cmd_distributor: &MechCmdDistributor,
         func_id: FnId,
-        _req: &Request,
+        req: &Request,
         env: &SimEnvObserve,
     ) {
         let func = env.func(func_id);
@@ -99,7 +99,15 @@ impl PassScheduler {
             let mut rng = rand::thread_rng();
             let rand = rng.gen_range(0..nodes.len());
             schedule_to_map.insert(func_id, rand);
-            schedule_to.push((func_id, rand));
+            // schedule_to.push((func_id, rand));
+            cmd_distributor
+                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                    nid: rand,
+                    reqid: req.req_id,
+                    fnid: func_id,
+                    memlimit: None,
+                }))
+                .unwrap();
         } else {
             let mut min_tran_time_min_tran_node_id: Option<(f32, usize)> = None;
 
@@ -112,7 +120,7 @@ impl PassScheduler {
                         let node_id = *schedule_to_map.get(&func_pre_id).unwrap_or_else(|| {
                             panic!(
                                 "funcpre:{:?}, func:{}, schedule: {:?}",
-                                func_pre.fn_id, func_id, schedule_to
+                                func_pre.fn_id, func_id, schedule_to_map
                             );
                         });
                         // Calculate data transmission time of edge (pre, func)
@@ -142,16 +150,28 @@ impl PassScheduler {
                 })
                 .1;
             schedule_to_map.insert(func_id, nodeid);
-            schedule_to.push((func_id, nodeid));
+            cmd_distributor
+                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                    nid: nodeid,
+                    reqid: req.req_id,
+                    fnid: func_id,
+                    memlimit: None,
+                }))
+                .unwrap()
         }
     }
 
-    fn schedule_for_one_req(&mut self, req: &Request, env: &SimEnvObserve) -> Vec<ScheCmd> {
+    fn schedule_for_one_req(
+        &mut self,
+        req: &Request,
+        env: &SimEnvObserve,
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         self.prepare_priority_for_dag(req, env);
 
         let dag = env.dag(req.dag_i);
 
-        let mut schedule_to = Vec::<(FnId, NodeId)>::new();
+        // let mut schedule_to = Vec::<(FnId, NodeId)>::new();
         let mut schedule_to_map = HashMap::<FnId, NodeId>::new();
         //实现PASS算法
         // 按照优先级降序排列函数
@@ -162,18 +182,18 @@ impl PassScheduler {
 
         log::info!("prio order: {:?}", prio_order);
         for (func_id, _fun_prio) in prio_order {
-            self.select_node_for_fn(&mut schedule_to_map, &mut schedule_to, *func_id, req, env);
+            self.select_node_for_fn(&mut schedule_to_map, cmd_distributor, *func_id, req, env);
         }
 
-        schedule_to
-            .into_iter()
-            .map(|(fnid, nid)| ScheCmd {
-                nid,
-                reqid: req.req_id,
-                fnid,
-                memlimit: None,
-            })
-            .collect()
+        // schedule_to
+        //     .into_iter()
+        //     .map(|(fnid, nid)| ScheCmd {
+        //         nid,
+        //         reqid: req.req_id,
+        //         fnid,
+        //         memlimit: None,
+        //     })
+        //     .collect()
     }
 }
 
@@ -193,14 +213,13 @@ impl Scheduler for PassScheduler {
         &mut self,
         env: &SimEnvObserve,
         _mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
-        let mut sche_cmds = vec![];
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         for (_, req) in env.core().requests().iter() {
             if req.fn_node.len() == 0 {
-                sche_cmds.extend(self.schedule_for_one_req(req, env));
+                self.schedule_for_one_req(req, env, cmd_distributor);
             }
         }
-        (vec![], sche_cmds, vec![])
         // let mut to_scale_down = vec![];
         // // 回收空闲container
         // for n in env.nodes.borrow().iter() {

@@ -1,16 +1,13 @@
 use crate::{
-    actions::{ESActionWrapper},
-    mechanism::{SimEnvObserve},
-    mechanism_thread::{MechScheduleOnce, MechScheduleOnceRes},
-    node::{EnvNodeExt},
+    actions::ESActionWrapper,
+    mechanism::SimEnvObserve,
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnce, MechScheduleOnceRes},
+    node::EnvNodeExt,
     sim_env::SimEnv,
     with_env_sub::WithEnvHelp,
 };
 
-
-use std::{
-    sync::mpsc::{self, Receiver},
-};
+use std::sync::mpsc::{self, Receiver};
 
 impl SimEnv {
     fn one_frame(&mut self) {
@@ -42,52 +39,78 @@ impl SimEnv {
         let mut frame_when_master_mech_begin = 0;
         loop {
             if let Some(rx) = &master_mech_resp_rx {
-                if let Ok(res) = rx.try_recv() {
-                    // 1. need to handle the gap between
-                    //    master_mech time and simulation time
-                    //    just simulate some if mech is longer
-                    {
-                        // one frame reflect to 1ms
-                        let master_mech_frame = res.mech_run_ms as usize;
-                        let frame_ran = self.current_frame() - frame_when_master_mech_begin;
-                        let gap = if master_mech_frame > frame_ran {
-                            master_mech_frame - frame_ran
-                        } else {
-                            0
-                        };
-                        for _ in 0..gap {
-                            self.one_frame();
+                while let Ok(res) = rx.try_recv() {
+                    match res {
+                        MechScheduleOnceRes::Cmds {
+                            sche_cmds,
+                            scale_up_cmds,
+                            scale_down_cmds,
+                        } => {
+                            // 2. handle_master's commands
+                            {
+                                // FIXME: Should transfer the cmds for a while.
+                                // FIXME: should remove conflict cmds
+                                // TODO: ScheCmd has memlimit
+                                for sche in sche_cmds.iter() {
+                                    self.schedule_reqfn_on_node(
+                                        &mut self.request_mut(sche.reqid),
+                                        sche.fnid,
+                                        sche.nid,
+                                    );
+                                }
+                                for down in scale_down_cmds.iter() {
+                                    //更新cache
+                                    self.node_mut(down.nid)
+                                        .try_unload_container(down.fnid, self);
+                                }
+                                for up in scale_up_cmds.iter() {
+                                    self.node_mut(up.nid).try_load_container(up.fnid, self);
+                                }
+                            }
                         }
-                        log::info!(
-                            "master mech ran in {} ms, catch up {} gap frames",
-                            res.mech_run_ms,
-                            gap
-                        );
-                    }
-                    // 2. handle_master's commands
-                    {
-                        // FIXME: Should transfer the cmds for a while.
-                        // FIXME: should remove conflict cmds
-                        // TODO: ScheCmd has memlimit
-                        for sche in res.sche_cmds.iter() {
+                        MechScheduleOnceRes::ScheCmd(sche) => {
                             self.schedule_reqfn_on_node(
                                 &mut self.request_mut(sche.reqid),
                                 sche.fnid,
                                 sche.nid,
                             );
                         }
-                        for down in res.scale_down_cmds.iter() {
+                        MechScheduleOnceRes::ScaleDownCmd(down) => {
                             //更新cache
                             self.node_mut(down.nid)
                                 .try_unload_container(down.fnid, self);
                         }
-                        for up in res.scale_up_cmds.iter() {
+                        MechScheduleOnceRes::ScaleUpCmd(up) => {
                             self.node_mut(up.nid).try_load_container(up.fnid, self);
                         }
+                        MechScheduleOnceRes::End { mech_run_ms } => {
+                            // 1. need to handle the gap between
+                            //    master_mech time and simulation time
+                            //    just simulate some if mech is longer
+                            {
+                                // one frame reflect to 1ms
+                                let master_mech_frame = mech_run_ms as usize;
+                                let frame_ran = self.current_frame() - frame_when_master_mech_begin;
+                                let gap = if master_mech_frame > frame_ran {
+                                    master_mech_frame - frame_ran
+                                } else {
+                                    0
+                                };
+                                for _ in 0..gap {
+                                    self.one_frame();
+                                }
+                                log::info!(
+                                    "master mech ran in {} ms, catch up {} gap frames",
+                                    mech_run_ms,
+                                    gap
+                                );
+                            }
+
+                            self.master_mech_not_running = true;
+                            frame_when_master_mech_begin = self.current_frame();
+                            hook_algo_end.as_mut().map(|f| f(self));
+                        }
                     }
-                    self.master_mech_not_running = true;
-                    frame_when_master_mech_begin = self.current_frame();
-                    hook_algo_end.as_mut().map(|f| f(self));
                 }
             }
             if self.master_mech_not_running {

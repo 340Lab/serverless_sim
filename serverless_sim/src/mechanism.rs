@@ -8,6 +8,7 @@ use crate::{
     config::Config,
     fn_dag::{EnvFnExt, FnId},
     mechanism_conf::{MechConfig, ModuleMechConf},
+    mechanism_thread::MechCmdDistributor,
     node::NodeId,
     request::ReqId,
     scale::{
@@ -103,7 +104,8 @@ pub trait Mechanism: Send {
         &self,
         env: &SimEnvObserve,
         raw_action: ESActionWrapper,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>);
+        cmd_distributor: &MechCmdDistributor,
+    );
 }
 
 pub trait ConfigNewMec {
@@ -298,13 +300,16 @@ impl Mechanism for MechanismImpl {
         &self,
         env: &SimEnvObserve,
         raw_action: ESActionWrapper,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         match &*self.config.mech.mech_type().0 {
-            "no_scale" => self.step_no_scaler(env, self, raw_action),
-            "scale_sche_separated" => self.step_scale_sche_separated(env, raw_action),
+            "no_scale" => self.step_no_scaler(env, self, cmd_distributor, raw_action),
+            "scale_sche_separated" => {
+                self.step_scale_sche_separated(env, cmd_distributor, raw_action);
+            }
 
             // 目前只实现了这个
-            "scale_sche_joint" => self.step_scale_sche_joint(env, raw_action),
+            "scale_sche_joint" => self.step_scale_sche_joint(env, cmd_distributor, raw_action),
             _ => {
                 panic!(
                     "mech_type not supported {}",
@@ -347,12 +352,13 @@ impl MechanismImpl {
         &self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-
+        cmd_distributor: &MechCmdDistributor,
         _raw_action: ESActionWrapper,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+    ) {
         log::info!("step_no_scaler");
-        let (up_cmds, sche_cmds, down_cmds) = self.sche.borrow_mut().schedule_some(env, mech);
-        (up_cmds, down_cmds, sche_cmds)
+        self.sche
+            .borrow_mut()
+            .schedule_some(env, mech, cmd_distributor);
     }
 
     fn update_scale_num(&self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) {
@@ -374,11 +380,10 @@ impl MechanismImpl {
     fn step_scale_sche_separated(
         &self,
         env: &SimEnvObserve,
+        cmd_distributor: &MechCmdDistributor,
         raw_action: ESActionWrapper,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+    ) {
         log::info!("step_separated");
-        let mut up_cmds = Vec::new();
-        let mut down_cmds = Vec::new();
 
         // 遍历每个函数
         for func in env.core.fns().iter() {
@@ -389,38 +394,40 @@ impl MechanismImpl {
 
             // 扩容
             if target > cur {
-                up_cmds.extend(
-                    self.scale_up_exec
-                        .borrow_mut()
-                        .exec_scale_up(target, func.fn_id, env),
+                self.scale_up_exec.borrow_mut().exec_scale_up(
+                    target,
+                    func.fn_id,
+                    env,
+                    cmd_distributor,
                 );
             }
             // 缩容
             else if target < cur {
-                down_cmds.extend(self.scale_down_exec.borrow_mut().exec_scale_down(
+                self.scale_down_exec.borrow_mut().exec_scale_down(
                     env,
                     func.fn_id,
                     cur - target,
-                ));
+                    cmd_distributor,
+                );
             }
         }
 
-        // 进行调度
-        let (up, sche_cmds, down) = self.sche.borrow_mut().schedule_some(env, self);
+        self.sche
+            .borrow_mut()
+            .schedule_some(env, self, cmd_distributor);
 
         // 扩缩容和调度分离，所以要求调度后不能再主动调节容器数量
-        assert!(up.is_empty());
-        assert!(down.is_empty());
-
-        (up_cmds, down_cmds, sche_cmds)
+        // assert!(up.is_empty());
+        // assert!(down.is_empty());
     }
 
     // scale and sche joint
     fn step_scale_sche_joint(
         &self,
         env: &SimEnvObserve,
+        cmd_distributor: &MechCmdDistributor,
         raw_action: ESActionWrapper,
-    ) -> (Vec<UpCmd>, Vec<DownCmd>, Vec<ScheCmd>) {
+    ) {
         // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
         for func in env.core.fns().iter() {
             self.update_scale_num(env, func.fn_id, &raw_action);
@@ -436,10 +443,9 @@ impl MechanismImpl {
 
         // 获得扩容、调度、缩容指令
         let mut sche = self.sche.borrow_mut();
-        let (up_cmds, sche_cmds, down_cmds) = sche.schedule_some(env, self);
+        sche.schedule_some(env, self, cmd_distributor);
         // if down_cmds.check_dup() {
         //     log::warn!("down_cmds has dup cmd");
         // }
-        (up_cmds, down_cmds, sche_cmds)
     }
 }

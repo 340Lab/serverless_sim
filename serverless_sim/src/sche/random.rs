@@ -1,3 +1,4 @@
+use crate::mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes};
 use crate::node::EnvNodeExt;
 use crate::with_env_sub::WithEnvCore;
 use crate::{
@@ -20,8 +21,8 @@ impl Scheduler for RandomScheduler {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-    ) -> (Vec<UpCmd>, Vec<ScheCmd>, Vec<DownCmd>) {
-        let mut sche_cmds = Vec::new();
+        cmd_distributor: &MechCmdDistributor,
+    ) {
         for (_req_id, req) in env.core().requests().iter() {
             let fns = schedule_helper::collect_task_to_sche(
                 req,
@@ -50,18 +51,19 @@ impl Scheduler for RandomScheduler {
                 } else {
                     // 处理没有可用节点的情况，例如记录日志或返回错误
                     eprintln!("No available nodes for scheduling");
-                    return (vec![], vec![], vec![]);
+                    return;
                 };
 
                 // 创建调度命令
-                sche_cmds.push(ScheCmd {
-                    nid: *nodeid,
-                    reqid: req.req_id,
-                    fnid,
-                    memlimit: None,
-                });
+                cmd_distributor
+                    .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        nid: *nodeid,
+                        reqid: req.req_id,
+                        fnid,
+                        memlimit: None,
+                    }))
+                    .unwrap();
             }
         }
-        (vec![], sche_cmds, vec![])
     }
 }
