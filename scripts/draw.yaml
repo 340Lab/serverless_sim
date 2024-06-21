@@ -11,7 +11,7 @@ targets_alias:
 - [{scale_num: temp_scaler., scale_up_exec: least_task.,sche: pos.}, 'Joint_Temp_POS']
 - [{scale_num: hpa., scale_up_exec: least_task.,sche: pos.}, 'Joint_HPA_POS']
 - [{scale_num: hpa., scale_up_exec: least_task.,sche: random.}, 'HPA_Random']
-- [{scale_num: hpa., scale_up_exec: least_task.,sche: greedy.}, 'HPA_Greedy']
+# - [{scale_num: hpa., scale_up_exec: least_task.,sche: greedy.}, 'HPA_Greedy']
 # - [{mechtype: scale_sche_joint,scale_num: hpa., scale_up_exec: least_task.,sche: pos.}, 'Joint_HPA_POS)']
 # - [{mechtype: scale_sche_joint,scale_num: temp., scale_up_exec: least_task.,sche: pos.}, 'Joint_Temp_POS']
 
@@ -28,5 +28,5 @@ group:
 values:
 # - {alias: Throughput, trans: throughput}
 - {alias: Cost, trans: cost_per_req}
-- {alias: Latency(ms), trans: time_per_req*10} # convert 10ms to ms
+- {alias: Latency(ms), trans: '[time_per_req*5,time_per_req*2,time_per_req*3]'} # convert 10ms to ms
 - {alias: Quality-Price Ratio, trans: 1/cost_per_req/time_per_req}
