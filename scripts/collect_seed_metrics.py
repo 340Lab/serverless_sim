@@ -10,9 +10,9 @@ import requests
 import numpy as np
 import json
 from pprint import pprint
-from gym.spaces import Box
+# from gym.spaces import Box
 from numpy import uint8
-import serverless_sim
+# import serverless_sim
 import random
 
 OBSERVATION_N=80

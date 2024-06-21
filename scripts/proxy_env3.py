@@ -9,7 +9,7 @@ os.chdir(CUR_FDIR)
 import requests
 import json
 from pprint import pprint
-import serverless_sim
+# import serverless_sim
 import random
 
 SIM_URL = "http://127.0.0.1:3000/"
@@ -29,6 +29,7 @@ class ProxyEnv3:
         "cold_start": "high",
         "fn_type": "cpu",
         "no_log": False,
+        "total_frame":1000,
         # // optional
         "mech": {}
     }
@@ -38,7 +39,7 @@ class ProxyEnv3:
     # 将加载的JSON数据赋给self.config["mech"]
     def __init__(self):
         # read ./serverless_sim/module_conf_es.json and set to config["es"]
-        with open("./serverless_sim/module_conf_es.json", "r") as f:
+        with open("../serverless_sim/module_conf_es.json", "r") as f:
             self.config["mech"] = json.load(f)
         print(f"Config Templete {self.config}")
         print("\n\n")

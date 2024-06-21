@@ -1,0 +1,32 @@
+## filter with fixed value
+filter: 
+  dag_type: single
+  cold_start: high
+  fn_type: cpu
+  scale_down_exec: default.
+  # request_freq: low
+  
+## each group bars
+targets_alias:
+- [{scale_num: temp_scaler., scale_up_exec: least_task.,sche: pos.}, 'Joint_Temp_POS']
+- [{scale_num: hpa., scale_up_exec: least_task.,sche: pos.}, 'Joint_HPA_POS']
+- [{scale_num: hpa., scale_up_exec: least_task.,sche: random.}, 'HPA_Random']
+- [{scale_num: hpa., scale_up_exec: least_task.,sche: greedy.}, 'HPA_Greedy']
+# - [{mechtype: scale_sche_joint,scale_num: hpa., scale_up_exec: least_task.,sche: pos.}, 'Joint_HPA_POS)']
+# - [{mechtype: scale_sche_joint,scale_num: temp., scale_up_exec: least_task.,sche: pos.}, 'Joint_Temp_POS']
+
+# - [{mechtype: no_scaler,scale_num: 'no', scale_up_exec: 'no',sche: greedy}, 'NoScalerGreedy']
+
+## group on x axis:
+group: 
+  by: request_freq
+  types: [low,middle,high]
+  alias: 'Request Frequency'
+  type_alias: ['Low','Middle','High']
+
+## y axis
+values:
+# - {alias: Throughput, trans: throughput}
+- {alias: Cost, trans: cost_per_req}
+- {alias: Latency(ms), trans: time_per_req*10} # convert 10ms to ms
+- {alias: Quality-Price Ratio, trans: 1/cost_per_req/time_per_req}
