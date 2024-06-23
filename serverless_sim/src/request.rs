@@ -1,5 +1,5 @@
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, BorrowMut},
     cell::{Ref, RefMut},
     collections::{BTreeMap, HashMap, HashSet},
 };
@@ -334,21 +334,20 @@ impl Request {
 
 impl SimEnv {
     // 获取随机的 IAT 频率，用于模拟真实负载
-    fn get_random_frequency(avg_freq: f64, cv: f64) -> f64 {
+    fn get_random_frequency(&self, avg_freq: f64, cv: f64) -> f64 {
         // Calculate the standard deviation in terms of IAT
         let standard_deviation = avg_freq * cv;
         // Create a normal distribution with the given mean and standard deviation
         let normal = Normal::new(avg_freq, standard_deviation).unwrap();
 
-        loop {
-            // Generate a normally distributed IAT
-            let freq = normal.sample(&mut thread_rng());
-            // Ensure the IAT is greater than zero
+        // Generate a normally distributed IAT
+        for _ in 0..100 {
+            let freq = normal.sample(&mut *self.rander.borrow_mut());
             if freq > 0.0 {
-                // Return the inverse of IAT to get the frequency
                 return freq;
             }
         }
+        panic!("Too many tries to generate a random frequency")
     }
     // 生成请求
     pub fn req_sim_gen_requests(&self) {
@@ -359,7 +358,7 @@ impl SimEnv {
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
                 avg_frequency *= 100.0;
-                let random_frequency = Self::get_random_frequency(avg_frequency, cv);
+                let random_frequency = self.get_random_frequency(avg_frequency, cv);
                 let req_cnt = random_frequency.round() as usize;
 
                 total_req_cnt += req_cnt;

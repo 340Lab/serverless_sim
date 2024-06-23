@@ -470,3 +470,23 @@ impl SimEnv {
         *cur_frame += 1;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::call_python_script;
+
+    #[test]
+    fn test_python_res_consistency() {
+        for i in 0..20 {
+            let ran = 0.001 * i as f32;
+            let avg_freq = call_python_script("IAT", ran);
+            let cv = call_python_script("CV", ran);
+
+            let avg_freq2 = call_python_script("IAT", ran);
+            let cv2 = call_python_script("CV", ran);
+
+            assert!(avg_freq - avg_freq2 < 0.0001);
+            assert!(cv - cv2 < 0.0001);
+        }
+    }
+}
