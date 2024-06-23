@@ -76,10 +76,9 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
             return (None, true);
             //找到了，id为None，put成功
         }
-        let lsnode = ListNode::new(Some(key.clone()));
-        self.cache.insert(key.clone(), lsnode.clone());
-        self.move_to_head(lsnode.clone()); // 放在最上面
-        if self.cache.len() > self.capacity {
+
+        let mut res = (None, true);
+        if self.cache.len() == self.capacity {
             let mut back_node = self.tail.borrow().prev.clone().unwrap();
             while back_node.borrow().key.is_some() {
                 if can_be_evict(back_node.borrow().key.as_ref().unwrap()) {
@@ -87,18 +86,25 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
                     let key_to_remove = back_node.borrow().key.clone().unwrap();
                     self.cache.remove(&key_to_remove);
                     self.remove_node(back_node);
-                    return (Some(key_to_remove), true);
+                    res = (Some(key_to_remove), true);
+                    break;
                     //找到要删除的，返回id，put成功
                 } else {
                     let next_back_node = back_node.borrow().prev.clone().unwrap();
                     back_node = next_back_node;
                 }
             }
-            self.remove_node(lsnode);
-            self.cache.remove(&key);
-            return (None, false);
+            if res.0.is_none() {
+                return (None, false);
+            }
         }
-        (None, true)
+
+        // insert should happen after check
+        let lsnode = ListNode::new(Some(key.clone()));
+        self.cache.insert(key.clone(), lsnode.clone());
+        self.move_to_head(lsnode.clone()); // 放在最上面
+
+        res
     }
 
     //包括removeNode和别的删除
