@@ -127,8 +127,17 @@ pub mod graph {
     //     edges
     // }
 
+    // pub fn critical_path_common<N>(next_node: impl Fn() -> Option<N>) {
+    //     while let Some(n) = next_node() {
+
+    //     }
+    // }
+    // pub fn aoa_critical_path<N>(dag: &Dag<N, f32>) -> Vec<NodeIndex> {
+
+    // }
+
     /// Notive, for aoe graph, the critical path is the longest path
-    pub fn critical_path<N>(dag: &Dag<N, f32>) -> Vec<NodeIndex> {
+    pub fn aoe_critical_path<N>(dag: &Dag<N, f32>) -> Vec<NodeIndex> {
         // 求关键路径
         // 1. 求拓扑排序
         let mut walker = new_dag_walker(dag);

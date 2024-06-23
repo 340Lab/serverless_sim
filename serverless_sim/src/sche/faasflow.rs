@@ -94,7 +94,7 @@ impl FaasFlowScheduler {
         }
         //2.遍历收集关键路径
         let dag = env.dag(req.dag_i);
-        let critical_path_nodes = util::graph::critical_path(&dag.dag_inner);
+        let critical_path_nodes = util::graph::aoe_critical_path(&dag.dag_inner);
         log::info!("C");
         let mut cri_paths = vec![];
         for i in 0..critical_path_nodes.len() - 1 {

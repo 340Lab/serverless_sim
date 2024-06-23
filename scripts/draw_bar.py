@@ -21,26 +21,37 @@ class PackedRecord:
     time_per_req=0.0
     score=0.0
     rps=0.0
+    coldstart_time_per_req=0.0
+    waitsche_time_per_req=0.0
+    datarecv_time_per_req=0.0
+    exe_time_per_req=0.0
+    
     filename=""
 
     rand_seed=""
     request_freq=""
     dag_type=""
     cold_start=""
-    fn_type=""
     scale_num=""
     scale_down_exec=""
     scale_up_exec=""
+    fn_type=""
+    
 
     def __init__(self, raw_record):
-        if len(raw_record) != 6:
-            raise ValueError("The input list must contain exactly 6 elements.")
+        if len(raw_record) != 10:
+            raise ValueError("The input list must contain exactly 10 elements.")
         self.configstr = raw_record[0]
         self.cost_per_req = raw_record[1]
         self.time_per_req = raw_record[2]
         self.score = raw_record[3]
         self.rps = raw_record[4]
-        self.filename = raw_record[5]
+        self.coldstart_time_per_req=raw_record[5]
+        self.waitsche_time_per_req=raw_record[6]
+        self.datarecv_time_per_req=raw_record[7]
+        self.exe_time_per_req=raw_record[8]
+        self.filename = raw_record[9]
+        
 
         # compute sub values by config str
         self.parse_configstr()
@@ -158,6 +169,10 @@ def to_draw_meta(groups,conf):
             def spec_value(record):
                 cost_per_req=record.cost_per_req
                 time_per_req=record.time_per_req
+                waitsche_time_per_req =record.waitsche_time_per_req 
+                coldstart_time_per_req=record.coldstart_time_per_req
+                datarecv_time_per_req =record.datarecv_time_per_req 
+                exe_time_per_req=record.exe_time_per_req
                 # score=0.0
                 # rps=0.0
                 # record.

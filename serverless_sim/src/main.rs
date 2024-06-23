@@ -17,6 +17,7 @@ mod scale;
 mod sche;
 mod score;
 mod sim_env;
+mod sim_events;
 mod sim_loop;
 mod sim_run;
 mod sim_timer;

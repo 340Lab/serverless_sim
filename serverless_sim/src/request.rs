@@ -1,17 +1,19 @@
 use std::{
     borrow::Borrow,
     cell::{Ref, RefMut},
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
 };
 
-use daggy::petgraph::visit::Topo;
+use daggy::{petgraph::visit::Topo, Dag};
 use rand::thread_rng;
 use rand_distr::{Distribution, Normal};
 
 use crate::{
     fn_dag::{DagId, EnvFnExt, FnId},
+    metric,
     node::NodeId,
     sim_env::SimEnv,
+    util,
     with_env_sub::WithEnvCore,
     REQUEST_GEN_FRAME_INTERVAL,
 };
@@ -32,6 +34,15 @@ pub type ReqId = usize;
 //     pub fn_node: HashMap<FnId, NodeId>,
 // }
 
+#[derive(Clone, Debug)]
+pub struct ReqFnMetric {
+    pub ready_sche_time: Option<usize>,
+    pub sche_time: Option<usize>, // sche_time maybe ahead of ready_sche_time
+    pub data_recv_done_time: Option<usize>, // data begin when scheduled & ready_sche
+    pub cold_start_done_time: Option<usize>, // cold begin when scheduled
+    pub fn_done_time: Option<usize>, // exec begin when data and cold start done
+}
+
 #[derive(Clone)]
 pub struct Request {
     /// 请求id
@@ -42,6 +53,8 @@ pub struct Request {
 
     /// 函数节点被调度到的机器节点
     pub fn_node: HashMap<FnId, NodeId>,
+
+    pub fn_metric: HashMap<FnId, ReqFnMetric>,
 
     /// 完成执行的函数节点，时间
     pub done_fns: HashMap<FnId, usize>,
@@ -62,9 +75,141 @@ pub struct Request {
 
     // fnid-(predict_time, scheduled_prev_fns_cnt, prev_fns_cnt)
     pub fn_predict_prevs_done_time: HashMap<FnId, (f32, usize, usize)>,
+
+    // initalize when fisrt time get metric
+    wait_cold_start_time: Option<usize>,
+
+    wait_sche_time: Option<usize>,
+
+    data_recv_time: Option<usize>,
+
+    exe_time: Option<usize>,
 }
 
 impl Request {
+    fn fn_latency_unwrap(&self, f: FnId) -> usize {
+        let fnmetric = self.fn_metric.get(&f).unwrap();
+        fnmetric.fn_done_time.unwrap() - fnmetric.ready_sche_time.unwrap()
+    }
+    fn init_metrics(&mut self, env: &SimEnv) {
+        // find the final node
+        // // construct latency dag
+        let dag = env.dag(self.dag_i);
+        let mut walker = dag.new_dag_walker();
+        let mut endtime_fn = BTreeMap::new();
+        while let Some(fngi) = walker.next(&dag.dag_inner) {
+            let fnid = dag.dag_inner[fngi];
+            endtime_fn.insert(
+                self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
+                (
+                    self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
+                    fnid,
+                ),
+            );
+        }
+        let first = endtime_fn.iter().next().unwrap().1.clone().1;
+        let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
+        let mut recur_path = vec![cur.1];
+        loop {
+            if cur.1 == first {
+                break;
+            }
+            // use cur fn's begin time to get prev fn's end time
+            let prev: (usize, FnId) = endtime_fn.get(&(cur.0)).unwrap().clone();
+            recur_path.push(prev.1);
+            if prev.1 == first {
+                break;
+            }
+            cur = prev;
+        }
+        // let mut latency_dag: Dag<(FnId, bool), f32> = Dag::new();
+        // {
+        //     let mut latency_dag_map = HashMap::new();
+        //     while let Some(g_i) = walker.next(&dag.dag_inner) {
+        //         let fnid = dag.dag_inner[g_i];
+        //         let n = latency_dag.add_node((fnid, true));
+        //         let c =
+        //             latency_dag.add_child(n, self.fn_latency_unwrap(fnid) as f32, (fnid, false));
+        //         latency_dag_map.insert(fnid, c.1);
+        //         // connect n to parents
+        //         for p in env.func(fnid).parent_fns(env) {
+        //             let p_graph_i = latency_dag_map.get(&p).unwrap();
+        //             latency_dag.add_edge(*p_graph_i, n, 0.0).unwrap();
+        //         }
+        //     }
+        // }
+
+        // let critical_path = util::graph::aoe_critical_path(&latency_dag);
+        // assert!(critical_path.len() % 2 == 0);
+        let mut wait_cold_start_time = 0;
+        let mut wait_sche_time = 0;
+        let mut data_recv_time = 0;
+        let mut exe_time = 0;
+
+        for fnid in recur_path {
+            // let fnid = *self.done_fns.iter().next().unwrap().0;
+            let metric = self.fn_metric.get(&fnid).unwrap();
+            // for n in critical_path.iter().step_by(2) {
+            // let (fnid, begin) = latency_dag[*n];
+            // assert!(begin);
+            let sche_time = metric.sche_time.unwrap();
+            let ready_sche_time = metric.ready_sche_time.unwrap();
+            let cold_start_done_time =
+                if let Some(cold_start_done_time) = metric.cold_start_done_time {
+                    cold_start_done_time
+                } else {
+                    sche_time.max(ready_sche_time)
+                };
+            let data_done_time = if let Some(data_recv_done_time) = metric.data_recv_done_time {
+                data_recv_done_time
+            } else {
+                cold_start_done_time
+            };
+            let fn_done_time = metric.fn_done_time.unwrap();
+
+            // println!(
+            //     "accumulated {} {} {} {}",
+            //     if sche_time > ready_sche_time {
+            //         sche_time - ready_sche_time
+            //     } else {
+            //         0
+            //     },
+            //     cold_start_done_time - sche_time.max(ready_sche_time),
+            //     data_done_time - cold_start_done_time,
+            //     fn_done_time - data_done_time
+            // );
+            wait_sche_time += if sche_time > ready_sche_time {
+                sche_time - ready_sche_time
+            } else {
+                0
+            };
+            wait_cold_start_time += cold_start_done_time - sche_time.max(ready_sche_time);
+            data_recv_time += data_done_time - cold_start_done_time;
+            exe_time += fn_done_time - data_done_time;
+        }
+
+        // }
+        self.wait_cold_start_time = Some(wait_cold_start_time);
+        self.wait_sche_time = Some(wait_sche_time);
+        self.data_recv_time = Some(data_recv_time);
+        self.exe_time = Some(exe_time);
+    }
+    pub fn wait_cold_start_time(&mut self, env: &SimEnv) -> usize {
+        self.init_metrics(env);
+        self.wait_cold_start_time.unwrap()
+    }
+    pub fn wait_sche_time(&mut self, env: &SimEnv) -> usize {
+        self.init_metrics(env);
+        self.wait_sche_time.unwrap()
+    }
+    pub fn data_recv_time(&mut self, env: &SimEnv) -> usize {
+        self.init_metrics(env);
+        self.data_recv_time.unwrap()
+    }
+    pub fn exe_time(&mut self, env: &SimEnv) -> usize {
+        self.init_metrics(env);
+        self.exe_time.unwrap()
+    }
     // pub fn new_from_plan(env: &SimEnv, plan: RequestPlan) -> Self {
     //     Self {
     //         /// 请求id
@@ -87,6 +232,34 @@ impl Request {
             cur_frame_done: HashSet::new(),
             walk_cnt: 0,
             fn_predict_prevs_done_time: HashMap::new(),
+            fn_metric: {
+                let dag = env.dag(dag_i);
+                let mut walker = dag.new_dag_walker();
+                let mut map = HashMap::new();
+                while let Some(fngi) = walker.next(&dag.dag_inner) {
+                    let ready_sche_time =
+                        if env.func(dag.dag_inner[fngi]).parent_fns(env).is_empty() {
+                            Some(begin_frame)
+                        } else {
+                            None
+                        };
+                    map.insert(
+                        dag.dag_inner[fngi],
+                        ReqFnMetric {
+                            ready_sche_time,
+                            sche_time: None,
+                            data_recv_done_time: None,
+                            cold_start_done_time: None,
+                            fn_done_time: None,
+                        },
+                    );
+                }
+                map
+            },
+            wait_cold_start_time: None,
+            wait_sche_time: None,
+            data_recv_time: None,
+            exe_time: None,
         };
         // new.prepare_next_fn_2_bind_node(&env.dags.borrow()[dag_i].dag);
         // {
@@ -146,6 +319,8 @@ impl Request {
         if self.is_done(env) {
             self.end_frame = current_frame;
         }
+
+        env.on_task_done(self, fnid);
     }
     // 返回请求对应DAG中节点（函数）的数量
     pub fn fn_count(&self, env: &impl WithEnvCore) -> usize {
@@ -272,5 +447,79 @@ impl SimEnv {
             map.get_mut(&i)
                 .unwrap_or_else(|| panic!("request {} not found", i))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env::set_var;
+
+    use crate::{
+        config::Config,
+        fn_dag::{EnvFnExt, FnDAG},
+        request::Request,
+        sim_env::{self, SimEnv},
+    };
+
+    #[test]
+    fn test_request_metric() {
+        let mut config = Config::new_test();
+        // config.dag_type = "dag".to_owned();
+        let sim_env = SimEnv::new(config);
+        sim_env.core.dags_mut()[0] = FnDAG::instance_map_reduce(0, &sim_env, 4);
+        let dag = sim_env.dag(0);
+
+        sim_env
+            .core
+            .requests_mut()
+            .insert(0, Request::new(&sim_env, 0, 0));
+        let mut req = sim_env.request_mut(0);
+
+        let mut walker = dag.new_dag_walker();
+        let mut walk_step = 0;
+        while let Some(fngid) = walker.next(&dag.dag_inner) {
+            let fnid = dag.dag_inner[fngid];
+            let fnmetric = req.fn_metric.get_mut(&fnid).unwrap();
+            if walk_step == 0 {
+                // the first
+                fnmetric.ready_sche_time = Some(0);
+                fnmetric.sche_time = Some(0);
+                fnmetric.fn_done_time = Some(5);
+            } else if walk_step == 5 {
+                // the last
+                fnmetric.ready_sche_time = Some(10);
+                fnmetric.sche_time = Some(11);
+                fnmetric.fn_done_time = Some(15);
+            } else {
+                if walk_step == 2 {
+                    fnmetric.ready_sche_time = Some(5);
+                    fnmetric.sche_time = Some(5);
+                    fnmetric.fn_done_time = Some(10);
+                } else {
+                    fnmetric.ready_sche_time = Some(5);
+                    fnmetric.sche_time = Some(4);
+                    fnmetric.fn_done_time = Some(8);
+                }
+            }
+            walk_step += 1;
+        }
+        // println!("fn meteic:{:?}", req.fn_metric);
+        req.init_metrics(&sim_env);
+
+        assert_eq!(req.exe_time.unwrap(), 14);
+        assert_eq!(req.wait_sche_time.unwrap(), 1);
+        // let dag = sim_env.dag(0);
+        // println!("dag node cnt: {}", dag.dag_inner.node_count());
+    }
+    // run dag for 100 frames
+    #[test]
+    fn run_dag_30_frame() {
+        set_var("RUST_LOG", "debug,error,warn,info");
+        let _ = env_logger::builder().is_test(true).try_init();
+        let mut config = Config::new_test();
+        config.dag_type = "dag".to_owned();
+        config.total_frame = 30;
+        let mut sim_env = SimEnv::new(config);
+        sim_env.step(0);
     }
 }
