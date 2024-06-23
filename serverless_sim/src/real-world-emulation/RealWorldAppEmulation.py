@@ -39,7 +39,7 @@ def getRandAvgIAT(rng):
     IATCDFFile = os.path.join(os.path.dirname(__file__),'CDFs','invokesCDF.csv')
     invokeTime = utils.getRandValueRefByCDF(IATCDFFile, rng)
     IAT = invokeTime / SECONDS_OF_A_DAY 
-    return IAT * 1000
+    return IAT
 
 # get random cv according to the CSV
 def getRandCV(rng):
