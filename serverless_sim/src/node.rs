@@ -566,7 +566,7 @@ impl Node {
 
             if let Some(mut fncon) = self.container_mut(fnid) {
                 //6.14新增任务
-                self.lru.borrow_mut().get(fnid);
+                self.lru.borrow_mut().get(fnid).unwrap();
                 // add to container
                 fncon.req_fn_state.insert(
                     req_id,

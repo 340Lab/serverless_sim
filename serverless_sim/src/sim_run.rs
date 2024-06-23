@@ -117,8 +117,8 @@ impl SimEnv {
         //     panic!("Node {} suppose to have fn {} container.", nodeid, fnid);
         // })
         self.node_mut(nodeid).add_task(req.req_id, fnid);
-
         req.fn_node.insert(fnid, nodeid);
+        self.on_task_scheduled(req, fnid, nodeid);
     }
 
     // 模拟两个节点之间的数据传输过程
@@ -156,7 +156,7 @@ impl SimEnv {
                 .data_recv
                 .get_mut(&from)
                 .unwrap();
-            if *all < *recved {
+            if *all <= *recved {
                 // 该数据已经传输完毕
                 log::info!(
                     "data from {from} to {to} for req{} fn{} has been transfered",
@@ -166,6 +166,9 @@ impl SimEnv {
             } else {
                 // 没处理完毕则根据带宽进行模拟传输
                 *recved += each_path_bandwith;
+                if *all <= *recved {
+                    self.on_task_data_recved(t.req_id, t.fn_id);
+                }
             }
         };
 
@@ -268,7 +271,7 @@ impl SimEnv {
         let container_cpu_used = cpu_for_one_task.min(self.func(fnid).cold_start_container_cpu_use);
         fc.set_cpu_use_rate(cpu_for_one_task, container_cpu_used);
 
-        fc.starting_left_frame_move_on();
+        fc.starting_left_frame_move_on(self);
     }
 
     fn sim_compute_container_running(

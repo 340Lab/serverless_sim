@@ -142,6 +142,12 @@ pub struct Func {
 }
 
 impl Func {
+    pub fn sub_fns(&self, env: &impl EnvFnExt) -> Vec<FnId> {
+        let dag = env.dag_inner(self.dag_id);
+        let ps = dag.children(self.graph_i);
+        ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
+    }
+
     pub fn parent_fns(&self, env: &impl EnvFnExt) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.parents(self.graph_i);
@@ -277,18 +283,24 @@ impl FnContainer {
         }
     }
 
-    pub fn starting_left_frame_move_on(&mut self) {
+    pub fn starting_left_frame_move_on(&mut self, env: &SimEnv) {
+        let mut to_running = false;
         match self.state {
             FnContainerState::Starting { ref mut left_frame } => {
                 *left_frame -= 1;
                 if *left_frame == 0 {
-                    drop(left_frame);
-                    self.state = FnContainerState::Running;
+                    // drop(left_frame);
+
+                    to_running = true;
                 }
             }
             _ => {
                 panic!("not starting")
             }
+        }
+        if to_running {
+            self.state = FnContainerState::Running;
+            env.on_fnins_cold_started(self);
         }
     }
 
