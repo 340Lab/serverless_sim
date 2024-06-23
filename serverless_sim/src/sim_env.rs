@@ -277,7 +277,6 @@ pub struct SimEnv {
     // pub mechanisms: SimEnvMechanisms,
     // pub new_mech: MechanismImpl,
     pub master_mech_not_running: bool,
-    pub lru: LRUCache<FnId>,
     pub mech_caller: mpsc::Sender<MechScheduleOnce>,
 }
 
@@ -322,7 +321,6 @@ impl SimEnv {
             recent_use_time,
             rander: RefCell::new(Seeder::from(&*config.rand_seed).make_rng()),
             timers: HashMap::new().into(),
-            lru: LRUCache::new(8),
             mech_caller: mechanism_thread::spawn(config.new_mec().unwrap()),
         };
 

@@ -36,6 +36,7 @@ class PackedRecord:
     scale_down_exec=""
     scale_up_exec=""
     fn_type=""
+    instance_cache_policy=""
     
 
     def __init__(self, raw_record):
@@ -64,7 +65,8 @@ class PackedRecord:
             (r'\.cs(\w+)\.', 'cold_start'),
             (r'\.ft(\w+)\.', 'fn_type'),
             (r'\.scl\(([^)]+)\)\(([^)]+)\)\(([^)]+)\)\.', 'scale_num', 'scale_down_exec', 'scale_up_exec'),
-            (r'\.scd\(([^)]+)\)', 'sche')
+            (r'\.scd\(([^)]+)\)', 'sche'),
+            (r'\.ic\(([^)]+)\)', 'instance_cache_policy')
         ]
 
         for pattern, *keys in config_patterns:
@@ -225,7 +227,7 @@ def draw_with_draw_meta(drawmeta,conf):
     opacity = 0.4
     error_config = {'ecolor': '0.3'}
     patterns = ('x', '\\', '*', 'o', '.','O')
-    colors=["#FC6B05","#FFB62B","#65B017","#99D8DB","#9BB7BB"]
+    colors=["#FC6B05","#FFB62B","#65B017","#99D8DB","#9BB7BB","#32CD32","#228B22","#8A2BE2"]
     
     plotidx=0
     for plot in plots:

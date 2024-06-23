@@ -1,5 +1,7 @@
 use std::{cell::RefCell, cmp::Eq, collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
 
+use super::InstanceCachePolicy;
+
 // 双向链表节点
 pub struct ListNode<Payload> {
     key: Option<Payload>, // None when dummy
@@ -30,28 +32,8 @@ pub struct LRUCache<Payload: Eq + Hash + Clone + Debug> {
     // dummy: Rc<RefCell<ListNode<Payload>>>,
 }
 
-unsafe impl<Payload: Eq + Hash + Clone + Debug> Send for LRUCache<Payload> {}
-
-impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
-    pub fn new(capacity: usize) -> Self {
-        // let dummy = ListNode::new(None);
-        // dummy.borrow_mut().prev = Some(dummy.clone());
-        // dummy.borrow_mut().next = Some(dummy.clone());
-        let head = ListNode::new(None);
-        let tail = ListNode::new(None);
-        //let head_borrow_mut = head.borrow_mut();
-        //let tail_borrow_mut = tail.borrow_mut();
-        head.borrow_mut().next = Some(tail.clone());
-        tail.borrow_mut().prev = Some(head.clone());
-        LRUCache {
-            capacity,
-            cache: HashMap::new(),
-            head,
-            tail,
-            // dummy,
-        }
-    }
-    pub fn get(&mut self, key: Payload) -> Option<Payload> {
+impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for LRUCache<Payload> {
+    fn get(&mut self, key: Payload) -> Option<Payload> {
         if let Some(rc_node) = self.cache.get(&key) {
             let node: Rc<RefCell<ListNode<Payload>>> = rc_node.clone();
             //let value = Some(node.borrow().value.clone());
@@ -63,10 +45,10 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
     }
 
     // return Some(payload) if one is evcited
-    pub fn put(
+    fn put(
         &mut self,
         key: Payload,
-        mut can_be_evict: impl FnMut(&Payload) -> bool,
+        mut can_be_evict: Box<dyn FnMut(&Payload) -> bool>,
     ) -> (Option<Payload>, bool) {
         if self.cache.contains_key(&key) {
             let listnode = self.cache.get(&key).unwrap().clone();
@@ -107,20 +89,43 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
         res
     }
 
-    //包括removeNode和别的删除
-    // pub fn removeAll(&mut self, fnid: FnId) {
-    //     self.removeNode(self.get(fnid));
-    //     self.cache.remove(node.borrow().key.as_ref().unwrap());
-    // }
-
     /// 从 LRU 缓存中删除一个节点
-    pub fn remove_all(&mut self, key: &Payload) -> bool {
+    fn remove_all(&mut self, key: &Payload) -> bool {
         if let Some(node) = self.cache.remove(key) {
             self.remove_node(node);
             return true;
         }
         false
     }
+}
+
+unsafe impl<Payload: Eq + Hash + Clone + Debug> Send for LRUCache<Payload> {}
+
+impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
+    pub fn new(capacity: usize) -> Self {
+        // let dummy = ListNode::new(None);
+        // dummy.borrow_mut().prev = Some(dummy.clone());
+        // dummy.borrow_mut().next = Some(dummy.clone());
+        let head = ListNode::new(None);
+        let tail = ListNode::new(None);
+        //let head_borrow_mut = head.borrow_mut();
+        //let tail_borrow_mut = tail.borrow_mut();
+        head.borrow_mut().next = Some(tail.clone());
+        tail.borrow_mut().prev = Some(head.clone());
+        LRUCache {
+            capacity,
+            cache: HashMap::new(),
+            head,
+            tail,
+            // dummy,
+        }
+    }
+
+    //包括removeNode和别的删除
+    // pub fn removeAll(&mut self, fnid: FnId) {
+    //     self.removeNode(self.get(fnid));
+    //     self.cache.remove(node.borrow().key.as_ref().unwrap());
+    // }
 
     fn move_to_head(&mut self, node: Rc<RefCell<ListNode<Payload>>>) {
         let next = self.head.borrow().next.clone();

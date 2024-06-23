@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::mechanism::{
-    FILTER_NAMES, MECH_NAMES, SCALE_DOWN_EXEC_NAMES, SCALE_NUM_NAMES, SCALE_UP_EXEC_NAMES,
-    SCHE_NAMES,
+use crate::{
+    cache::InstanceCachePolicy,
+    fn_dag::FnId,
+    mechanism::{
+        FILTER_NAMES, INSTANCE_LIVE_NAMES, MECH_NAMES, SCALE_DOWN_EXEC_NAMES, SCALE_NUM_NAMES,
+        SCALE_UP_EXEC_NAMES, SCHE_NAMES,
+    },
 };
 use std::{collections::HashMap, fs::File};
 
@@ -28,6 +32,10 @@ impl ModuleMechConf {
             sche: SCHE_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
             mech_type: MECH_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
             filter: FILTER_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
+            instance_cache_policy: INSTANCE_LIVE_NAMES
+                .iter()
+                .map(|v| (v.to_string(), None))
+                .collect(),
         })
     }
     ///将结构体中的配置数据导出为一个JSON文件
@@ -91,6 +99,7 @@ pub struct MechConfig {
     pub scale_up_exec: HashMap<String, Option<String>>,
     pub sche: HashMap<String, Option<String>>,
     pub filter: HashMap<String, Option<String>>,
+    pub instance_cache_policy: HashMap<String, Option<String>>,
 }
 
 impl MechConfig {
@@ -180,6 +189,20 @@ impl MechConfig {
                     )
                 })
                 .collect(),
+            instance_cache_policy: INSTANCE_LIVE_NAMES
+                .iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (
+                        v.to_string(),
+                        if *v == "lru" {
+                            Some("".to_string())
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect(),
         }
     }
     pub fn mech_type(&self) -> (String, String) {
@@ -190,6 +213,40 @@ impl MechConfig {
             .next()
             .unwrap()
     }
+
+    pub fn new_instance_cache_policy(&self) -> Box<dyn InstanceCachePolicy<FnId>> {
+        let (policy, arg) = self.instance_cache_policy_conf();
+        match &*policy {
+            "lru" => {
+                let limit = arg
+                    .parse::<usize>()
+                    .expect("Please offer lru cache policy arg");
+                Box::new(crate::cache::lru::LRUCache::new(limit))
+            }
+            "no_evict" => Box::new(crate::cache::no_evict::NoEvict::new()),
+            _ => panic!("new_instance_cache_policy"),
+        }
+    }
+
+    pub fn instance_cache_policy_conf(&self) -> (String, String) {
+        self.instance_cache_policy
+            .iter()
+            .filter(|(_k, v)| v.is_some())
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    v.clone().unwrap_or_else(|| {
+                        panic!(
+                            "instance_cache_policy_conf {:?}",
+                            self.instance_cache_policy
+                        )
+                    }),
+                )
+            })
+            .next()
+            .expect("cache policy config not offered")
+    }
+
     // return (name,attr)
     pub fn scale_num_conf(&self) -> (String, String) {
         self.scale_num

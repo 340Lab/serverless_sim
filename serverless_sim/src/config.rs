@@ -1,9 +1,4 @@
-
-
-
-
 use serde::{Deserialize, Serialize};
-
 
 use crate::mechanism_conf::MechConfig;
 
@@ -167,8 +162,9 @@ impl Config {
         let scdown = self.mech.scale_down_exec_conf();
         let scup = self.mech.scale_up_exec_conf();
         let sche = self.mech.sche_conf();
+        let ins_cache = self.mech.instance_cache_policy_conf();
         format!(
-            "sd{}.rf{}.dt{}.cs{}.ft{}.scl({},{})({},{})({},{}).scd({},{})",
+            "sd{}.rf{}.dt{}.cs{}.ft{}.scl({},{})({},{})({},{}).scd({},{}).ic({},{})",
             self.rand_seed,
             self.request_freq,
             self.dag_type,
@@ -181,7 +177,9 @@ impl Config {
             scup.0,
             scup.1,
             sche.0,
-            sche.1
+            sche.1,
+            ins_cache.0,
+            ins_cache.1
         )
     }
 }

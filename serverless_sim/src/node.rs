@@ -1,9 +1,7 @@
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    cmp::Ordering,
-    collections::{BTreeSet, HashMap, HashSet},
-};
-
+use crate::cache::no_evict::NoEvict;
+use crate::cache::InstanceCachePolicy;
+use crate::config::Config;
+use crate::with_env_sub::WithEnvHelp;
 use crate::{
     cache::lru::LRUCache,
     fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId, Func},
@@ -12,6 +10,12 @@ use crate::{
     sim_env::SimEnv,
     with_env_sub::WithEnvCore,
     NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
+};
+use std::ptr::NonNull;
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap, HashSet},
 };
 
 pub type NodeId = usize;
@@ -61,7 +65,7 @@ pub struct Node {
     pub frame_run_count: usize,
 
     //LRU置换策略
-    lru: RefCell<LRUCache<FnId>>,
+    instance_cache_policy: RefCell<Box<dyn InstanceCachePolicy<FnId>>>,
 }
 
 impl Clone for Node {
@@ -76,7 +80,9 @@ impl Clone for Node {
             last_frame_cpu: self.last_frame_cpu,
             last_frame_mem: self.last_frame_mem,
             frame_run_count: self.frame_run_count,
-            lru: RefCell::new(LRUCache::new(10)),
+
+            // never used, clone is for SimEnvObserve
+            instance_cache_policy: RefCell::new(Box::new(NoEvict::new())),
         }
     }
 }
@@ -280,7 +286,7 @@ impl Node {
     pub fn unready_mem(&self) -> f32 {
         *self.mem.borrow()
     }
-    fn new(node_id: NodeId) -> Self {
+    fn new(node_id: NodeId, config: &Config) -> Self {
         Self {
             node_id,
             rsc_limit: NodeRscLimit {
@@ -294,7 +300,7 @@ impl Node {
             frame_run_count: 0,
             pending_tasks: BTreeSet::new().into(),
             last_frame_mem: 0.0,
-            lru: RefCell::new(LRUCache::new(10)),
+            instance_cache_policy: RefCell::new(config.mech.new_instance_cache_policy()),
         }
     }
 
@@ -406,7 +412,7 @@ impl Node {
             return;
         };
 
-        let mut lrucache = self.lru.borrow_mut();
+        let mut lrucache = self.instance_cache_policy.borrow_mut();
         assert!(lrucache.remove_all(&fnid));
 
         env.core
@@ -498,13 +504,21 @@ impl Node {
             return;
         }
 
-        let (old, flag) = self.lru.borrow_mut().put(fnid, |to_replace| {
-            log::info!("节点{}要移除的容器{}", self.node_id, to_replace,);
-            for (_k, v) in self.fn_containers.borrow().iter() {
-                log::info!("{}", v.fn_id);
-            }
-            self.container(*to_replace).unwrap().is_idle()
-        });
+        let (old, flag) = unsafe {
+            let node = NonNull::new_unchecked(self as *const Node as *mut Node);
+            let (old, flag) = self.instance_cache_policy.borrow_mut().put(
+                fnid,
+                Box::new(move |to_replace| {
+                    let node = node.as_ref();
+                    log::info!("节点{}要移除的容器{}", node.node_id, to_replace,);
+                    for (_k, v) in node.fn_containers.borrow().iter() {
+                        log::info!("{}", v.fn_id);
+                    }
+                    node.container(*to_replace).unwrap().is_idle()
+                }),
+            );
+            (old, flag)
+        };
 
         // 可以增加该容器
         if flag {
@@ -546,7 +560,7 @@ impl Node {
                 // let lrunode = lrucache.cache.get(&fnid).unwrap().clone();
                 // lrucache.removeNode(lrunode);
                 // lrucache.cache.remove(&fnid);
-                let mut lrucache = self.lru.borrow_mut();
+                let mut lrucache = self.instance_cache_policy.borrow_mut();
                 assert!(lrucache.remove_all(&fnid));
             }
         }
@@ -565,8 +579,9 @@ impl Node {
             self.try_load_container(fnid, env);
 
             if let Some(mut fncon) = self.container_mut(fnid) {
-                //6.14新增任务
-                self.lru.borrow_mut().get(fnid).unwrap();
+                // Maybe it's not the first time to load this container
+                // So we need to warm it in the cache
+                self.instance_cache_policy.borrow_mut().get(fnid).unwrap();
                 // add to container
                 fncon.req_fn_state.insert(
                     req_id,
@@ -607,7 +622,7 @@ impl SimEnv {
     pub fn node_init_node_graph(&self) {
         // 初始化一个节点
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
-            let node = Node::new(node_id);
+            let node = Node::new(node_id, env.help().config());
             // let node_i = nodecnt;
             env.core.nodes_mut().push(node);
 
