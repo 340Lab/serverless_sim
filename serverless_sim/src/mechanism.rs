@@ -176,7 +176,7 @@ impl ConfigNewMec for Config {
                     "greedy",
                     "consistenthash",
                 ];
-                let allow_scale_num = vec!["no", "full_placement"];
+                let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["no"];
 
