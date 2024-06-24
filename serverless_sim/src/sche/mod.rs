@@ -1,3 +1,5 @@
+use bp_balance::BpBalanceScheduler;
+
 use crate::{config::Config, sim_run::Scheduler};
 
 use self::{
@@ -18,6 +20,8 @@ pub mod greedy;
 pub mod pass;
 pub mod pos;
 pub mod random;
+pub mod bp_balance;
+
 // pub mod rule_based;
 // pub mod time_aware;
 
@@ -45,6 +49,9 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "greedy" => {
             return Some(Box::new(GreedyScheduler::new()));
+        }
+        "bp_balance" => {
+            return Some(Box::new(BpBalanceScheduler::new()));
         }
         "consistenthash" => {
             return Some(Box::new(ConsistentHashScheduler::new()));

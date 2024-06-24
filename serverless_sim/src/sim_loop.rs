@@ -104,6 +104,7 @@ impl SimEnv {
                                     mech_run_ms,
                                     gap
                                 );
+                                self.help.algo_exc_time_mut().insert(self.current_frame(), mech_run_ms as usize);
                             }
 
                             self.master_mech_not_running = true;
