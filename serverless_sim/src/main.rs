@@ -49,7 +49,8 @@ async fn main() {
     network::start().await;
 }
 
-const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
+const REQUEST_GEN_FRAME_INTERVAL: usize = 1;
+// const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
 
 const NODE_SCORE_CPU_WEIGHT: f32 = 0.5;
 

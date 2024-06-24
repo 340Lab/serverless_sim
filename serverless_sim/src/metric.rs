@@ -203,9 +203,11 @@ const FRAME_IDX_REQ_WAIT_SCHE_TIME: usize = 9;
 const FRAME_IDX_REQ_WAIT_COLDSTART_TIME: usize = 10;
 const FRAME_IDX_REQ_DATA_RECV_TIME: usize = 11;
 const FRAME_IDX_REQ_EXE_TIME: usize = 12;
+const FRAME_IDX_ALGO_EXE_TIME: usize = 13;
+const FRAME_IDX_FNCONTAINER_COUNT: usize = 14;
 
 // the last + 1
-const FRAME_LEN: usize = 13;
+const FRAME_LEN: usize = 15;
 
 impl Records {
     pub fn new(mut key: String) -> Self {
@@ -268,6 +270,14 @@ impl Records {
         frame[FRAME_IDX_REQ_WAIT_COLDSTART_TIME] = sim_env.req_wait_coldstart_time_avg().into();
         frame[FRAME_IDX_REQ_DATA_RECV_TIME] = sim_env.req_data_recv_time_avg().into();
         frame[FRAME_IDX_REQ_EXE_TIME] = sim_env.req_exe_time_avg().into();
+        frame[FRAME_IDX_ALGO_EXE_TIME] = sim_env.help.avg_algo_exc_time().into();
+        frame[FRAME_IDX_FNCONTAINER_COUNT] = sim_env
+            .core
+            .nodes()
+            .iter()
+            .map(|n| n.fn_containers.borrow().len())
+            .sum::<usize>()
+            .into();
 
         self.frames.push(frame);
     }

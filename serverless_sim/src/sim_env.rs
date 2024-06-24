@@ -74,6 +74,8 @@ pub struct SimEnvHelperState {
     metric_record: RefCell<Records>,
     mech_metric: RefCell<MechMetric>,
     fn_call_frequency: RefCell<HashMap<DagId, (f64, f64)>>,
+    // key: frame_idx  value: exe_time
+    algo_exc_time: RefCell<HashMap<usize, usize>>,
 }
 
 impl Clone for SimEnvHelperState {
@@ -89,6 +91,7 @@ impl Clone for SimEnvHelperState {
             )),
             fn_call_frequency: self.fn_call_frequency.clone(),
             mech_metric: self.mech_metric.clone(),
+            algo_exc_time: self.algo_exc_time.clone(),
         }
     }
 }
@@ -137,6 +140,17 @@ impl SimEnvHelperState {
     }
     pub fn fn_call_frequency_mut<'a>(&'a self) -> RefMut<'a, HashMap<DagId, (f64, f64)>> {
         self.fn_call_frequency.borrow_mut()
+    }
+    pub fn algo_exc_time<'a>(&'a self) -> Ref<'a, HashMap<usize, usize>> {
+        self.algo_exc_time.borrow()
+    }
+    pub fn algo_exc_time_mut<'a>(&'a self) -> RefMut<'a, HashMap<usize, usize>> {
+        self.algo_exc_time.borrow_mut()
+    }
+    pub fn avg_algo_exc_time(&self) -> f64 {
+        let sum = self.algo_exc_time.borrow().values().sum::<usize>();
+        let count = self.algo_exc_time.borrow().len();
+        sum as f64 / count as f64
     }
 }
 
@@ -298,6 +312,7 @@ impl SimEnv {
                 config: config.clone(),
                 mech_metric: RefCell::new(MechMetric::new()),
                 fn_call_frequency: RefCell::new(HashMap::new()),
+                algo_exc_time: RefCell::new(HashMap::new()),
             },
             core: SimEnvCoreState {
                 node2node_graph: RefCell::new(Vec::new()),

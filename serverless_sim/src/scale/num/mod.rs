@@ -4,6 +4,7 @@ pub mod hpa;
 pub mod lass;
 pub mod no;
 pub mod temp_scaler;
+pub mod full_placement;
 
 use crate::{
     actions::ESActionWrapper,
@@ -14,7 +15,7 @@ use crate::{
 };
 
 
-use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, temp_scaler::TempScaleNum};
+use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, temp_scaler::TempScaleNum, full_placement::FpScaleNum};
 
 pub trait ScaleNum: Send {
     /// return target scale count
@@ -43,6 +44,9 @@ pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
         }
         "temp_scaler" => {
             return Some(Box::new(TempScaleNum::new()));
+        }
+        "full_placement" => {
+            return Some(Box::new(FpScaleNum::new()));
         }
         _ => {
             return None;
