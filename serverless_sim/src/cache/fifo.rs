@@ -3,16 +3,15 @@ use std::{cell::RefCell, cmp::Eq, collections::HashMap, fmt::Debug, hash::Hash, 
 use super::InstanceCachePolicy;
 use super::ListNode;
 
-// LRU缓存结构
-pub struct LRUCache<Payload: Eq + Hash + Clone + Debug> {
+// Fifo缓存结构
+pub struct FifoCache<Payload: Eq + Hash + Clone + Debug> {
     capacity: usize,
     cache: HashMap<Payload, Rc<RefCell<ListNode<Payload>>>>,
     head: Rc<RefCell<ListNode<Payload>>>,
     tail: Rc<RefCell<ListNode<Payload>>>,
-    // dummy: Rc<RefCell<ListNode<Payload>>>,
 }
 
-impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for LRUCache<Payload> {
+impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for FifoCache<Payload> {
     fn get(&mut self, key: Payload) -> Option<Payload> {
         if let Some(rc_node) = self.cache.get(&key) {
             let node: Rc<RefCell<ListNode<Payload>>> = rc_node.clone();
@@ -33,8 +32,6 @@ impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for LRUCac
         if self.cache.contains_key(&key) {
             let listnode = self.cache.get(&key).unwrap().clone();
             //listnode.borrow_mut().value = Some(value);
-            self.remove_node(listnode.clone());
-            self.move_to_head(listnode);
             return (None, true);
             //找到了，id为None，put成功
         }
@@ -69,7 +66,7 @@ impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for LRUCac
         res
     }
 
-    /// 从 LRU 缓存中删除一个节点
+    /// 从 Fifo 缓存中删除一个节点
     fn remove_all(&mut self, key: &Payload) -> bool {
         if let Some(node) = self.cache.remove(key) {
             self.remove_node(node);
@@ -79,25 +76,19 @@ impl<Payload: Eq + Hash + Clone + Debug> InstanceCachePolicy<Payload> for LRUCac
     }
 }
 
-unsafe impl<Payload: Eq + Hash + Clone + Debug> Send for LRUCache<Payload> {}
+unsafe impl<Payload: Eq + Hash + Clone + Debug> Send for FifoCache<Payload> {}
 
-impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
+impl<Payload: Eq + Hash + Clone + Debug> FifoCache<Payload> {
     pub fn new(capacity: usize) -> Self {
-        // let dummy = ListNode::new(None);
-        // dummy.borrow_mut().prev = Some(dummy.clone());
-        // dummy.borrow_mut().next = Some(dummy.clone());
         let head = ListNode::new(None);
         let tail = ListNode::new(None);
-        //let head_borrow_mut = head.borrow_mut();
-        //let tail_borrow_mut = tail.borrow_mut();
         head.borrow_mut().next = Some(tail.clone());
         tail.borrow_mut().prev = Some(head.clone());
-        LRUCache {
+        FifoCache {
             capacity,
             cache: HashMap::new(),
             head,
             tail,
-            // dummy,
         }
     }
 
@@ -152,69 +143,74 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    // 测试LRU缓存的基本插入和获取功能
+    // 测试用例开始
     #[test]
-    fn test_lru_cache_basic_operations() {
-        let mut cache = LRUCache::new(3);
-        let keys = vec![1, 2, 3];
-        for key in &keys {
-            assert_eq!(cache.put(key.clone(), Box::new(|_| true)), (None, true));
-        }
-        for key in &keys {
-            assert_eq!(cache.get(key.clone()), Some(key.clone()));
-        }
+    fn test_fifo_cache_put_get() {
+        let mut cache = FifoCache::<usize>::new(3); // 创建一个容量为3的FifoCache
+
+        // 测试put操作
+        assert_eq!(cache.put(1, Box::new(|_| true)), (None, true));
+        assert_eq!(cache.put(2, Box::new(|_| true)), (None, true));
+        assert_eq!(cache.put(3, Box::new(|_| true)), (None, true));
+
+        // 当缓存已满时再put应该导致最老的元素被移除
+        assert_eq!(cache.put(4, Box::new(|_| true)), ((Some(1), true)));
+
+        // 测试get操作
+        assert_eq!(cache.get(2), Some(2)); // 应该找到元素2
+        assert_eq!(cache.get(5), None); // 不应该找到元素5
+
+        // 再次put一个新元素，应该移除最老的元素
+        assert_eq!(cache.put(5, Box::new(|_| true)), ((Some(3), true)));
     }
 
-    // 测试缓存容量限制和逐出策略
     #[test]
-    fn test_lru_cache_capacity_limit() {
-        let mut cache = LRUCache::new(3);
-        let keys = vec![1, 2, 3, 4, 5];
-        let expected_evictions = vec![None, None, None, Some(1), Some(2)];
-        for (i, key) in keys.into_iter().enumerate() {
-            assert_eq!(
-                cache.put(key, Box::new(|_| true)),
-                (expected_evictions[i], true)
-            );
-        }
-        // 确认缓存中剩余的元素
-        cache.cmp_list(vec![5, 4, 3]);
+    fn test_fifo_cache_remove_all() {
+        let mut cache = FifoCache::<usize>::new(5); // 创建一个容量为5的FifoCache
+
+        // 插入一些元素
+        cache.put(1, Box::new(|_| true)).0;
+        cache.put(2, Box::new(|_| true)).0;
+        cache.put(3, Box::new(|_| true)).0;
+        cache.put(4, Box::new(|_| true)).0;
+
+        // 删除一个存在的元素
+        assert_eq!(cache.remove_all(&2), true);
+        // 尝试删除一个不存在的元素
+        assert_eq!(cache.remove_all(&6), false);
     }
 
-    // 测试缓存中元素的删除
     #[test]
-    fn test_lru_cache_remove() {
-        let mut cache = LRUCache::new(3);
-        let keys = vec![1, 2, 3];
-        for key in &keys {
-            cache.put(key.clone(), Box::new(|_| true)).0;
-        }
-        assert!(cache.remove_all(&2));
-        cache.cmp_list(vec![3, 1]);
+    fn test_fifo_cache_eviction_policy() {
+        let mut cache = FifoCache::<usize>::new(2); // 创建一个容量为2的FifoCache
+
+        // 插入三个元素，第三个元素应导致第一个被驱逐
+        cache.put(1, Box::new(|_| true)).0;
+        cache.put(2, Box::new(|_| true)).0;
+        cache.put(3, Box::new(|_| true)).0;
+
+        // 确认第一个元素已被驱逐
+        assert_eq!(cache.get(1), None);
+
+        // 确认后两个元素还在
+        assert_eq!(cache.get(2), Some(2));
+        assert_eq!(cache.get(3), Some(3));
     }
 
-    // 测试缓存的遍历和顺序
     #[test]
-    fn test_lru_cache_order() {
-        let mut cache = LRUCache::new(3);
-        let keys = vec![1, 2, 3];
-        for key in &keys {
-            cache.put(key.clone(), Box::new(|_| true)).0;
-        }
-        // 访问中间的元素，以改变其位置
-        cache.get(2);
-        cache.cmp_list(vec![2, 3, 1]);
-    }
+    fn test_fifo_cache_list_integrity() {
+        let mut cache = FifoCache::<usize>::new(3); // 创建一个容量为3的FifoCache
 
-    // 测试缓存的遍历打印
-    #[test]
-    fn test_lru_cache_print() {
-        let mut cache = LRUCache::new(3);
-        let keys = vec![1, 2, 3];
-        for key in &keys {
-            cache.put(key.clone(), Box::new(|_| true)).0;
-        }
-        cache.print_list();
-        // 这个测试主要是为了观察输出，实际上没有断言
+        // 插入元素
+        cache.put(1, Box::new(|_| true)).0;
+        cache.put(2, Box::new(|_| true)).0;
+        cache.put(3, Box::new(|_| true)).0;
+
+        // 验证链表顺序
+        cache.cmp_list(vec![3, 2, 1]);
+
+        // 再插入一个元素导致第一个被驱逐
+        cache.put(4, Box::new(|_| true)).0;
+        cache.cmp_list(vec![4, 3, 2]);
     }
 }
