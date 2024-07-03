@@ -25,7 +25,11 @@ class ProxyEnv3:
         # /// "ai", "lass", "hpa", "es"
         "rand_seed": "",
         "request_freq": "low",
+
+        # "dag_type": "mix",
+        # "dag_type": "dag",
         "dag_type": "single",
+        
         "cold_start": "high",
         "fn_type": "cpu",
         "no_log": False,
