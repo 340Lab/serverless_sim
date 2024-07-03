@@ -1,3 +1,5 @@
+use thread_priority::{set_current_thread_priority, ThreadPriority};
+
 use crate::{
     actions::ESActionWrapper,
     mechanism::SimEnvObserve,
@@ -7,7 +9,7 @@ use crate::{
     with_env_sub::WithEnvHelp,
 };
 
-use std::sync::mpsc::{self, Receiver};
+use std::{sync::mpsc::{self, Receiver}, thread::sleep, time::Duration};
 
 impl SimEnv {
     fn one_frame(&mut self) {
@@ -34,6 +36,10 @@ impl SimEnv {
         mut hook_algo_begin: Option<Box<dyn FnMut(&SimEnv) + 'static>>,
         mut hook_algo_end: Option<Box<dyn FnMut(&SimEnv) + 'static>>,
     ) -> (f32, String) {
+        // 尝试设置当前线程的优先级
+        if let Err(e) = set_current_thread_priority(ThreadPriority::Min) {
+            eprintln!("设置线程优先级失败: {:?}", e);
+        }
         self.avoid_gc();
         let mut master_mech_resp_rx: Option<Receiver<MechScheduleOnceRes>> = None;
         let mut frame_when_master_mech_begin = 0;
@@ -134,6 +140,8 @@ impl SimEnv {
                 self.reset();
                 break;
             }
+            // 每帧跑完休息50ms
+            sleep(Duration::from_millis(50));
         }
 
         // state should has prompt info for next action

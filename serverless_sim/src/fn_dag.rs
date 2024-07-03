@@ -475,7 +475,29 @@ impl SimEnv {
                 let dag = FnDAG::instance_single_fn(dag_i, env);
                 env.core.dags_mut().push(dag);
             }
-        } else {
+        }
+        // 跑指标2的实验用
+        else if self.help.config().dag_type_mix() {
+            for _ in 0..50 {
+                // 随机确定每个图中节点的数量
+                let mapcnt = env.env_rand_i(2, 5); //2-4
+                let dag_i = env.core.dags().len();
+
+                // 创建一个复杂DAG实例
+                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
+
+                env.core.dags_mut().push(dag);
+            }
+            for _ in 0..50 {
+                let dag_i = env.core.dags().len();
+
+                // 创建一个简单DAG实例
+                let dag = FnDAG::instance_single_fn(dag_i, env);
+                env.core.dags_mut().push(dag);
+            }
+        }
+        else {
             panic!("not support dag type {}", self.help.config().dag_type);
         }
     }

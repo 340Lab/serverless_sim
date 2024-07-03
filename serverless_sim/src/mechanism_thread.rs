@@ -1,4 +1,6 @@
 use std::sync::mpsc;
+use std::thread;
+use thread_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::actions::ESActionWrapper;
 use crate::mechanism::{DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd};
@@ -30,6 +32,11 @@ pub enum MechScheduleOnceRes {
 pub fn spawn(mech: MechanismImpl) -> mpsc::Sender<MechScheduleOnce> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
+        // 尝试设置当前线程的优先级
+        if let Err(e) = set_current_thread_priority(ThreadPriority::Max) {
+            eprintln!("设置线程优先级失败: {:?}", e);
+        }
+
         mechanism_loop(rx, mech);
     });
     tx
