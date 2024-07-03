@@ -11,6 +11,8 @@ use self::{
     pass::PassScheduler,
     pos::PosScheduler,
     random::RandomScheduler,
+    hash::HashScheduler,
+    rotate::RotateScheduler,
 };
 
 pub mod consistenthash;
@@ -21,6 +23,8 @@ pub mod pass;
 pub mod pos;
 pub mod random;
 pub mod bp_balance;
+pub mod hash;
+pub mod rotate;
 
 // pub mod rule_based;
 // pub mod time_aware;
@@ -55,7 +59,13 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "consistenthash" => {
             return Some(Box::new(ConsistentHashScheduler::new()));
-        }
+        },
+        "hash" => {
+            return Some(Box::new(HashScheduler::new()));
+        },
+        "rotate" => {
+            return Some(Box::new(RotateScheduler::new()));
+        },
         _ => {
             return None;
         }

@@ -81,7 +81,9 @@ impl<S: SameTarget> CheckDup for Vec<S> {
     }
 }
 
-pub const SCHE_NAMES: [&'static str; 9] = [
+pub const SCHE_NAMES: [&'static str; 10] = [
+    "rotate",
+    "hash",
     "bp_balance",
     "faasflow",
     "pass",
@@ -89,7 +91,6 @@ pub const SCHE_NAMES: [&'static str; 9] = [
     "fnsche",
     "random",
     "greedy",
-    "bp_balance",
     "consistenthash", // "gofs",
                       // "load_least",
                       // "random",
@@ -175,6 +176,8 @@ impl ConfigNewMec for Config {
                     "random",
                     "greedy",
                     "consistenthash",
+                    "hash", 
+                    "rotate"
                 ];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
@@ -191,7 +194,7 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_separated" => {
-                let allow_sche = vec!["random", "greedy"];
+                let allow_sche = vec!["random", "greedy", "hash", "rotate"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
@@ -207,7 +210,7 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos", "bp_balance"];
+                let allow_sche = vec!["pos", "bp_balance", "hash", "rotate"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];

@@ -190,21 +190,21 @@ pub struct Records {
     pub frames: Vec<Vec<serde_json::Value>>,
 }
 
-const FRAME_IDX_FRAME: usize = 0;
-const FRAME_IDX_RUNNING_REQS: usize = 1;
-const FRAME_IDX_NODES: usize = 2;
-const FRAME_IDX_REQ_DONE_TIME_AVG: usize = 3;
-const FRAME_IDX_REQ_DONE_TIME_STD: usize = 4;
-const FRAME_IDX_REQ_DONE_TIME_AVG_90P: usize = 5;
-const FRAME_IDX_COST: usize = 6;
-const FRAME_IDX_SCORE: usize = 7;
-const FRAME_IDX_DONE_REQ_COUNT: usize = 8;
-const FRAME_IDX_REQ_WAIT_SCHE_TIME: usize = 9;
-const FRAME_IDX_REQ_WAIT_COLDSTART_TIME: usize = 10;
-const FRAME_IDX_REQ_DATA_RECV_TIME: usize = 11;
-const FRAME_IDX_REQ_EXE_TIME: usize = 12;
-const FRAME_IDX_ALGO_EXE_TIME: usize = 13;
-const FRAME_IDX_FNCONTAINER_COUNT: usize = 14;
+const FRAME_IDX_FRAME: usize = 0;                           // 帧数
+const FRAME_IDX_RUNNING_REQS: usize = 1;                    // 请求数量
+const FRAME_IDX_NODES: usize = 2;                           // 节点的状态：cpu、mem
+const FRAME_IDX_REQ_DONE_TIME_AVG: usize = 3;               // 请求的平均完成时间
+const FRAME_IDX_REQ_DONE_TIME_STD: usize = 4;               // 请求的完成时间的标准差
+const FRAME_IDX_REQ_DONE_TIME_AVG_90P: usize = 5;           // 请求的90%完成时间
+const FRAME_IDX_COST: usize = 6;                            // 成本
+const FRAME_IDX_SCORE: usize = 7;                           // 得分（强化学习用）
+const FRAME_IDX_DONE_REQ_COUNT: usize = 8;                  // 已完成请求数量
+const FRAME_IDX_REQ_WAIT_SCHE_TIME: usize = 9;              // 等待调度的时间
+const FRAME_IDX_REQ_WAIT_COLDSTART_TIME: usize = 10;        // 冷启动的时间
+const FRAME_IDX_REQ_DATA_RECV_TIME: usize = 11;             // 数据接收时间
+const FRAME_IDX_REQ_EXE_TIME: usize = 12;                   // 请求的执行时间
+const FRAME_IDX_ALGO_EXE_TIME: usize = 13;                  // 算法执行时间
+const FRAME_IDX_FNCONTAINER_COUNT: usize = 14;              // 总的容器数量
 
 // the last + 1
 const FRAME_LEN: usize = 15;
