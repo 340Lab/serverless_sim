@@ -83,8 +83,16 @@ impl ModuleMechConf {
             log::warn!("sche is not match");
             return false;
         }
-        if !compare_sub_hashmap(&self.0.mech_type, &conf.mech_type, false) {
+        if !compare_sub_hashmap(&self.0.mech_type, &conf.mech_type, true) {
             log::warn!("mech_type is not match");
+            return false;
+        }
+        if !compare_sub_hashmap(
+            &self.0.instance_cache_policy,
+            &conf.instance_cache_policy,
+            true,
+        ) {
+            log::warn!("instance_cache_policy is not match");
             return false;
         }
         true
@@ -197,6 +205,8 @@ impl MechConfig {
                         v.to_string(),
                         if *v == "lru" {
                             Some("".to_string())
+                        } else if *v == "fifo" {
+                            Some("".to_string())
                         } else {
                             None
                         },
@@ -221,6 +231,12 @@ impl MechConfig {
                 let limit = arg
                     .parse::<usize>()
                     .expect("Please offer lru cache policy arg");
+                Box::new(crate::cache::lru::LRUCache::new(limit))
+            }
+            "fifo" => {
+                let limit = arg
+                    .parse::<usize>()
+                    .expect("Please offer fifo cache policy arg");
                 Box::new(crate::cache::lru::LRUCache::new(limit))
             }
             "no_evict" => Box::new(crate::cache::no_evict::NoEvict::new()),
