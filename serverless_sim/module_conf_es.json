@@ -5,26 +5,26 @@
     "no_scale": null
   },
   "scale_num": {
-    "no": null,
+    "hpa": null,
     "lass": null,
     "temp_scaler": null,
-    "hpa": null
+    "no": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "least_task": null,
-    "no": null
+    "no": null,
+    "least_task": null
   },
   "sche": {
-    "faasflow": null,
-    "fnsche": null,
-    "pass": null,
-    "greedy": null,
     "bp_balance": null,
+    "greedy": null,
+    "faasflow": null,
+    "pass": null,
     "random": null,
     "pos": null,
+    "fnsche": null,
     "consistenthash": null
   },
   "filter": {

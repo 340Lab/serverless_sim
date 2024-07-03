@@ -2,7 +2,7 @@ pub mod fifo;
 pub mod lru;
 pub mod no_evict;
 
-use std::{cell::RefCell, cmp::Eq, collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
+use std::{cell::RefCell, cmp::Eq, fmt::Debug, hash::Hash, rc::Rc};
 
 // 双向链表节点
 pub struct ListNode<Payload> {
