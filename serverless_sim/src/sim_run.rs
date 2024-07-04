@@ -1,4 +1,7 @@
-use std::{ collections::{ BTreeSet, HashMap }, vec };
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    vec,
+};
 
 use crate::{
     fn_dag::{ EnvFnExt, FnContainer, FnContainerState, FnId },
@@ -141,23 +144,33 @@ impl SimEnv {
             // 将容器在这一帧中的使用情况更新为 true
             container.this_frame_used = true;
 
+            let con_ptr=&*container as *const _;
+
             // 得到该请求放进容器中执行时,这个请求一共需要接收多少数据,还差多少数据没处理完
-            let (all, recved) = container.req_fn_state
-                .get_mut(&t.req_id)
-                .unwrap()
-                .data_recv.get_mut(&from)
-                .unwrap();
-            if *all <= *recved {
-                // 该数据已经传输完毕
-                log::info!(
-                    "data from {from} to {to} for req{} fn{} has been transfered",
-                    t.req_id,
-                    t.fn_id
-                );
-            } else {
-                // 没处理完毕则根据带宽进行模拟传输
-                *recved += each_path_bandwith;
-                if *all <= *recved {
+            let mut one_path_done=false;
+            {
+                let (all, recved) = container
+                    .req_fn_state
+                    .get_mut(&t.req_id)
+                    .unwrap()
+                    .data_recv
+                    .get_mut(&from)
+                    .unwrap();
+                assert!((*all-*recved) > 0.00001);
+                {
+                    // 没处理完毕则根据带宽进行模拟传输
+                    *recved += each_path_bandwith;
+                    if (*all-*recved) <= 0.00001 {
+                        // log::info!("reqid {}, fnid {}. frame {}, all {}, recved {}, all ptr {:?}, con ptr {:?}",t.req_id, t.fn_id, self.current_frame(), all, recved,all as *const _,con_ptr);
+                        one_path_done=true;
+                    }
+                }
+            }
+            if one_path_done{
+                if container
+                    .req_fn_state
+                    .get_mut(&t.req_id)
+                    .unwrap().data_recv_done(){
                     self.on_task_data_recved(t.req_id, t.fn_id);
                 }
             }
@@ -202,8 +215,9 @@ impl SimEnv {
                 for (req_id, fnrun) in &mut fn_container.req_fn_state {
                     // 遍历运行状态中，所有需要传输的数据，包括数据发送节点，数据接受总量、已接受量
                     for (send_node, (all, recved)) in &mut fnrun.data_recv {
+                        // log::info!("reqid {}, fnid {}. frame {}, all {}, recved {}", req_id, fnid, self.current_frame(), all, recved);
                         // 数据还没接受完才需要传输
-                        if *recved < *all {
+                        if (*all-*recved) >0.00001  {
                             if *send_node == node_id {
                                 // 如果是自己发送的数据，则标记传输完毕，不计传输时延
                                 *recved = *all + 0.001;
@@ -240,7 +254,26 @@ impl SimEnv {
             }
         }
 
-        // 遍历所有的传输路径，并模拟传输
+        // let mut appeared_tasks:HashSet<(ReqId,FnId)>=HashSet::new();
+        // for p in node2node_trans.iter_mut(){
+        //     let mut new_send_paths=vec![];
+        //     while let Some(p)=p.1.send_paths.pop(){
+        //         if !appeared_tasks.contains(&(p.req_id,p.fn_id)){
+        //             appeared_tasks.insert((p.req_id,p.fn_id));
+        //             new_send_paths.push(p);
+        //         }
+        //     }
+        //     p.1.send_paths=new_send_paths;
+            
+        //     let mut new_recv_paths=vec![];
+        //     while let Some(p)=p.1.recv_paths.pop(){
+        //         if !appeared_tasks.contains(&(p.req_id,p.fn_id)){
+        //             appeared_tasks.insert((p.req_id,p.fn_id));
+        //             new_recv_paths.push(p);
+        //         }
+        //     }
+        //     p.1.recv_paths=new_recv_paths;
+        // }
         for x in 0..nodes_cnt {
             for y in 0..nodes_cnt {
                 if x > y {

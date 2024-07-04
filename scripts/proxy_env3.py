@@ -26,9 +26,9 @@ class ProxyEnv3:
         "rand_seed": "",
         "request_freq": "low",
 
-        # "dag_type": "mix",
+        "dag_type": "mix",
         # "dag_type": "dag",
-        "dag_type": "single",
+        # "dag_type": "single",
         
         "cold_start": "high",
         "fn_type": "cpu",
