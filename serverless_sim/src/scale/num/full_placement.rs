@@ -1,6 +1,6 @@
 use crate::mechanism::SimEnvObserve;
 
-use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
+use crate::with_env_sub::{WithEnvCore};
 use crate::{actions::ESActionWrapper, fn_dag::FnId};
 
 use super::{
@@ -18,7 +18,7 @@ impl FpScaleNum {
 }
 
 impl ScaleNum for FpScaleNum {
-    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, _action: &ESActionWrapper) -> usize {
+    fn scale_for_fn(&mut self, env: &SimEnvObserve, _fnid: FnId, _action: &ESActionWrapper) -> usize {
         env.core().nodes().len()
     }
 }

@@ -30,7 +30,7 @@ import math
 import multiprocessing
 import threading
 from absl import logging
-import gym
+# import gym
 import gc
 
 # pylint: disable=import-error
@@ -38,12 +38,12 @@ import deep_rl_zoo.trackers as trackers_lib
 import deep_rl_zoo.types as types_lib
 from deep_rl_zoo.log import CsvWriter
 from deep_rl_zoo.checkpoint import PyTorchCheckpoint
-from deep_rl_zoo import gym_env
+# from deep_rl_zoo import gym_env
 
 
 def run_env_loop(
-    agent: types_lib.Agent, env: gym.Env
-) -> Iterable[Tuple[gym.Env, types_lib.TimeStep, types_lib.Agent, types_lib.Action]]:
+    agent: types_lib.Agent, env
+) -> Iterable[Tuple[any, types_lib.TimeStep, types_lib.Agent, types_lib.Action]]:
     """Repeatedly alternates step calls on environment and agent.
 
     At time `t`, `t + 1` environment timesteps and `t + 1` agent steps have been
@@ -110,7 +110,7 @@ def run_env_loop(
                 break
 
 
-def run_env_steps(num_steps: int, agent: types_lib.Agent, env: gym.Env, trackers: Iterable[Any]) -> Mapping[Text, float]:
+def run_env_steps(num_steps: int, agent: types_lib.Agent, env, trackers: Iterable[Any]) -> Mapping[Text, float]:
     """Run some steps and return the statistics, this could be either training, evaluation, or testing steps.
 
     Args:
@@ -135,9 +135,9 @@ def run_single_thread_training_iterations(
     num_train_steps: int,
     num_eval_steps: int,
     train_agent: types_lib.Agent,
-    train_env: gym.Env,
+    train_env,
     # eval_agent: types_lib.Agent,
-    # eval_env: gym.Env,
+    # eval_env,
     checkpoint: PyTorchCheckpoint,
     csv_file: str,
     use_tensorboard: bool,
@@ -242,9 +242,9 @@ def run_parallel_training_iterations(
     num_eval_steps: int,
     learner_agent: types_lib.Learner,
     # eval_agent: types_lib.Agent,
-    # eval_env: gym.Env,
+    # eval_env,
     actors: List[types_lib.Agent],
-    actor_envs: List[gym.Env],
+    actor_envs,
     data_queue: multiprocessing.Queue,
     checkpoint: PyTorchCheckpoint,
     csv_file: str,
@@ -357,7 +357,7 @@ def run_parallel_training_iterations(
 
 def run_actor(
     actor: types_lib.Agent,
-    actor_env: gym.Env,
+    actor_env,
     data_queue: multiprocessing.Queue,
     log_queue: multiprocessing.SimpleQueue,
     num_train_steps: int,
@@ -441,7 +441,7 @@ def run_learner(
     num_eval_steps: int,
     learner: types_lib.Learner,
     eval_agent: types_lib.Agent,
-    eval_env: gym.Env,
+    eval_env,
     data_queue: multiprocessing.Queue,
     log_queue: multiprocessing.SimpleQueue,
     iteration_count: multiprocessing.Value,
@@ -597,7 +597,7 @@ def run_evaluation_iterations(
     num_iterations: int,
     num_eval_steps: int,
     eval_agent: types_lib.Agent,
-    eval_env: gym.Env,
+    eval_env,
     use_tensorboard: bool,
     recording_video_dir: str = None,
 ):
@@ -637,8 +637,8 @@ def run_evaluation_iterations(
             logging.info(log_output_str)
             iteration += 1
 
-    if recording_video_dir is not None and recording_video_dir != '':
-        gym_env.play_and_record_video(eval_agent, eval_env, recording_video_dir)
+    # if recording_video_dir is not None and recording_video_dir != '':
+    #     gym_env.play_and_record_video(eval_agent, eval_env, recording_video_dir)
 
 
 def get_tb_log_prefix(env_id: str, agent_name: str, tag: str, suffix: str) -> str:

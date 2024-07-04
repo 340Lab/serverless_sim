@@ -5,7 +5,7 @@ use rand::Rng;
 
 use crate::{
     fn_dag::{DagId, EnvFnExt, FnId},
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, NodeId},
     request::Request,

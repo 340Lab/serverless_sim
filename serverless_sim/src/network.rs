@@ -1,28 +1,27 @@
 use crate::apis::{
-    ApiHandler, GetEnvIdResp, GetNetworkTopoReq, GetNetworkTopoResp, ResetReq, ResetResp, StepReq,
+    ApiHandler,
+    GetEnvIdResp,
+    GetNetworkTopoReq,
+    GetNetworkTopoResp,
+    ResetReq,
+    ResetResp,
+    StepReq,
     StepResp,
+    RlStepReq,
+    RlStepResp,
 };
 use crate::node::EnvNodeExt;
-use crate::{
-    apis,
-    config::Config,
-    metric::{self, Records},
-    sim_env::SimEnv,
-};
+use crate::rl_target::RL_TARGET;
+use crate::{ apis, config::Config, metric::{ self, Records }, sim_env::SimEnv };
 use async_trait::async_trait;
-use axum::{http::StatusCode, routing::post, Json, Router};
+use axum::{ http::StatusCode, routing::post, Json, Router };
 use moka::sync::Cache;
-use parking_lot::{Mutex, RwLock};
-use serde::{Deserialize, Serialize};
+use parking_lot::{ Mutex, RwLock };
+use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
-use std::{
-    cmp::min,
-    collections::HashMap,
-    fs::{self, File},
-    io::Read,
-    sync::Arc,
-};
+use std::time::{ Instant, Duration };
+use std::{ cmp::min, collections::HashMap, fs::{ self, File }, io::Read, sync::Arc };
 
 pub async fn start() {
     // build our application with a route
@@ -38,9 +37,9 @@ pub async fn start() {
     // run it with hyper on localhost:3000
 
     // 绑定全局的3000端口，并通过.serve()启动应用程序，从而监听和处理HTTP请求
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
+    axum::Server
+        ::bind(&"0.0.0.0:3000".parse().unwrap())
+        .serve(app.into_make_service()).await
         .unwrap();
 }
 
@@ -85,9 +84,10 @@ impl ApiHandler for ApiHandlerImpl {
                         }
                         GetNetworkTopoResp::Exist { topo }
                     }
-                    None => GetNetworkTopoResp::NotFound {
-                        msg: "Environment not found".to_string(),
-                    },
+                    None =>
+                        GetNetworkTopoResp::NotFound {
+                            msg: "Environment not found".to_string(),
+                        },
                 };
             }
         }
@@ -137,9 +137,10 @@ impl ApiHandler for ApiHandlerImpl {
                 }
                 ResetResp::Success { env_id: key }
             }
-            Err(e) => ResetResp::InvalidConfig {
-                msg: format!("Invalid config: {}", e),
-            },
+            Err(e) =>
+                ResetResp::InvalidConfig {
+                    msg: format!("Invalid config: {}", e),
+                },
         }
     }
 
@@ -148,15 +149,21 @@ impl ApiHandler for ApiHandlerImpl {
         // log::info!("Step sim env");
 
         // 获取全局SIM_ENVS的读取锁
-        let sim_envs = SIM_ENVS.read();
+        let mut sim_envs = SIM_ENVS.try_write_until(
+            Instant::now() + Duration::from_secs(1)
+        ).unwrap();
 
         // 尝试获取指定env_id对应的SimEnv实例
-        if let Some(sim_env) = sim_envs.get(&key) {
+        let res = if let Some(sim_env) = sim_envs.get(&key) {
             // 尝试获取该SimEnv实例的独占锁
             let mut sim_env = sim_env.lock();
 
             // 调用SimEnv实例的step方法
-            let (score, state) = tokio::task::block_in_place(|| sim_env.step(action as u32));
+            let (score, state) = tokio::task::block_in_place(|| {
+                let res = sim_env.step(action as u32);
+                sim_env.help.metric_record().flush(&sim_env);
+                res
+            });
 
             // insert your application logic here
             // 根据步进操作的结果，返回StepResp::Success，其中包含得分、状态和停止标志，停止标志基于当前帧是否大于1000
@@ -170,6 +177,23 @@ impl ApiHandler for ApiHandlerImpl {
             let msg = format!("Sim env {key} not found, create new one");
             log::warn!("{}", msg);
             StepResp::EnvNotFound { msg }
+        };
+        sim_envs.remove(&key).unwrap();
+        res
+    }
+
+    async fn handle_rl_step(&self, req: RlStepReq) -> RlStepResp {
+        if req.action < 0 {
+            return RlStepResp::Failed { msg: "action is invalid".to_owned() };
+        }
+        let Some(rl) = RL_TARGET.as_ref() else {
+            return RlStepResp::Failed { msg: "rl target is not inited".to_owned() };
+        };
+        let (state, score, stop) = rl.step(req.action as usize);
+        RlStepResp::Success {
+            state,
+            score: score as f64,
+            stop,
         }
     }
 }
@@ -208,8 +232,7 @@ async fn metric(Json(payload): Json<HistoryReq>) -> (StatusCode, Json<MetricResp
         if history.frames.len() == 0 {
             return 0.0;
         }
-        history
-            .frames
+        history.frames
             .iter()
             .map(|f| {
                 if vi < f.len() {
@@ -217,8 +240,7 @@ async fn metric(Json(payload): Json<HistoryReq>) -> (StatusCode, Json<MetricResp
                 }
                 0.0
             })
-            .sum::<f64>()
-            / (history.frames.len() as f64)
+            .sum::<f64>() / (history.frames.len() as f64)
     };
     // 0 frame,
     // 1 running_reqs,
@@ -297,10 +319,9 @@ async fn history_list() -> (StatusCode, Json<HistoryListResp>) {
 
     if let Ok(paths) = fs::read_dir("./records") {
         for path in paths {
-            resp.list
-                .push(path.unwrap().file_name().into_string().unwrap());
+            resp.list.push(path.unwrap().file_name().into_string().unwrap());
         }
-    };
+    }
 
     (StatusCode::OK, Json(resp))
 }
@@ -340,11 +361,12 @@ struct HistoryListResp {
 //     (StatusCode::OK, Json(resp))
 // }
 
-async fn get_seeds_metrics(
-    Json(payload): Json<Vec<String>>,
-) -> (StatusCode, Json<HashMap<String, Vec<Vec<Value>>>>) {
-    let res = tokio::task::spawn_blocking(move || metric::get_seeds_metrics(payload.iter()))
-        .await
+async fn get_seeds_metrics(Json(payload): Json<Vec<String>>) -> (
+    StatusCode,
+    Json<HashMap<String, Vec<Vec<Value>>>>,
+) {
+    let res = tokio::task
+        ::spawn_blocking(move || metric::get_seeds_metrics(payload.iter())).await
         .unwrap();
     (StatusCode::OK, Json(res))
 }
@@ -354,9 +376,7 @@ async fn collect_seed_metrics() -> (StatusCode, Json<()>) {
     // 获取COLLECT_SEED_METRICS_LOCK的互斥锁，确保在一个时刻只有一个任务可以执行收集种子度量的操作
     let _hold = COLLECT_SEED_METRICS_LOCK.lock().await;
     // 启动一个新的阻塞任务，该任务会调用metric::group_records_by_seed函数来处理种子度量的数据收集工作
-    tokio::task::spawn_blocking(metric::group_records_by_seed)
-        .await
-        .unwrap();
+    tokio::task::spawn_blocking(metric::group_records_by_seed).await.unwrap();
     (StatusCode::OK, ().into())
 }
 

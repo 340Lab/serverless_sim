@@ -27,7 +27,7 @@ impl<Payload: Eq + Hash + Clone + Debug + Send> InstanceCachePolicy<Payload> for
         (None, true)
     }
 
-    fn remove_all(&mut self, key: &Payload) -> bool {
+    fn remove_all(&mut self, _key: &Payload) -> bool {
         true
     }
 }

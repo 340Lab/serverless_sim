@@ -4,7 +4,7 @@ use crate::node::EnvNodeExt;
 use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
 use crate::{
     fn_dag::FnId,
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
     node::NodeId,
     request::Request,
     sim_run::{schedule_helper, Scheduler},

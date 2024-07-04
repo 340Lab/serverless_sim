@@ -1,10 +1,10 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::{BTreeMap, HashMap, HashSet},
+    cell::{ Ref, RefCell, RefMut },
+    collections::{ BTreeMap, HashMap, HashSet },
     process::Command,
     str,
     sync::mpsc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{ Duration, SystemTime, UNIX_EPOCH },
 };
 
 use rand_pcg::Pcg64;
@@ -12,15 +12,14 @@ use rand_seeder::Seeder;
 
 use crate::{
     actions::ESActionWrapper,
-    cache::lru::LRUCache,
     config::Config,
-    fn_dag::{DagId, FnDAG, FnId, Func},
+    fn_dag::{ DagId, FnDAG, FnId, Func },
     mechanism::ConfigNewMec,
-    mechanism_thread::{self, MechScheduleOnce},
-    metric::{MechMetric, OneFrameMetric, Records},
-    node::{Node, NodeId},
-    request::{ReqId, Request},
-    scale::{down_exec::DefaultScaleDownExec, num::ScaleNum, up_exec::ScaleUpExec},
+    mechanism_thread::{ self, MechScheduleOnce },
+    metric::{ MechMetric, OneFrameMetric, Records },
+    node::{ Node, NodeId },
+    request::{ ReqId, Request },
+    scale::{ down_exec::DefaultScaleDownExec, num::ScaleNum, up_exec::ScaleUpExec },
     sim_run::Scheduler,
     with_env_sub::WithEnvHelp,
     CONTAINER_BASIC_MEM,
@@ -47,15 +46,9 @@ pub fn call_python_script(arg: &str, rng: f32) -> f64 {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
-        stdout
-            .trim()
-            .parse::<f64>()
-            .expect("Failed to parse Python script output")
+        stdout.trim().parse::<f64>().expect("Failed to parse Python script output")
     } else {
-        panic!(
-            "Python script error:\nStandard Output: {}\nStandard Error: {}",
-            stdout, stderr
-        );
+        panic!("Python script error:\nStandard Output: {}\nStandard Error: {}", stdout, stderr);
     }
 }
 
@@ -73,7 +66,7 @@ pub struct SimEnvHelperState {
     metric: RefCell<OneFrameMetric>,
     metric_record: RefCell<Records>,
     mech_metric: RefCell<MechMetric>,
-    fn_call_frequency: RefCell<HashMap<DagId, (f64, f64)>>,
+    fn_call_frequency: RefCell<BTreeMap<DagId, (f64, f64)>>,
     // key: frame_idx  value: exe_time
     algo_exc_time: RefCell<HashMap<usize, usize>>,
 }
@@ -86,9 +79,9 @@ impl Clone for SimEnvHelperState {
             fn_next_id: self.fn_next_id.clone(),
             cost: self.cost.clone(),
             metric: self.metric.clone(),
-            metric_record: RefCell::new(Records::new(
-                self.metric_record.borrow().record_name.clone(),
-            )),
+            metric_record: RefCell::new(
+                Records::new(self.metric_record.borrow().record_name.clone())
+            ),
             fn_call_frequency: self.fn_call_frequency.clone(),
             mech_metric: self.mech_metric.clone(),
             algo_exc_time: self.algo_exc_time.clone(),
@@ -135,10 +128,10 @@ impl SimEnvHelperState {
     pub fn mech_metric_mut<'a>(&'a self) -> RefMut<'a, MechMetric> {
         self.mech_metric.borrow_mut()
     }
-    pub fn fn_call_frequency<'a>(&'a self) -> Ref<'a, HashMap<DagId, (f64, f64)>> {
+    pub fn fn_call_frequency<'a>(&'a self) -> Ref<'a, BTreeMap<DagId, (f64, f64)>> {
         self.fn_call_frequency.borrow()
     }
-    pub fn fn_call_frequency_mut<'a>(&'a self) -> RefMut<'a, HashMap<DagId, (f64, f64)>> {
+    pub fn fn_call_frequency_mut<'a>(&'a self) -> RefMut<'a, BTreeMap<DagId, (f64, f64)>> {
         self.fn_call_frequency.borrow_mut()
     }
     pub fn algo_exc_time<'a>(&'a self) -> Ref<'a, HashMap<usize, usize>> {
@@ -150,7 +143,7 @@ impl SimEnvHelperState {
     pub fn avg_algo_exc_time(&self) -> f64 {
         let sum = self.algo_exc_time.borrow().values().sum::<usize>();
         let count = self.algo_exc_time.borrow().len();
-        sum as f64 / count as f64
+        (sum as f64) / (count as f64)
     }
 }
 
@@ -175,7 +168,7 @@ impl Clone for SimEnvCoreState {
             fns: RefCell::new(self.fns.borrow().clone()),
             node2node_graph: RefCell::new(self.node2node_graph.borrow().clone()),
             node2node_connection_count: RefCell::new(
-                self.node2node_connection_count.borrow().clone(),
+                self.node2node_connection_count.borrow().clone()
             ),
             nodes: RefCell::new(self.nodes.borrow().clone()),
             current_frame: RefCell::new(*self.current_frame.borrow()),
@@ -311,7 +304,7 @@ impl SimEnv {
                 metric_record: RefCell::new(Records::new(config.str())),
                 config: config.clone(),
                 mech_metric: RefCell::new(MechMetric::new()),
-                fn_call_frequency: RefCell::new(HashMap::new()),
+                fn_call_frequency: RefCell::new(BTreeMap::new()),
                 algo_exc_time: RefCell::new(HashMap::new()),
             },
             core: SimEnvCoreState {
@@ -372,10 +365,10 @@ impl SimEnv {
             let rng = self.env_rand_f(0.0, 1.0);
             let avg_freq = call_python_script("IAT", rng);
             let cv = call_python_script("CV", rng);
-            self.help
-                .fn_call_frequency_mut()
-                .insert(dag.dag_i, (avg_freq, cv));
+            self.help.fn_call_frequency_mut().insert(dag.dag_i, (avg_freq, cv));
+            log::info!("gen cv:{}, freq:{} for app:{} by rng{}", cv, avg_freq, dag.dag_i, rng);
         }
+        log::info!("env init done");
     }
 
     // 获取当前模拟帧数
@@ -406,7 +399,7 @@ impl SimEnv {
     pub fn step(&mut self, raw_action: u32) -> (f32, String) {
         // update to current time
         self.avoid_gc();
-        self.step_es(ESActionWrapper::Int(raw_action), None, None)
+        self.step_es(ESActionWrapper::Int(raw_action), None, None, None, None)
     }
 
     // 在模拟一帧开始时调用，更新节点状态、清空已完成请求、重置性能指标等
@@ -420,8 +413,7 @@ impl SimEnv {
             n.cpu = 0.0;
 
             // 更新节点的内存使用量,重新计算
-            *n.unready_mem_mut() = n
-                .fn_containers
+            *n.unready_mem_mut() = n.fn_containers
                 .borrow()
                 .iter()
                 .map(|(_, c)| c.container_basic_mem(self))
@@ -493,7 +485,7 @@ mod tests {
     #[test]
     fn test_python_res_consistency() {
         for i in 0..20 {
-            let ran = 0.001 * i as f32;
+            let ran = 0.001 * (i as f32);
             let avg_freq = call_python_script("IAT", ran);
             let cv = call_python_script("CV", ran);
 

@@ -202,3 +202,56 @@ export namespace apis {
 }
 
 
+
+
+export class RlStepRespSuccess {
+    constructor(
+        public state:number[],
+        public score:number,
+        public stop:boolean,
+    ){}
+}
+
+export class RlStepRespFailed {
+    constructor(
+        public msg:string,
+    ){}
+}
+
+export class RlStepResp{
+    constructor(
+        private kernel: any,
+        private id: number
+    ) {}
+    
+    success():undefined| RlStepRespSuccess{
+        if(this.id==1){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+    failed():undefined| RlStepRespFailed{
+        if(this.id==2){
+            return this.kernel
+        }
+        return undefined
+    }
+    
+}
+
+
+export class RlStepReq {
+    constructor(
+        public action:number,
+    ){}
+}
+
+export namespace apis {
+    export async function rl_step(req:RlStepReq):Promise<RlStepResp>{
+        let res:any = await axios.post("/api/rl_step", req)
+        return new GetEnvIdResp(res.data.kernel,res.data.id)
+    }
+}
+
+

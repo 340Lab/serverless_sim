@@ -1,4 +1,51 @@
-use crate::sim_env::SimEnv;
+use crate::{
+    sim_env::SimEnv,
+    with_env_sub::{ WithEnvCore, WithEnvHelp },
+    mechanism::SimEnvObserve,
+};
+
+impl EnvMetricExt for SimEnv {}
+impl EnvMetricExt for SimEnvObserve {}
+
+pub trait EnvMetricExt: WithEnvCore + WithEnvHelp {
+    /// req_done_avg 平均每个请求处理完的时间 越低越好
+    fn req_done_time_avg(&self) -> f32 {
+        if self.core().done_requests().len() == 0 {
+            return 0.0;
+        }
+
+        let sum = self
+            .core()
+            .done_requests()
+            .iter()
+            .map(|req| (req.end_frame - req.begin_frame) as f32)
+            .sum::<f32>();
+
+        sum / (self.core().done_requests().len() as f32)
+    }
+
+    // 已完成请求的平均成本 越低越好
+    fn cost_each_req(&self) -> f32 {
+        if self.core().done_requests().len() == 0 {
+            return 0.0;
+        }
+        *self.help().cost() / (self.core().done_requests().len() as f32)
+    }
+
+    // 性价比
+    fn quality_price_ratio(&self) -> f32 {
+        let cost = self.cost_each_req();
+        if cost < 0.0001 {
+            return 0.0;
+        }
+        let req_avg_time = self.req_done_time_avg();
+        if req_avg_time < 0.0001 {
+            return 0.0;
+        }
+
+        1.0 / req_avg_time / cost
+    }
+}
 
 impl SimEnv {
     pub fn req_exe_time_avg(&self) -> f32 {
@@ -6,56 +53,52 @@ impl SimEnv {
             return 0.0;
         }
 
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests_mut()
             .iter_mut()
-            .map(|req| (req.exe_time(self) as f32))
+            .map(|req| req.exe_time(self) as f32)
             .sum::<f32>();
 
-        sum / self.core.done_requests().len() as f32
+        sum / (self.core.done_requests().len() as f32)
     }
     pub fn req_wait_sche_time_avg(&self) -> f32 {
         if self.core.done_requests().len() == 0 {
             return 0.0;
         }
 
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests_mut()
             .iter_mut()
-            .map(|req| (req.wait_sche_time(self) as f32))
+            .map(|req| req.wait_sche_time(self) as f32)
             .sum::<f32>();
 
-        sum / self.core.done_requests().len() as f32
+        sum / (self.core.done_requests().len() as f32)
     }
     pub fn req_data_recv_time_avg(&self) -> f32 {
         if self.core.done_requests().len() == 0 {
             return 0.0;
         }
 
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests_mut()
             .iter_mut()
-            .map(|req| (req.data_recv_time(self) as f32))
+            .map(|req| req.data_recv_time(self) as f32)
             .sum::<f32>();
 
-        sum / self.core.done_requests().len() as f32
+        sum / (self.core.done_requests().len() as f32)
     }
     pub fn req_wait_coldstart_time_avg(&self) -> f32 {
         if self.core.done_requests().len() == 0 {
             return 0.0;
         }
 
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests_mut()
             .iter_mut()
-            .map(|req| (req.wait_cold_start_time(self) as f32))
+            .map(|req| req.wait_cold_start_time(self) as f32)
             .sum::<f32>();
 
-        sum / self.core.done_requests().len() as f32
+        sum / (self.core.done_requests().len() as f32)
     }
     /// req_done_avg 平均每个请求处理完的时间 越低越好
     pub fn req_done_time_avg(&self) -> f32 {
@@ -63,14 +106,13 @@ impl SimEnv {
             return 0.0;
         }
 
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests()
             .iter()
             .map(|req| (req.end_frame - req.begin_frame) as f32)
             .sum::<f32>();
 
-        sum / self.core.done_requests().len() as f32
+        sum / (self.core.done_requests().len() as f32)
     }
 
     /// req_done_std 平均每个请求处理完的时间的标准差 越低越好
@@ -80,8 +122,7 @@ impl SimEnv {
         }
 
         let avg = self.req_done_time_avg();
-        let sum = self
-            .core
+        let sum = self.core
             .done_requests()
             .iter()
             // .filter(|req| req.is_done(self))
@@ -92,8 +133,7 @@ impl SimEnv {
 
     /// req_done_90 90%的请求处理完的时间 越低越好
     pub fn req_done_time_avg_90p(&self) -> f32 {
-        let mut req_done_times = self
-            .core
+        let mut req_done_times = self.core
             .done_requests()
             .iter()
             // .filter(|req| req.is_done(self))
@@ -126,28 +166,6 @@ impl SimEnv {
     //         .map(|node| node.mem)
     //         .sum::<f32>() / (self.nodes.borrow().len() as f32)
     // }
-
-    // 已完成请求的平均成本 越低越好
-    pub fn cost_each_req(&self) -> f32 {
-        if self.core.done_requests().len() == 0 {
-            return 0.0;
-        }
-        *self.help.cost() / (self.core.done_requests().len() as f32)
-    }
-
-    // 性能成本比：数值越大表示在给定成本下处理请求的速度越快，性能越好
-    pub fn cost_perform(&self) -> f32 {
-        let cost = self.cost_each_req();
-        if cost < 0.0001 {
-            return 0.0;
-        }
-        let req_avg_time = self.req_done_time_avg();
-        if req_avg_time < 0.0001 {
-            return 0.0;
-        }
-
-        1.0 / req_avg_time / cost
-    }
 
     // 计算仿真环境的整体评分，衡量不同调度和扩缩容策略以及参数设置下的系统性能优劣
     pub fn score(&self) -> f32 {

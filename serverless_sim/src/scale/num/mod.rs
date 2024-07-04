@@ -5,17 +5,24 @@ pub mod lass;
 pub mod no;
 pub mod temp_scaler;
 pub mod full_placement;
+pub mod rela;
 
 use crate::{
     actions::ESActionWrapper,
     config::Config,
-    fn_dag::{FnId},
+    fn_dag::{ FnId },
     mechanism::SimEnvObserve,
     sim_env::SimEnv,
 };
 
-
-use self::{hpa::HpaScaleNum, lass::LassScaleNum, no::NoScaleNum, temp_scaler::TempScaleNum, full_placement::FpScaleNum};
+use self::{
+    hpa::HpaScaleNum,
+    lass::LassScaleNum,
+    no::NoScaleNum,
+    temp_scaler::TempScaleNum,
+    full_placement::FpScaleNum,
+    rela::RelaScaleNum,
+};
 
 pub trait ScaleNum: Send {
     /// return target scale count
@@ -47,6 +54,9 @@ pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
         }
         "full_placement" => {
             return Some(Box::new(FpScaleNum::new()));
+        }
+        "rela" => {
+            return Some(Box::new(RelaScaleNum::new()));
         }
         _ => {
             return None;

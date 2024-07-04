@@ -50,3 +50,14 @@ api_list:
                 info: "String"
             EnvNotFound:
                 msg: "String"
+
+    rl_step:
+        req:
+            action: Int
+        resp_dispatch:
+            Success:
+                state: [Array,Float]
+                score: "Float"
+                stop: "Bool"
+            Failed:
+                msg: "String"

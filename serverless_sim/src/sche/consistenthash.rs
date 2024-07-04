@@ -1,6 +1,6 @@
 use crate::{
     fn_dag::EnvFnExt,
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::EnvNodeExt,
     request::Request,
