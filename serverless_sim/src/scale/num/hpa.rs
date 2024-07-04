@@ -1,19 +1,16 @@
-use std::collections::{HashMap};
+use std::collections::{ HashMap };
 
 use crate::fn_dag::EnvFnExt;
 use crate::mechanism::SimEnvObserve;
 use crate::node::EnvNodeExt;
 
 use crate::with_env_sub::WithEnvHelp;
-use crate::{actions::ESActionWrapper, fn_dag::FnId};
+use crate::{ actions::ESActionWrapper, fn_dag::FnId };
 
-use super::{
-    down_filter::{CarefulScaleDownFilter, ScaleFilter},
-    ScaleNum,
-};
+use super::{ down_filter::{ CarefulScaleDownFilter, ScaleFilter }, ScaleNum };
 
-enum Target {
-    CpuUseRate(f32),
+pub enum Target {
+    MemUseRate(f32),
 }
 
 pub struct HpaScaleNum {
@@ -28,19 +25,28 @@ pub struct HpaScaleNum {
 impl HpaScaleNum {
     pub fn new() -> Self {
         Self {
-            target: Target::CpuUseRate(0.5),
+            target: Target::MemUseRate(0.5),
             target_tolerance: 0.1,
             scale_down_policy: Box::new(CarefulScaleDownFilter::new()),
             fn_sche_container_count: HashMap::new(),
         }
     }
+
+    pub fn set_target(&mut self, tar: Target) {
+        self.target = tar;
+    }
 }
 
 impl ScaleNum for HpaScaleNum {
-    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, _action: &ESActionWrapper) -> usize {
+    fn scale_for_fn(
+        &mut self,
+        env: &SimEnvObserve,
+        fnid: FnId,
+        _action: &ESActionWrapper
+    ) -> usize {
         let mech_metric = env.help().mech_metric();
         let desired_container_cnt = match self.target {
-            Target::CpuUseRate(cpu_target_use_rate) => {
+            Target::MemUseRate(cpu_target_use_rate) => {
                 let container_cnt = env.fn_container_cnt(fnid);
 
                 let mut desired_container_cnt = if container_cnt != 0 {
@@ -56,9 +62,10 @@ impl ScaleNum for HpaScaleNum {
                     {
                         // current divide target
                         let ratio = avg_mem_use_rate / cpu_target_use_rate;
-                        if (1.0 > ratio && ratio >= 1.0 - self.target_tolerance)
-                            || (1.0 < ratio && ratio < 1.0 + self.target_tolerance)
-                            || ratio == 1.0
+                        if
+                            (1.0 > ratio && ratio >= 1.0 - self.target_tolerance) ||
+                            (1.0 < ratio && ratio < 1.0 + self.target_tolerance) ||
+                            ratio == 1.0
                         {
                             // # ratio is sufficiently close to 1.0
 

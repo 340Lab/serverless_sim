@@ -1,6 +1,6 @@
 use crate::{
     fn_dag::FnId,
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, NodeId},
     sim_run::{schedule_helper, Scheduler},

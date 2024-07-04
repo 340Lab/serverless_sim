@@ -11,7 +11,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::fn_dag::EnvFnExt;
 use crate::mechanism::SimEnvObserve;
 use crate::node::EnvNodeExt;
-use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
+use crate::with_env_sub::{WithEnvCore};
 use crate::{
     actions::ESActionWrapper, fn_dag::FnId,
     CONTAINER_BASIC_MEM,
@@ -156,7 +156,7 @@ impl TempScaleNum {
             drop(history);
 
             // MARK 最近的感知窗口长度的帧不计算在内
-            for i in 0..self.temp_care_window_len {
+            for _i in 0..self.temp_care_window_len {
                 samples.pop_back();
             }
 
@@ -182,7 +182,7 @@ impl TempScaleNum {
 // 实现核心 trait
 impl ScaleNum for TempScaleNum {
     // 设置指定函数的目标容器数量
-    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) -> usize {
+    fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, _action: &ESActionWrapper) -> usize {
 
         // 初始化======================================================================================
         // 获得当前帧数
@@ -337,7 +337,7 @@ impl ScaleNum for TempScaleNum {
                         (fn_instance_cnt as f64 * (container_inc_rate - 1.0)).ceil() as i32;
 
                     // 如果所需要的实例数量大于空闲的实例数量，则进行扩容
-                    if (container_change >= idle_fn_instance_cnt) {
+                    if container_change >= idle_fn_instance_cnt {
                         // 标记这一帧用温度策略决定扩缩容
                         scale_sign = true;
 

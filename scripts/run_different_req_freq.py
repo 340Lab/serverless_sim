@@ -75,12 +75,12 @@ algos=[
     # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["lru","10"]],
     # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["lru","10"]],
 
-    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["no_evict","10"]],
+    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["no_evict","10"]],
+    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["no_evict","10"]],
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["no_evict","10"]],
+    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["no_evict","10"]],
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["no_evict","10"]],
+    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["no_evict","10"]],
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["lru","10"]],
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["lru","10"]],
 

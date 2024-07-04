@@ -2,7 +2,7 @@ use std::{borrow::Borrow, collections::{HashMap, HashSet}, vec};
 
 
 use crate::{
-    fn_dag::{EnvFnExt, FnId}, mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{EnvNodeExt, NodeId}, request::Request, sim_run::{schedule_helper, Scheduler}, with_env_sub::{WithEnvCore, WithEnvHelp}
+    fn_dag::{EnvFnExt, FnId}, mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{EnvNodeExt, NodeId}, request::Request, sim_run::{schedule_helper, Scheduler}, with_env_sub::{WithEnvCore, WithEnvHelp}
 };
 
 struct bplistStatues{
@@ -59,7 +59,7 @@ impl BpBalanceScheduler {
     }
 
     // 找出binpack数组中空闲内存率最高的节点
-    fn find_max_idle_nodeid(&self, fnid: FnId, env: &SimEnvObserve) -> usize{
+    fn find_max_idle_nodeid(&self, fnid: FnId, _env: &SimEnvObserve) -> usize{
         // BUG 当binpack为空时，会返回9999，导致调度失败
         let mut max_idle_nodeid: usize = 9999;
         let binpack = self.fn_binpack_map.get(&fnid).unwrap();

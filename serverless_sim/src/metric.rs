@@ -1,16 +1,17 @@
 use crate::fn_dag::EnvFnExt;
 use crate::node::EnvNodeExt;
+use crate::score::EnvMetricExt;
 use crate::{
-    config::Config, fn_dag::FnId, mechanism_conf::ModuleMechConf, sim_env::SimEnv, util::Window,
+    config::Config,
+    fn_dag::FnId,
+    mechanism_conf::ModuleMechConf,
+    sim_env::SimEnv,
+    util::Window,
 };
 use chrono;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use serde_json::Value;
-use std::{
-    collections::{BTreeMap, HashMap},
-    fs::{self, File},
-    io::{Read, Write},
-};
+use std::{ collections::{ BTreeMap, HashMap }, fs::{ self, File }, io::{ Read, Write } };
 
 // #[derive(Serialize, Deserialize)]
 // pub struct ReqFrame {
@@ -234,8 +235,7 @@ impl Records {
     pub fn add_frame(&mut self, sim_env: &SimEnv) {
         let mut frame = vec![Value::Null; FRAME_LEN];
         frame[FRAME_IDX_FRAME] = sim_env.core.current_frame().into();
-        frame[FRAME_IDX_RUNNING_REQS] = sim_env
-            .core
+        frame[FRAME_IDX_RUNNING_REQS] = sim_env.core
             .requests()
             .iter()
             .map(|(reqid, req)| {
@@ -247,8 +247,7 @@ impl Records {
             })
             .collect::<Vec<_>>()
             .into();
-        frame[FRAME_IDX_NODES] = sim_env
-            .core
+        frame[FRAME_IDX_NODES] = sim_env.core
             .nodes()
             .iter()
             .map(|node| {
@@ -271,8 +270,7 @@ impl Records {
         frame[FRAME_IDX_REQ_DATA_RECV_TIME] = sim_env.req_data_recv_time_avg().into();
         frame[FRAME_IDX_REQ_EXE_TIME] = sim_env.req_exe_time_avg().into();
         frame[FRAME_IDX_ALGO_EXE_TIME] = sim_env.help.avg_algo_exc_time().into();
-        frame[FRAME_IDX_FNCONTAINER_COUNT] = sim_env
-            .core
+        frame[FRAME_IDX_FNCONTAINER_COUNT] = sim_env.core
             .nodes()
             .iter()
             .map(|n| n.fn_containers.borrow().len())
@@ -292,8 +290,7 @@ impl Records {
 
             log::info!("flush to target key: {}", self.record_name);
             let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
-            file.write_all(serde_json::to_string(self).unwrap().as_bytes())
-                .unwrap();
+            file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
 
             // 计算几个关键指标，输出到对应seed的文件中
         } else {
@@ -382,21 +379,19 @@ pub fn group_records_by_seed() {
         // let mut config_metrics = vec![];
         let mut count = recordfiles.len();
         if !seeds_metrics_cache.contains_key(&seed) {
-            seeds_metrics_cache.insert(seed.clone(), get_seed_metrics(&seed).map_or(vec![], |v| v));
+            seeds_metrics_cache.insert(
+                seed.clone(),
+                get_seed_metrics(&seed).map_or(vec![], |v| v)
+            );
         }
         let config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
         for (configstr, f) in recordfiles.iter().rev() {
             let mut read_data = || {
-                let mut records: Records = serde_json::from_str(
-                    &fs::read_to_string(format!("records/{}", f.file_name)).unwrap(),
-                )
-                .unwrap();
+                let mut records: Records = serde_json
+                    ::from_str(&fs::read_to_string(format!("records/{}", f.file_name)).unwrap())
+                    .unwrap();
                 count -= 1;
-                log::info!(
-                    "deserialed one record file: {}, left:{}",
-                    f.file_name,
-                    count
-                );
+                log::info!("deserialed one record file: {}, left:{}", f.file_name, count);
                 if records.frames.len() < 999 {
                     return None;
                 }
@@ -431,12 +426,11 @@ pub fn group_records_by_seed() {
                 };
 
                 // let req_done = last_frame[FRAME_IDX_DONE_REQ_COUNT].take();
-                let rps = records
-                    .frames
-                    .iter()
-                    .map(|f| f[FRAME_IDX_DONE_REQ_COUNT].as_f64().unwrap())
-                    .sum::<f64>()
-                    / (records.frames.len() as f64);
+                let rps =
+                    records.frames
+                        .iter()
+                        .map(|f| f[FRAME_IDX_DONE_REQ_COUNT].as_f64().unwrap())
+                        .sum::<f64>() / (records.frames.len() as f64);
 
                 let one_config_info: Vec<Value> = vec![
                     configstr.clone().into(),
@@ -448,14 +442,15 @@ pub fn group_records_by_seed() {
                     waitsche_time_per_req,
                     datarecv_time_per_req,
                     exe_time_per_req,
-                    f.time_str.clone().into(),
+                    f.time_str.clone().into()
                 ];
                 Some(one_config_info)
             };
-            if let Some(update) = config_metrics
-                .iter_mut()
-                .filter(|config| config[0].as_str().unwrap() == &*configstr)
-                .next()
+            if
+                let Some(update) = config_metrics
+                    .iter_mut()
+                    .filter(|config| config[0].as_str().unwrap() == &*configstr)
+                    .next()
             {
                 if update[9].as_str().unwrap() < f.time_str.as_str() {
                     if let Some(one_config_info) = read_data() {
@@ -476,15 +471,14 @@ pub fn group_records_by_seed() {
             .truncate(true)
             .open(format!("records/seed_{}.json", seed))
             .unwrap();
-        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes())
-            .unwrap();
+        file.write_all(serde_json::to_string(&config_metrics).unwrap().as_bytes()).unwrap();
     }
 }
 
 /// used sync io operation, use spawn_blocking
 /// return: seed->[[configstr, cost, time, score]...]
 pub fn get_seeds_metrics<'a>(
-    seeds: impl Iterator<Item = &'a String>,
+    seeds: impl Iterator<Item = &'a String>
 ) -> HashMap<String, Vec<Vec<Value>>> {
     let mut seeds_metrics = HashMap::new();
     for seed in seeds {
@@ -498,11 +492,12 @@ pub fn get_seeds_metrics<'a>(
 /// return: [[configstr, cost, time, score]...]
 pub fn get_seed_metrics(seed: &String) -> Option<Vec<Vec<Value>>> {
     let mut seed_metrics = vec![];
-    if let Ok(mut file) = File::options()
-        .read(true)
-        .write(true)
-        .append(false)
-        .open(format!("records/seed_{}.json", seed))
+    if
+        let Ok(mut file) = File::options()
+            .read(true)
+            .write(true)
+            .append(false)
+            .open(format!("records/seed_{}.json", seed))
     {
         let mut content = String::new();
         file.read_to_string(&mut content).unwrap();

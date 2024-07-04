@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{ collections::{ HashMap, HashSet, VecDeque }, ptr::NonNull };
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -19,7 +19,7 @@ use crate::sim_env::SimEnv;
 // 滑动窗口
 pub struct Window {
     // 存储的浮点数
-    queue: VecDeque<f32>,
+    pub queue: VecDeque<f32>,
 
     // 窗口容量
     cap: usize,
@@ -59,13 +59,7 @@ pub fn to_range(r: f32, begin: usize, end: usize) -> usize {
 }
 
 pub fn in_range(n: usize, begin: usize, end: usize) -> usize {
-    if n < begin {
-        begin
-    } else if n > end {
-        end
-    } else {
-        n
-    }
+    if n < begin { begin } else if n > end { end } else { n }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -89,10 +83,7 @@ impl Ord for OrdF32 {
 
 pub mod graph {
     use super::*;
-    use daggy::{
-        petgraph::visit::{Topo, Visitable},
-        Dag, NodeIndex, Walker,
-    };
+    use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
 
     pub fn new_dag_walker<N, E>(dag: &Dag<N, E>) -> Topo<NodeIndex, <Dag<N, E> as Visitable>::Map> {
         Topo::new(dag)
@@ -107,9 +98,7 @@ pub mod graph {
             let mut parents = dag.parents(node);
             while let Some((e, p)) = parents.walk_next(dag) {
                 // let p = nodes.entry(p).or_insert_with(|| inverse_dag.add_node(dag[p]));
-                inverse_dag
-                    .add_edge(node, p, dag.edge_weight(e).unwrap().clone())
-                    .unwrap();
+                inverse_dag.add_edge(node, p, dag.edge_weight(e).unwrap().clone()).unwrap();
             }
         }
         inverse_dag
@@ -194,7 +183,7 @@ impl DirectedGraph {
         &self,
         a: usize,
         b: usize,
-        a2bdist: F,
+        a2bdist: F
     ) -> Vec<usize> {
         let mut visited = HashSet::new();
         let mut dists = HashMap::new(); // tostart_dist, prev_node
@@ -253,7 +242,11 @@ impl SimEnv {
 
 pub fn now_ms() -> u64 {
     let now = std::time::SystemTime::now();
-    now.duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
+    now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+pub unsafe fn non_null<T>(v: &T) -> NonNull<T> {
+    let ptr = v as *const T as *mut T;
+    let non_null = NonNull::new_unchecked(ptr);
+    non_null
 }

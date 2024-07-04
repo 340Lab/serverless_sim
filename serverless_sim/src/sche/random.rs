@@ -2,7 +2,7 @@ use crate::mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes};
 use crate::node::EnvNodeExt;
 use crate::with_env_sub::WithEnvCore;
 use crate::{
-    mechanism::{DownCmd, MechType, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechType, MechanismImpl, ScheCmd, SimEnvObserve},
     sim_run::{schedule_helper, Scheduler},
 };
 use rand::prelude::SliceRandom;

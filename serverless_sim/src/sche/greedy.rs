@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     fn_dag::{EnvFnExt, FnId},
-    mechanism::{DownCmd, MechType, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechType, MechanismImpl, ScheCmd, SimEnvObserve},
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::{EnvNodeExt, Node, NodeId},
     sim_run::{schedule_helper, Scheduler},

@@ -1,14 +1,19 @@
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 
 use crate::{
     cache::InstanceCachePolicy,
     fn_dag::FnId,
     mechanism::{
-        FILTER_NAMES, INSTANCE_LIVE_NAMES, MECH_NAMES, SCALE_DOWN_EXEC_NAMES, SCALE_NUM_NAMES,
-        SCALE_UP_EXEC_NAMES, SCHE_NAMES,
+        FILTER_NAMES,
+        INSTANCE_LIVE_NAMES,
+        MECH_NAMES,
+        SCALE_DOWN_EXEC_NAMES,
+        SCALE_NUM_NAMES,
+        SCALE_UP_EXEC_NAMES,
+        SCHE_NAMES,
     },
 };
-use std::{collections::HashMap, fs::File};
+use std::{ collections::HashMap, fs::File };
 
 pub struct ModuleMechConf(pub MechConfig);
 
@@ -16,24 +21,26 @@ impl ModuleMechConf {
     pub fn new() -> Self {
         ModuleMechConf(MechConfig {
             scale_num: {
-                SCALE_NUM_NAMES
-                    .iter()
+                SCALE_NUM_NAMES.iter()
                     .map(|v| (v.to_string(), None))
                     .collect()
             },
-            scale_down_exec: SCALE_DOWN_EXEC_NAMES
-                .iter()
+            scale_down_exec: SCALE_DOWN_EXEC_NAMES.iter()
                 .map(|v| (v.to_string(), None))
                 .collect(),
-            scale_up_exec: SCALE_UP_EXEC_NAMES
-                .iter()
+            scale_up_exec: SCALE_UP_EXEC_NAMES.iter()
                 .map(|v| (v.to_string(), None))
                 .collect(),
-            sche: SCHE_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
-            mech_type: MECH_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
-            filter: FILTER_NAMES.iter().map(|v| (v.to_string(), None)).collect(),
-            instance_cache_policy: INSTANCE_LIVE_NAMES
-                .iter()
+            sche: SCHE_NAMES.iter()
+                .map(|v| (v.to_string(), None))
+                .collect(),
+            mech_type: MECH_NAMES.iter()
+                .map(|v| (v.to_string(), None))
+                .collect(),
+            filter: FILTER_NAMES.iter()
+                .map(|v| (v.to_string(), None))
+                .collect(),
+            instance_cache_policy: INSTANCE_LIVE_NAMES.iter()
                 .map(|v| (v.to_string(), None))
                 .collect(),
         })
@@ -48,19 +55,18 @@ impl ModuleMechConf {
         fn compare_sub_hashmap(
             module: &HashMap<String, Option<String>>,
             conf: &HashMap<String, Option<String>>,
-            must_one_some: bool,
+            must_one_some: bool
         ) -> bool {
             // len must be same
             if module.len() != conf.len() {
-                log::warn!(
-                    "Sub conf len is not match module:{} conf:{}",
-                    module.len(),
-                    conf.len()
-                );
+                log::warn!("Sub conf len is not match module:{} conf:{}", module.len(), conf.len());
                 return false;
             }
             // only one can be some
-            let somecnt = conf.iter().filter(|(_k, v)| v.is_some()).count();
+            let somecnt = conf
+                .iter()
+                .filter(|(_k, v)| v.is_some())
+                .count();
             if must_one_some && somecnt != 1 {
                 log::warn!("Sub conf with multi some, cnt:{}", somecnt);
                 return false;
@@ -87,11 +93,7 @@ impl ModuleMechConf {
             log::warn!("mech_type is not match");
             return false;
         }
-        if !compare_sub_hashmap(
-            &self.0.instance_cache_policy,
-            &conf.instance_cache_policy,
-            true,
-        ) {
+        if !compare_sub_hashmap(&self.0.instance_cache_policy, &conf.instance_cache_policy, true) {
             log::warn!("instance_cache_policy is not match");
             return false;
         }
@@ -114,103 +116,48 @@ impl MechConfig {
     pub fn new_test() -> Self {
         MechConfig {
             scale_num: {
-                SCALE_NUM_NAMES
-                    .iter()
+                SCALE_NUM_NAMES.iter()
                     .map(|v| {
-                        (
-                            v.to_string(),
-                            if *v == "hpa" {
-                                Some("".to_string())
-                            } else {
-                                None
-                            },
-                        )
+                        (v.to_string(), if *v == "hpa" { Some("".to_string()) } else { None })
                     })
                     .collect()
             },
-            scale_down_exec: SCALE_DOWN_EXEC_NAMES
-                .iter()
+            scale_down_exec: SCALE_DOWN_EXEC_NAMES.iter()
                 .map(|v| {
-                    (
-                        v.to_string(),
-                        if *v == "default" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
-                    )
+                    (v.to_string(), if *v == "default" { Some("".to_string()) } else { None })
                 })
                 .collect(),
-            scale_up_exec: SCALE_UP_EXEC_NAMES
-                .iter()
+            scale_up_exec: SCALE_UP_EXEC_NAMES.iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (v.to_string(), if *v == "least_task" { Some("".to_string()) } else { None })
+                })
+                .collect(),
+            sche: SCHE_NAMES.iter()
+                .enumerate()
+                .map(|(_i, v)| {
+                    (v.to_string(), if *v == "random" { Some("".to_string()) } else { None })
+                })
+                .collect(),
+            mech_type: MECH_NAMES.iter()
                 .enumerate()
                 .map(|(_i, v)| {
                     (
                         v.to_string(),
-                        if *v == "least_task" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
+                        if *v == "scale_sche_separated" { Some("".to_string()) } else { None },
                     )
                 })
                 .collect(),
-            sche: SCHE_NAMES
-                .iter()
+            filter: FILTER_NAMES.iter()
                 .enumerate()
                 .map(|(_i, v)| {
-                    (
-                        v.to_string(),
-                        if *v == "random" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
-                    )
+                    (v.to_string(), if *v == "careful_down" { Some("".to_string()) } else { None })
                 })
                 .collect(),
-            mech_type: MECH_NAMES
-                .iter()
+            instance_cache_policy: INSTANCE_LIVE_NAMES.iter()
                 .enumerate()
                 .map(|(_i, v)| {
-                    (
-                        v.to_string(),
-                        if *v == "scale_sche_separated" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
-                    )
-                })
-                .collect(),
-            filter: FILTER_NAMES
-                .iter()
-                .enumerate()
-                .map(|(_i, v)| {
-                    (
-                        v.to_string(),
-                        if *v == "careful_down" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
-                    )
-                })
-                .collect(),
-            instance_cache_policy: INSTANCE_LIVE_NAMES
-                .iter()
-                .enumerate()
-                .map(|(_i, v)| {
-                    (
-                        v.to_string(),
-                        if *v == "lru" {
-                            Some("".to_string())
-                        } else if *v == "fifo" {
-                            Some("".to_string())
-                        } else {
-                            None
-                        },
-                    )
+                    (v.to_string(), if *v == "lru" { Some("10".to_string()) } else { None })
                 })
                 .collect(),
         }
@@ -228,15 +175,11 @@ impl MechConfig {
         let (policy, arg) = self.instance_cache_policy_conf();
         match &*policy {
             "lru" => {
-                let limit = arg
-                    .parse::<usize>()
-                    .expect("Please offer lru cache policy arg");
+                let limit = arg.parse::<usize>().expect("Please offer lru cache policy arg");
                 Box::new(crate::cache::lru::LRUCache::new(limit))
             }
             "fifo" => {
-                let limit = arg
-                    .parse::<usize>()
-                    .expect("Please offer fifo cache policy arg");
+                let limit = arg.parse::<usize>().expect("Please offer fifo cache policy arg");
                 Box::new(crate::cache::lru::LRUCache::new(limit))
             }
             "no_evict" => Box::new(crate::cache::no_evict::NoEvict::new()),
@@ -251,12 +194,11 @@ impl MechConfig {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    v.clone().unwrap_or_else(|| {
-                        panic!(
-                            "instance_cache_policy_conf {:?}",
-                            self.instance_cache_policy
-                        )
-                    }),
+                    v
+                        .clone()
+                        .unwrap_or_else(|| {
+                            panic!("instance_cache_policy_conf {:?}", self.instance_cache_policy)
+                        }),
                 )
             })
             .next()
@@ -271,8 +213,7 @@ impl MechConfig {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    v.clone()
-                        .unwrap_or_else(|| panic!("scale_num_conf {:?}", self.scale_num)),
+                    v.clone().unwrap_or_else(|| panic!("scale_num_conf {:?}", self.scale_num)),
                 )
             })
             .next()
@@ -285,9 +226,11 @@ impl MechConfig {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    v.clone().unwrap_or_else(|| {
-                        panic!("scale_down_exec_conf {:?}", self.scale_down_exec)
-                    }),
+                    v
+                        .clone()
+                        .unwrap_or_else(|| {
+                            panic!("scale_down_exec_conf {:?}", self.scale_down_exec)
+                        }),
                 )
             })
             .next()
@@ -300,7 +243,8 @@ impl MechConfig {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    v.clone()
+                    v
+                        .clone()
                         .unwrap_or_else(|| panic!("scale_up_exec_conf {:?}", self.scale_up_exec)),
                 )
             })
@@ -312,11 +256,7 @@ impl MechConfig {
             .iter()
             .filter(|(_k, v)| v.is_some())
             .map(|(k, v)| {
-                (
-                    k.clone(),
-                    v.clone()
-                        .unwrap_or_else(|| panic!("sche_conf {:?}", self.sche)),
-                )
+                (k.clone(), v.clone().unwrap_or_else(|| panic!("sche_conf {:?}", self.sche)))
             })
             .next()
             .unwrap()

@@ -1,6 +1,5 @@
 use crate::{
-    fn_dag::EnvFnExt,
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
     node::EnvNodeExt,
     request::Request,
@@ -25,7 +24,7 @@ impl HashScheduler {
     fn schedule_one_req_fns(
         &mut self,
         env: &SimEnvObserve,
-        mech: &MechanismImpl,
+        _mech: &MechanismImpl,
         req: &mut Request,
         cmd_distributor: &MechCmdDistributor,
     ) {

@@ -1,19 +1,13 @@
-use std::{
-    cell::{Ref, RefMut},
-    collections::{HashMap, HashSet, VecDeque},
-};
+use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque } };
 
-use daggy::{
-    petgraph::visit::{Topo, Visitable},
-    Dag, NodeIndex, Walker,
-};
+use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
 use enum_as_inner::EnumAsInner;
 
 use crate::{
     config::APPConfig,
     mechanism::SimEnvObserve,
-    node::{EnvNodeExt, NodeId},
-    request::{ReqId, Request},
+    node::{ EnvNodeExt, NodeId },
+    request::{ ReqId, Request },
     sim_env::SimEnv,
     CONTAINER_BASIC_MEM,
 };
@@ -25,7 +19,6 @@ pub type DagId = usize;
 pub type FnDagInner = Dag<FnId, f32>;
 
 #[derive(Clone)]
-
 pub struct FnDAG {
     pub dag_i: DagId,
     pub begin_fn_g_i: NodeIndex,
@@ -41,8 +34,7 @@ impl FnDAG {
         let begin = dag.add_node(begin_fn);
 
         // 设置这个函数实例的DAGid以及在这个DAG中的位置
-        env.func_mut(begin_fn)
-            .setup_after_insert_into_dag(dag_i, begin);
+        env.func_mut(begin_fn).setup_after_insert_into_dag(dag_i, begin);
 
         Self {
             dag_i,
@@ -72,8 +64,7 @@ impl FnDAG {
         let end_g_i = dag.dag_inner.add_node(end_fn);
 
         // 设置这个函数实例的DAGid以及在这个DAG中的位置
-        env.func_mut(end_fn)
-            .setup_after_insert_into_dag(dag_i, end_g_i);
+        env.func_mut(end_fn).setup_after_insert_into_dag(dag_i, end_g_i);
 
         // 往DAG图里插入 map_cnt 数量的节点
         for _i in 0..map_cnt {
@@ -84,16 +75,13 @@ impl FnDAG {
             let (_, next_i) = dag.dag_inner.add_child(
                 dag.begin_fn_g_i,
                 env.core.fns()[begin_fn].out_put_size,
-                next,
+                next
             );
             // 设置这个函数实例的DAGid以及在这个DAG中的位置
-            env.func_mut(next)
-                .setup_after_insert_into_dag(dag_i, next_i);
+            env.func_mut(next).setup_after_insert_into_dag(dag_i, next_i);
 
             // 为DAG添加边,让中间节点连接到结束节点
-            dag.dag_inner
-                .add_edge(next_i, end_g_i, env.func(next).out_put_size)
-                .unwrap();
+            dag.dag_inner.add_edge(next_i, end_g_i, env.func(next).out_put_size).unwrap();
         }
 
         dag
@@ -145,13 +133,17 @@ impl Func {
     pub fn sub_fns(&self, env: &impl EnvFnExt) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.children(self.graph_i);
-        ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
+        ps.iter(&dag)
+            .map(|(_edge, graph_i)| dag[graph_i])
+            .collect()
     }
 
     pub fn parent_fns(&self, env: &impl EnvFnExt) -> Vec<FnId> {
         let dag = env.dag_inner(self.dag_id);
         let ps = dag.parents(self.graph_i);
-        ps.iter(&dag).map(|(_edge, graph_i)| dag[graph_i]).collect()
+        ps.iter(&dag)
+            .map(|(_edge, graph_i)| dag[graph_i])
+            .collect()
     }
 
     // 设置这个函数实例的DAGid以及在这个DAG中的位置
@@ -169,7 +161,9 @@ impl Func {
 #[derive(EnumAsInner, Clone)]
 pub enum FnContainerState {
     // 创建
-    Starting { left_frame: usize },
+    Starting {
+        left_frame: usize,
+    },
     // 运行
     Running,
 }
@@ -188,6 +182,7 @@ pub struct FnContainer {
     /// cpu 利用率
     /// 实际用的计算量/分配到的cpu计算量
     cpu_use_rate: f32,
+    pub last_frame_cpu_used: f32,
 
     // mem使用量
     pub mem_use: f32,
@@ -211,12 +206,12 @@ impl FnContainer {
         if self.recent_frames_done_cnt.len() == 0 {
             return 0.0;
         }
-        (self
-            .recent_frames_done_cnt
-            .iter()
-            .map(|v| *v)
-            .sum::<usize>() as f32)
-            / (self.recent_frames_done_cnt.len() as f32)
+        (
+            self.recent_frames_done_cnt
+                .iter()
+                .map(|v| *v)
+                .sum::<usize>() as f32
+        ) / (self.recent_frames_done_cnt.len() as f32)
     }
     pub fn busyness(&self) -> f32 {
         if self.recent_frames_working_cnt.len() == 0 {
@@ -231,8 +226,7 @@ impl FnContainer {
                 weight += 1;
                 v
             })
-            .sum::<f32>()
-            / (self.recent_frames_working_cnt.len() as f32)
+            .sum::<f32>() / (self.recent_frames_working_cnt.len() as f32)
     }
 
     // 判断一定帧数内该容器是否空闲
@@ -273,6 +267,7 @@ impl FnContainer {
             used_times: 0,
             this_frame_used: false,
             cpu_use_rate: 0.0,
+            last_frame_cpu_used: 0.0,
             mem_use: CONTAINER_BASIC_MEM,
             last_frame_mem: 0.0,
             state: FnContainerState::Starting {
@@ -295,7 +290,7 @@ impl FnContainer {
                 }
             }
             _ => {
-                panic!("not starting")
+                panic!("not starting");
             }
         }
         if to_running {
@@ -432,7 +427,7 @@ impl SimEnv {
                     self.core.dags_mut().push(dag);
                 }
                 _ => {
-                    panic!("not support")
+                    panic!("not support");
                 }
             }
         }
@@ -465,9 +460,10 @@ impl SimEnv {
 
                 env.core.dags_mut().push(dag);
             }
-        }
-        // 如果dag_type为single，则创建10个只包含单个节点的简单DAG实例
-        else if self.help.config().dag_type_single() {
+        } else if
+            // 如果dag_type为single，则创建10个只包含单个节点的简单DAG实例
+            self.help.config().dag_type_single()
+        {
             for _ in 0..10 {
                 let dag_i = env.core.dags().len();
 
@@ -578,7 +574,10 @@ pub trait EnvFnExt: EnvNodeExt {
 
     fn fn_container_cnt(&self, fnid: FnId) -> usize {
         let map = self.core().fn_2_nodes();
-        map.get(&fnid).map_or_else(|| 0, |nodes| nodes.len())
+        map.get(&fnid).map_or_else(
+            || 0,
+            |nodes| nodes.len()
+        )
     }
 
     fn fn_containers_for_each<F: FnMut(&FnContainer)>(&self, fnid: FnId, mut f: F) {

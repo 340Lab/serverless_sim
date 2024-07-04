@@ -1,12 +1,12 @@
 use crate::{
-    fn_dag::{EnvFnExt, FnId},
+    fn_dag::{FnId},
     node::NodeId,
-    request::{ReqId, Request},
+    request::{Request},
     sim_env::SimEnv,
 };
 
 impl SimEnv {
-    pub fn on_task_scheduled(&self, req: &mut Request, fnid: FnId, nodeid: NodeId) {
+    pub fn on_task_scheduled(&self, req: &mut Request, fnid: FnId, _nodeid: NodeId) {
         // ReqFnMetric - sche_time
         assert!(req
             .fn_metric

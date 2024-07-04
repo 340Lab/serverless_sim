@@ -150,7 +150,7 @@ impl<Payload: Eq + Hash + Clone + Debug> LRUCache<Payload> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    
 
     // 测试LRU缓存的基本插入和获取功能
     #[test]

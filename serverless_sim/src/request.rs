@@ -1,19 +1,17 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::{Ref, RefMut},
-    collections::{BTreeMap, HashMap, HashSet},
+    borrow::{ Borrow, BorrowMut },
+    cell::{ Ref, RefMut },
+    collections::{ BTreeMap, HashMap, HashSet },
 };
 
-use daggy::{petgraph::visit::Topo, Dag};
-use rand::thread_rng;
-use rand_distr::{Distribution, Normal};
+use daggy::{ petgraph::visit::Topo };
+
+use rand_distr::{ Distribution, Normal };
 
 use crate::{
-    fn_dag::{DagId, EnvFnExt, FnId},
-    metric,
+    fn_dag::{ DagId, EnvFnExt, FnId },
     node::NodeId,
     sim_env::SimEnv,
-    util,
     with_env_sub::WithEnvCore,
     REQUEST_GEN_FRAME_INTERVAL,
 };
@@ -99,13 +97,10 @@ impl Request {
         let mut endtime_fn = BTreeMap::new();
         while let Some(fngi) = walker.next(&dag.dag_inner) {
             let fnid = dag.dag_inner[fngi];
-            endtime_fn.insert(
-                self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
-                (
-                    self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
-                    fnid,
-                ),
-            );
+            endtime_fn.insert(self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(), (
+                self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
+                fnid,
+            ));
         }
         let first = endtime_fn.iter().next().unwrap().1.clone().1;
         let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
@@ -115,7 +110,7 @@ impl Request {
                 break;
             }
             // use cur fn's begin time to get prev fn's end time
-            let prev: (usize, FnId) = endtime_fn.get(&(cur.0)).unwrap().clone();
+            let prev: (usize, FnId) = endtime_fn.get(&cur.0).unwrap().clone();
             recur_path.push(prev.1);
             if prev.1 == first {
                 break;
@@ -154,12 +149,13 @@ impl Request {
             // assert!(begin);
             let sche_time = metric.sche_time.unwrap();
             let ready_sche_time = metric.ready_sche_time.unwrap();
-            let cold_start_done_time =
-                if let Some(cold_start_done_time) = metric.cold_start_done_time {
-                    cold_start_done_time
-                } else {
-                    sche_time.max(ready_sche_time)
-                };
+            let cold_start_done_time = if
+                let Some(cold_start_done_time) = metric.cold_start_done_time
+            {
+                cold_start_done_time
+            } else {
+                sche_time.max(ready_sche_time)
+            };
             let data_done_time = if let Some(data_recv_done_time) = metric.data_recv_done_time {
                 data_recv_done_time
             } else {
@@ -237,22 +233,20 @@ impl Request {
                 let mut walker = dag.new_dag_walker();
                 let mut map = HashMap::new();
                 while let Some(fngi) = walker.next(&dag.dag_inner) {
-                    let ready_sche_time =
-                        if env.func(dag.dag_inner[fngi]).parent_fns(env).is_empty() {
-                            Some(begin_frame)
-                        } else {
-                            None
-                        };
-                    map.insert(
-                        dag.dag_inner[fngi],
-                        ReqFnMetric {
-                            ready_sche_time,
-                            sche_time: None,
-                            data_recv_done_time: None,
-                            cold_start_done_time: None,
-                            fn_done_time: None,
-                        },
-                    );
+                    let ready_sche_time = if
+                        env.func(dag.dag_inner[fngi]).parent_fns(env).is_empty()
+                    {
+                        Some(begin_frame)
+                    } else {
+                        None
+                    };
+                    map.insert(dag.dag_inner[fngi], ReqFnMetric {
+                        ready_sche_time,
+                        sche_time: None,
+                        data_recv_done_time: None,
+                        cold_start_done_time: None,
+                        fn_done_time: None,
+                    });
                 }
                 map
             },
@@ -358,7 +352,9 @@ impl SimEnv {
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
                 avg_frequency *= 100.0;
+
                 let random_frequency = self.get_random_frequency(avg_frequency, cv);
+                // log::info!("rand {} {} {}", avg_frequency, cv, random_frequency);
                 let mut req_cnt = random_frequency.round() as usize;
 
                 req_cnt /= 10;
@@ -373,10 +369,7 @@ impl SimEnv {
                 }
             }
 
-            log::info!(
-                "Gen requests {total_req_cnt} at frame {}",
-                env.current_frame()
-            );
+            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
 
         //let env = self;
@@ -434,10 +427,7 @@ impl SimEnv {
     pub fn request<'a>(&'a self, i: ReqId) -> Ref<'a, Request> {
         let b = self.core.requests();
 
-        Ref::map(b, |map| {
-            map.get(&i)
-                .unwrap_or_else(|| panic!("request {} not found", i))
-        })
+        Ref::map(b, |map| { map.get(&i).unwrap_or_else(|| panic!("request {} not found", i)) })
     }
 
     // 返回指定请求ID的可变引用
@@ -445,8 +435,7 @@ impl SimEnv {
         let b = self.core.requests_mut();
 
         RefMut::map(b, |map| {
-            map.get_mut(&i)
-                .unwrap_or_else(|| panic!("request {} not found", i))
+            map.get_mut(&i).unwrap_or_else(|| panic!("request {} not found", i))
         })
     }
 }
@@ -455,25 +444,26 @@ impl SimEnv {
 mod tests {
     use std::env::set_var;
 
+    use rand_seeder::rand_core::le;
+
     use crate::{
         config::Config,
-        fn_dag::{EnvFnExt, FnDAG},
+        fn_dag::{ EnvFnExt, FnDAG },
         request::Request,
-        sim_env::{self, SimEnv},
+        sim_env::{ SimEnv },
+        actions::ESActionWrapper,
+        util,
     };
 
     #[test]
     fn test_request_metric() {
-        let mut config = Config::new_test();
+        let config = Config::new_test();
         // config.dag_type = "dag".to_owned();
         let sim_env = SimEnv::new(config);
         sim_env.core.dags_mut()[0] = FnDAG::instance_map_reduce(0, &sim_env, 4);
         let dag = sim_env.dag(0);
 
-        sim_env
-            .core
-            .requests_mut()
-            .insert(0, Request::new(&sim_env, 0, 0));
+        sim_env.core.requests_mut().insert(0, Request::new(&sim_env, 0, 0));
         let mut req = sim_env.request_mut(0);
 
         let mut walker = dag.new_dag_walker();
@@ -514,13 +504,55 @@ mod tests {
     }
     // run dag for 100 frames
     #[test]
-    fn run_dag_30_frame() {
+    fn test_req_30_frame() {
         set_var("RUST_LOG", "debug,error,warn,info");
         let _ = env_logger::builder().is_test(true).try_init();
-        let mut config = Config::new_test();
-        config.dag_type = "dag".to_owned();
-        config.total_frame = 30;
-        let mut sim_env = SimEnv::new(config);
-        sim_env.step(0);
+
+        let mut runs = vec![];
+        for i in 0..10 {
+            println!("new run {}", i);
+            let mut run = vec![];
+            let mut config = Config::new_test();
+            // config.dag_type = "dag".to_owned();
+            config.total_frame = 30;
+            let mut sim_env = SimEnv::new(config);
+
+            let begin_req_cnt = 0;
+            let mut begin_req_cnt1 = unsafe { util::non_null(&begin_req_cnt) };
+            let begin_req_cnt2 = unsafe { util::non_null(&begin_req_cnt) };
+            let frame_begin = move |env: &SimEnv| {
+                log::info!("hook frame begin {}", env.current_frame());
+                unsafe {
+                    *begin_req_cnt1.as_mut() = env.core.requests().len();
+                }
+            };
+            let mut run1 = unsafe { util::non_null(&run) };
+            let req_gen = move |env: &SimEnv| {
+                let aft_gen_req_cnt = env.core.requests().len();
+
+                unsafe {
+                    let cnt = aft_gen_req_cnt - *begin_req_cnt2.as_ref();
+                    log::info!("hook req gen {} at {}", cnt, env.current_frame());
+                    run1.as_mut().push(cnt);
+                }
+            };
+            sim_env.step_es(
+                ESActionWrapper::Int(0),
+                Some(Box::new(frame_begin)),
+                Some(Box::new(req_gen)),
+                None,
+                None
+            );
+            runs.push(run);
+        }
+        for r in &runs {
+            log::info!("req gen seq {:?}", r);
+        }
+        for r in &runs[1..] {
+            assert_eq!(r.len(), runs[0].len());
+            for (i, frame_new) in r.iter().enumerate() {
+                assert_eq!(runs[0][i], *frame_new);
+            }
+        }
     }
 }

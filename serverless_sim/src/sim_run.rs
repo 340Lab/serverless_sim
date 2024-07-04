@@ -1,14 +1,11 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    vec,
-};
+use std::{ collections::{ BTreeSet, HashMap }, vec };
 
 use crate::{
-    fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId},
-    mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd},
+    fn_dag::{ EnvFnExt, FnContainer, FnContainerState, FnId },
+    mechanism::{ MechanismImpl, SimEnvObserve },
     mechanism_thread::MechCmdDistributor,
-    node::{EnvNodeExt, Node, NodeId},
-    request::{ReqId, Request},
+    node::{ EnvNodeExt, Node, NodeId },
+    request::{ ReqId, Request },
     sim_env::SimEnv,
 };
 
@@ -17,16 +14,12 @@ pub trait Scheduler: Send {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-        cmd_distributor: &MechCmdDistributor,
+        cmd_distributor: &MechCmdDistributor
     );
 }
 
 pub mod schedule_helper {
-    use crate::{
-        fn_dag::{EnvFnExt, FnId},
-        mechanism::SimEnvObserve,
-        request::Request,
-    };
+    use crate::{ fn_dag::{ EnvFnExt, FnId }, mechanism::SimEnvObserve, request::Request };
     pub enum CollectTaskConfig {
         All,
         PreAllDone,
@@ -36,7 +29,7 @@ pub mod schedule_helper {
     pub fn collect_task_to_sche(
         req: &Request,
         env: &SimEnvObserve,
-        config: CollectTaskConfig,
+        config: CollectTaskConfig
     ) -> Vec<FnId> {
         let mut collect = vec![];
         let dag_i = req.dag_i;
@@ -149,12 +142,10 @@ impl SimEnv {
             container.this_frame_used = true;
 
             // 得到该请求放进容器中执行时,这个请求一共需要接收多少数据,还差多少数据没处理完
-            let (all, recved) = container
-                .req_fn_state
+            let (all, recved) = container.req_fn_state
                 .get_mut(&t.req_id)
                 .unwrap()
-                .data_recv
-                .get_mut(&from)
+                .data_recv.get_mut(&from)
                 .unwrap();
             if *all <= *recved {
                 // 该数据已经传输完毕
@@ -193,13 +184,10 @@ impl SimEnv {
         for x in 0..self.core.nodes().len() {
             for y in 0..self.core.nodes().len() {
                 if x != y {
-                    node2node_trans.insert(
-                        (x, y),
-                        NodeTrans {
-                            send_paths: vec![],
-                            recv_paths: vec![],
-                        },
-                    );
+                    node2node_trans.insert((x, y), NodeTrans {
+                        send_paths: vec![],
+                        recv_paths: vec![],
+                    });
                 }
             }
         }
@@ -225,12 +213,14 @@ impl SimEnv {
                                     fn_id: *fnid,
                                 };
                                 // log::info!("new one path: {path:?} to node {node_id}");
-                                let send_2_recv =
-                                    node2node_trans.get_mut(&(*send_node, node_id)).unwrap();
+                                let send_2_recv = node2node_trans
+                                    .get_mut(&(*send_node, node_id))
+                                    .unwrap();
                                 send_2_recv.send_paths.push(path.clone());
 
-                                let recv_2_send =
-                                    node2node_trans.get_mut(&(node_id, *send_node)).unwrap();
+                                let recv_2_send = node2node_trans
+                                    .get_mut(&(node_id, *send_node))
+                                    .unwrap();
                                 recv_2_send.recv_paths.push(path.clone());
                             }
                         }
@@ -266,7 +256,7 @@ impl SimEnv {
         &self,
         fnid: FnId,
         fc: &mut FnContainer,
-        cpu_for_one_task: f32,
+        cpu_for_one_task: f32
     ) {
         let container_cpu_used = cpu_for_one_task.min(self.func(fnid).cold_start_container_cpu_use);
         fc.set_cpu_use_rate(cpu_for_one_task, container_cpu_used);
@@ -280,7 +270,7 @@ impl SimEnv {
         container_node_cpu: &mut f32,
         fc: &mut FnContainer,
         cpu_for_one_task: f32,
-        req_fns_2_run: &BTreeSet<(ReqId, FnId)>,
+        req_fns_2_run: &BTreeSet<(ReqId, FnId)>
     ) {
         let mut done_reqs = vec![];
         let mut calc_cnt = 0;
@@ -314,8 +304,10 @@ impl SimEnv {
         if calc_cnt > 0 {
             fc.this_frame_used = true;
             // compute cpu use rate
+            fc.last_frame_cpu_used = container_used_cpu;
             fc.set_cpu_use_rate(container_alloced_cpu, container_used_cpu);
         } else {
+            fc.last_frame_cpu_used = 0.0;
             fc.set_cpu_use_rate(1.0, 0.0);
         }
 
@@ -334,26 +326,28 @@ impl SimEnv {
 
     fn sim_compute_collect_compute_data(
         &self,
-        n: &mut Node,
+        n: &mut Node
     ) -> Option<(BTreeSet<(ReqId, FnId)>, usize, f32)> {
         let mut req_fns_2_run = BTreeSet::new();
 
         // collect run fn count, alloc cpu resource equally
-        let starting_container_cnt = n
-            .fn_containers
+        let starting_container_cnt = n.fn_containers
             .borrow()
             .iter()
-            .filter(|(_, fc)| match fc.state() {
-                FnContainerState::Starting { .. } => true,
-                _ => false,
+            .filter(|(_, fc)| {
+                match fc.state() {
+                    FnContainerState::Starting { .. } => true,
+                    _ => false,
+                }
             })
             .count();
 
         for (&fnid, fc) in n.fn_containers.borrow_mut().iter_mut() {
             if let FnContainerState::Running { .. } = fc.state() {
                 for (&req_id, fn_running_state) in &fc.req_fn_state {
-                    if fn_running_state.data_recv_done()
-                        && n.unready_left_mem() > self.func(fnid).mem
+                    if
+                        fn_running_state.data_recv_done() &&
+                        n.unready_left_mem() > self.func(fnid).mem
                     {
                         *n.unready_mem_mut() += self.func(fnid).mem;
 
@@ -388,8 +382,9 @@ impl SimEnv {
     fn sim_computes(&self) {
         for n in self.nodes_mut().iter_mut() {
             // collect the done receive data tasks
-            if let Some((req_fns_2_run, _starting_container_cnt, cpu_for_one_task)) =
-                self.sim_compute_collect_compute_data(n)
+            if
+                let Some((req_fns_2_run, _starting_container_cnt, cpu_for_one_task)) =
+                    self.sim_compute_collect_compute_data(n)
             {
                 for (fnid, fc) in n.fn_containers.borrow_mut().iter_mut() {
                     match fc.state_mut() {
@@ -397,8 +392,9 @@ impl SimEnv {
                             self.sim_compute_container_starting(*fnid, fc, cpu_for_one_task);
                             if let FnContainerState::Running = fc.state() {
                                 // starting -> running
-                                *n.unready_mem_mut() -=
-                                    self.func(*fnid).cold_start_container_mem_use;
+                                *n.unready_mem_mut() -= self.func(
+                                    *fnid
+                                ).cold_start_container_mem_use;
                                 *n.unready_mem_mut() += self.func(*fnid).container_mem();
                             }
                         }
@@ -407,13 +403,14 @@ impl SimEnv {
                 }
                 for (fnid, fc) in n.fn_containers.borrow_mut().iter_mut() {
                     match fc.state_mut() {
-                        FnContainerState::Running => self.sim_compute_container_running(
-                            *fnid,
-                            &mut n.cpu,
-                            fc,
-                            cpu_for_one_task,
-                            &req_fns_2_run,
-                        ),
+                        FnContainerState::Running =>
+                            self.sim_compute_container_running(
+                                *fnid,
+                                &mut n.cpu,
+                                fc,
+                                cpu_for_one_task,
+                                &req_fns_2_run
+                            ),
                         _ => {}
                     }
                 }
@@ -423,13 +420,14 @@ impl SimEnv {
                         FnContainerState::Starting { .. } => {
                             panic!("should not be starting");
                         }
-                        FnContainerState::Running => self.sim_compute_container_running(
-                            *fnid,
-                            &mut n.cpu,
-                            fc,
-                            0.0,
-                            &BTreeSet::new(),
-                        ),
+                        FnContainerState::Running =>
+                            self.sim_compute_container_running(
+                                *fnid,
+                                &mut n.cpu,
+                                fc,
+                                0.0,
+                                &BTreeSet::new()
+                            ),
                     }
                 }
             }

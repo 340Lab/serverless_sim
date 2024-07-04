@@ -24,10 +24,11 @@ mod sim_timer;
 mod state;
 mod util;
 mod with_env_sub;
+mod rl_target;
 
 use mechanism_conf::ModuleMechConf;
 
-use std::{env::set_var, time::Duration};
+use std::{ env::set_var, time::Duration };
 
 #[macro_use]
 extern crate lazy_static;

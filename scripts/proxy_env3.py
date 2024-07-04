@@ -33,7 +33,7 @@ class ProxyEnv3:
         "cold_start": "high",
         "fn_type": "cpu",
         "no_log": False,
-        "total_frame":1000,
+        "total_frame":2000,
         # // optional
         "mech": {}
     }
@@ -48,20 +48,22 @@ class ProxyEnv3:
         print(f"Config Templete {self.config}")
         print("\n\n")
 
+    
+
     # 向指定的API发出POST请求，并返回响应结果
     def __request(self, api, data=None):
         # print("request: ",self.url+api,", data: ",data)
-        print("\n")
-        print(f"[{api}] req: {data}")
+        # print("\n")
+        # print(f"[{api}] req: {data}")
 
         if data is None:
             res= requests.post(self.url+api)
         else:
             res= requests.post(self.url+api, json=data)
 
-        print(f"[{api}] res: {res.status_code} {res.reason} {res.text}")
-        # print(f"[{api}] res json: {res.json()}")
-        print("\n")
+        # print(f"[{api}] res: {res.status_code} {res.reason} {res.text}")
+        # # print(f"[{api}] res json: {res.json()}")
+        # print("\n")
 
         return res
 
@@ -84,3 +86,23 @@ class ProxyEnv3:
         # 向模拟环境的API发送一个step请求，其中包含action和env_id信息
         res = self.__request("step", {"action": action, "env_id": self.env_id})
         return res.json()['kernel']
+
+    def start_async_sim(self):
+        def __start_sim():
+            res = self.__request("step", {"action": 0, "env_id": self.env_id})
+            return res.json()['kernel']
+        # start a thread
+        import threading
+        threading.Thread(target=__start_sim).start()
+        
+
+    # return state, reward, done, _
+    def rl_step(self, action):
+        if self.env_id=="":
+            print("env_id is empty, please reset the environment first.")
+            print("\n\n")
+            return
+        # 向模拟环境的API发送一个step请求，其中包含action和env_id信息
+        res = self.__request("rl_step", {"action": action})
+        res = res.json()['kernel']
+        return res['state'],res['score'],res['stop'],''

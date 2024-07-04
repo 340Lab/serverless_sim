@@ -1,28 +1,22 @@
-use std::{
-    cell::{RefCell, RefMut},
-    collections::HashMap,
-};
+use std::{ cell::{ RefCell, RefMut }, collections::HashMap };
 
 use crate::{
     actions::ESActionWrapper,
     config::Config,
-    fn_dag::{EnvFnExt, FnId},
-    mechanism_conf::{MechConfig, ModuleMechConf},
+    fn_dag::{ EnvFnExt, FnId },
+    mechanism_conf::{ MechConfig, ModuleMechConf },
     mechanism_thread::MechCmdDistributor,
     node::NodeId,
     request::ReqId,
     scale::{
-        down_exec::{new_scale_down_exec, ScaleDownExec},
-        num::{
-            down_filter::{CarefulScaleDownFilter, ScaleFilter},
-            new_scale_num, ScaleNum,
-        },
-        up_exec::{new_scale_up_exec, ScaleUpExec},
+        down_exec::{ new_scale_down_exec, ScaleDownExec },
+        num::{ down_filter::{ CarefulScaleDownFilter, ScaleFilter }, new_scale_num, ScaleNum },
+        up_exec::{ new_scale_up_exec, ScaleUpExec },
     },
     sche::prepare_spec_scheduler,
-    sim_env::{SimEnvCoreState, SimEnvHelperState},
+    sim_env::{ SimEnvCoreState, SimEnvHelperState },
     sim_run::Scheduler,
-    with_env_sub::{WithEnvCore, WithEnvHelp},
+    with_env_sub::{ WithEnvCore, WithEnvHelp },
 };
 #[derive(Clone)]
 pub struct UpCmd {
@@ -92,10 +86,17 @@ pub const SCHE_NAMES: [&'static str; 10] = [
     "random",
     "greedy",
     "consistenthash", // "gofs",
-                      // "load_least",
-                      // "random",
+    // "load_least",
+    // "random",
 ];
-pub const SCALE_NUM_NAMES: [&'static str; 5] = ["no", "hpa", "lass", "temp_scaler", "full_placement"];
+pub const SCALE_NUM_NAMES: [&'static str; 6] = [
+    "no",
+    "hpa",
+    "lass",
+    "temp_scaler",
+    "full_placement",
+    "rela",
+];
 pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
 pub const SCALE_UP_EXEC_NAMES: [&'static str; 2] = ["least_task", "no"];
 pub const MECH_NAMES: [&'static str; 3] = ["no_scale", "scale_sche_separated", "scale_sche_joint"];
@@ -107,7 +108,7 @@ pub trait Mechanism: Send {
         &self,
         env: &SimEnvObserve,
         raw_action: ESActionWrapper,
-        cmd_distributor: &MechCmdDistributor,
+        cmd_distributor: &MechCmdDistributor
     );
 }
 
@@ -129,7 +130,7 @@ impl ConfigNewMec for Config {
             allow_sche: &Vec<&'static str>,
             allow_scale_num: &Vec<&'static str>,
             allow_scale_down_exec: &Vec<&'static str>,
-            allow_scale_up_exec: &Vec<&'static str>,
+            allow_scale_up_exec: &Vec<&'static str>
         ) -> bool {
             if !allow_sche.contains(&&*conf.sche_conf().0) {
                 log::warn!(
@@ -176,51 +177,57 @@ impl ConfigNewMec for Config {
                     "random",
                     "greedy",
                     "consistenthash",
-                    "hash", 
+                    "hash",
                     "rotate"
                 ];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["no"];
 
-                if !check_config(
-                    &self.mech,
-                    &allow_sche,
-                    &allow_scale_num,
-                    &allow_scale_down_exec,
-                    &allow_scale_up_exec,
-                ) {
+                if
+                    !check_config(
+                        &self.mech,
+                        &allow_sche,
+                        &allow_scale_num,
+                        &allow_scale_down_exec,
+                        &allow_scale_up_exec
+                    )
+                {
                     return None;
                 }
             }
             "scale_sche_separated" => {
                 let allow_sche = vec!["random", "greedy", "hash", "rotate"];
-                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement"];
+                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
 
-                if !check_config(
-                    &self.mech,
-                    &allow_sche,
-                    &allow_scale_num,
-                    &allow_scale_down_exec,
-                    &allow_scale_up_exec,
-                ) {
+                if
+                    !check_config(
+                        &self.mech,
+                        &allow_sche,
+                        &allow_scale_num,
+                        &allow_scale_down_exec,
+                        &allow_scale_up_exec
+                    )
+                {
                     return None;
                 }
             }
             "scale_sche_joint" => {
                 let allow_sche = vec!["pos", "bp_balance", "hash", "rotate"];
-                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement"];
+                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
-                if !check_config(
-                    &self.mech,
-                    &allow_sche,
-                    &allow_scale_num,
-                    &allow_scale_down_exec,
-                    &allow_scale_up_exec,
-                ) {
+                if
+                    !check_config(
+                        &self.mech,
+                        &allow_sche,
+                        &allow_scale_num,
+                        &allow_scale_down_exec,
+                        &allow_scale_up_exec
+                    )
+                {
                     return None;
                 }
             }
@@ -241,8 +248,7 @@ impl ConfigNewMec for Config {
         let Some(scale_up_exec) = new_scale_up_exec(self) else {
             return None;
         };
-        let filters = FILTER_NAMES
-            .iter()
+        let filters = FILTER_NAMES.iter()
             .filter(|v| self.mech.filter.get(**v).unwrap().is_some())
             .map(|filters| {
                 let filter = match *filters {
@@ -305,7 +311,7 @@ impl Mechanism for MechanismImpl {
         &self,
         env: &SimEnvObserve,
         raw_action: ESActionWrapper,
-        cmd_distributor: &MechCmdDistributor,
+        cmd_distributor: &MechCmdDistributor
     ) {
         match &*self.config.mech.mech_type().0 {
             "no_scale" => self.step_no_scaler(env, self, cmd_distributor, raw_action),
@@ -315,12 +321,7 @@ impl Mechanism for MechanismImpl {
 
             // 目前只实现了这个
             "scale_sche_joint" => self.step_scale_sche_joint(env, cmd_distributor, raw_action),
-            _ => {
-                panic!(
-                    "mech_type not supported {}",
-                    env.help.config().mech.mech_type().0
-                )
-            }
+            _ => { panic!("mech_type not supported {}", env.help.config().mech.mech_type().0) }
         }
     }
 }
@@ -337,9 +338,7 @@ impl MechanismImpl {
             "no_scale" => MechType::NoScale,
             "scale_sche_separated" => MechType::ScaleScheSeparated,
             "scale_sche_joint" => MechType::ScaleScheJoint,
-            _ => {
-                panic!("mech_type not supported {}", self.config.mech.mech_type().0)
-            }
+            _ => { panic!("mech_type not supported {}", self.config.mech.mech_type().0) }
         }
     }
     pub fn scale_down_exec<'a>(&'a self) -> RefMut<'a, Box<dyn ScaleDownExec>> {
@@ -358,20 +357,16 @@ impl MechanismImpl {
         env: &SimEnvObserve,
         mech: &MechanismImpl,
         cmd_distributor: &MechCmdDistributor,
-        _raw_action: ESActionWrapper,
+        _raw_action: ESActionWrapper
     ) {
         log::info!("step_no_scaler");
-        self.sche
-            .borrow_mut()
-            .schedule_some(env, mech, cmd_distributor);
+        self.sche.borrow_mut().schedule_some(env, mech, cmd_distributor);
     }
 
     fn update_scale_num(&self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) {
         let mut target = self.scale_num.borrow_mut().scale_for_fn(env, fnid, action);
         for filter in self.filters.iter() {
-            target = filter
-                .borrow_mut()
-                .filter_desired(fnid, target, env.fn_container_cnt(fnid));
+            target = filter.borrow_mut().filter_desired(fnid, target, env.fn_container_cnt(fnid));
         }
         self.fn_scale_num.borrow_mut().insert(fnid, target);
     }
@@ -386,7 +381,7 @@ impl MechanismImpl {
         &self,
         env: &SimEnvObserve,
         cmd_distributor: &MechCmdDistributor,
-        raw_action: ESActionWrapper,
+        raw_action: ESActionWrapper
     ) {
         log::info!("step_separated");
 
@@ -399,27 +394,20 @@ impl MechanismImpl {
 
             // 扩容
             if target > cur {
-                self.scale_up_exec.borrow_mut().exec_scale_up(
-                    target,
-                    func.fn_id,
-                    env,
-                    cmd_distributor,
-                );
-            }
-            // 缩容
-            else if target < cur {
-                self.scale_down_exec.borrow_mut().exec_scale_down(
-                    env,
-                    func.fn_id,
-                    cur - target,
-                    cmd_distributor,
-                );
+                self.scale_up_exec
+                    .borrow_mut()
+                    .exec_scale_up(target, func.fn_id, env, cmd_distributor);
+            } else if
+                // 缩容
+                target < cur
+            {
+                self.scale_down_exec
+                    .borrow_mut()
+                    .exec_scale_down(env, func.fn_id, cur - target, cmd_distributor);
             }
         }
 
-        self.sche
-            .borrow_mut()
-            .schedule_some(env, self, cmd_distributor);
+        self.sche.borrow_mut().schedule_some(env, self, cmd_distributor);
 
         // 扩缩容和调度分离，所以要求调度后不能再主动调节容器数量
         // assert!(up.is_empty());
@@ -431,7 +419,7 @@ impl MechanismImpl {
         &self,
         env: &SimEnvObserve,
         cmd_distributor: &MechCmdDistributor,
-        raw_action: ESActionWrapper,
+        raw_action: ESActionWrapper
     ) {
         // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
         for func in env.core.fns().iter() {
