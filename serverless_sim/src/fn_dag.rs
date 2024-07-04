@@ -363,7 +363,7 @@ impl RunningTask {
     pub fn data_recv_done(&self) -> bool {
         let mut done = true;
         for (_, (need, recv)) in self.data_recv.iter() {
-            if *need > *recv {
+            if (*need-*recv) > 0.00001 {
                 done = false;
                 break;
             }
@@ -474,23 +474,26 @@ impl SimEnv {
         }
         // 跑指标2的实验用
         else if self.help.config().dag_type_mix() {
-            for _ in 0..50 {
-                // 随机确定每个图中节点的数量
-                let mapcnt = env.env_rand_i(2, 5); //2-4
-                let dag_i = env.core.dags().len();
+            for i in 0..10 {
 
-                // 创建一个复杂DAG实例
-                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
-                log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
+                if i < 5 {
+                    // 随机确定每个图中节点的数量
+                    let mapcnt = env.env_rand_i(2, 5); //2-4
+                    let dag_i = env.core.dags().len();
 
-                env.core.dags_mut().push(dag);
-            }
-            for _ in 0..50 {
-                let dag_i = env.core.dags().len();
+                    // 创建一个复杂DAG实例
+                    let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                    // log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
-                // 创建一个简单DAG实例
-                let dag = FnDAG::instance_single_fn(dag_i, env);
-                env.core.dags_mut().push(dag);
+                    env.core.dags_mut().push(dag);
+                }
+                else {
+                    let dag_i = env.core.dags().len();
+
+                    // 创建一个简单DAG实例
+                    let dag = FnDAG::instance_single_fn(dag_i, env);
+                    env.core.dags_mut().push(dag);
+                }
             }
         }
         else {
@@ -505,6 +508,7 @@ impl SimEnv {
     // }
 
     pub fn fn_new_fn_running_state(&self, req: &Request, fnid: FnId) -> RunningTask {
+        log::info!("reqid {}, fnid {}. frame {} new running task", req.req_id, fnid, self.current_frame());
         let env = self;
 
         let total_calc: f32 = env.func(fnid).cpu;

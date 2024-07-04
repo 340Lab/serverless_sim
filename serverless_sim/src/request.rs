@@ -149,13 +149,12 @@ impl Request {
             // assert!(begin);
             let sche_time = metric.sche_time.unwrap();
             let ready_sche_time = metric.ready_sche_time.unwrap();
-            let cold_start_done_time = if
-                let Some(cold_start_done_time) = metric.cold_start_done_time
-            {
-                cold_start_done_time
-            } else {
-                sche_time.max(ready_sche_time)
-            };
+            let cold_start_done_time =
+                if let Some(cold_start_done_time) = metric.cold_start_done_time {
+                    cold_start_done_time.max(sche_time.max(ready_sche_time))
+                } else {
+                    sche_time.max(ready_sche_time)
+                };
             let data_done_time = if let Some(data_recv_done_time) = metric.data_recv_done_time {
                 data_recv_done_time
             } else {
@@ -179,6 +178,7 @@ impl Request {
             } else {
                 0
             };
+            // log::info!("cold_start_done_time {}. sche_time.max(ready_sche_time) {}", cold_start_done_time, sche_time.max(ready_sche_time));
             wait_cold_start_time += cold_start_done_time - sche_time.max(ready_sche_time);
             data_recv_time += data_done_time - cold_start_done_time;
             exe_time += fn_done_time - data_done_time;
@@ -351,13 +351,11 @@ impl SimEnv {
             let mut total_req_cnt = 0;
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
-                avg_frequency *= 100.0;
-
+                // avg_frequency *= 100.0;
+                avg_frequency *= 10.0;
                 let random_frequency = self.get_random_frequency(avg_frequency, cv);
-                // log::info!("rand {} {} {}", avg_frequency, cv, random_frequency);
-                let mut req_cnt = random_frequency.round() as usize;
+                let req_cnt = random_frequency.round() as usize;
 
-                req_cnt /= 10;
                 total_req_cnt += req_cnt;
 
                 // println!("DAG Index: {}, Avg Frequency: {}, CV: {}, Random Frequency: {}, Request Count: {}", dag_i, avg_frequency, cv, random_frequency, req_cnt);

@@ -100,7 +100,8 @@ impl Node {
         Self {
             node_id,
             rsc_limit: NodeRscLimit {
-                cpu: 1000.0,
+                // cpu: 1000.0,
+                cpu: 200.0,
                 mem: 8000.0,
             },
             fn_containers: HashMap::new().into(),
@@ -324,12 +325,17 @@ impl Node {
             if let Some(mut fncon) = self.container_mut(fnid) {
                 // Maybe it's not the first time to load this container
                 // So we need to warm it in the cache
+                if fncon.req_fn_state.contains_key(&req_id) {
+                    continue;
+                }
+
                 self.instance_cache_policy.borrow_mut().get(fnid).unwrap();
                 // add to container
-                fncon.req_fn_state.insert(
+                
+                assert!(fncon.req_fn_state.insert(
                     req_id,
                     env.fn_new_fn_running_state(&env.request(req_id), fnid),
-                );
+                ).is_none());
                 removed_pending.push((req_id, fnid));
             }
         }

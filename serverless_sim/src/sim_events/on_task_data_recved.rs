@@ -2,6 +2,8 @@ use crate::{fn_dag::FnId, request::ReqId, sim_env::SimEnv};
 
 impl SimEnv {
     pub fn on_task_data_recved(&self, reqid: ReqId, func: FnId) {
+        
+        // log::info!("reqid {}, fnid {}. frame {}", reqid, func, self.current_frame());
         assert!(self
             .request_mut(reqid)
             .fn_metric

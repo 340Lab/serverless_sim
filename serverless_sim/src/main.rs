@@ -50,6 +50,15 @@ async fn main() {
     network::start().await;
 }
 
+/* 
+每1帧生成
+节点数量修改为了30个
+mix模式生成的应用为单函数、dag各5个
+请求数量没变。
+node的cpu资源从1000到200
+*/
+
+
 const REQUEST_GEN_FRAME_INTERVAL: usize = 1;
 // const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
 
@@ -57,7 +66,8 @@ const NODE_SCORE_CPU_WEIGHT: f32 = 0.5;
 
 const NODE_SCORE_MEM_WEIGHT: f32 = 0.5;
 
-const NODE_CNT: usize = 10;
+// const NODE_CNT: usize = 10;
+const NODE_CNT: usize = 30;
 
 const CONTAINER_BASIC_MEM: f32 = 199.0;
 
