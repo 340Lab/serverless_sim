@@ -210,7 +210,7 @@ impl Node {
     // }
 
     pub fn try_unload_container(&self, fnid: FnId, env: &SimEnv) {
-        log::info!("scale down fn {fnid} from node {}", self.node_id());
+        // log::info!("scale down fn {fnid} from node {}", self.node_id());
         // env.set_scale_down_result(fnid, self.node_id());
 
         let nodeid = self.node_id();

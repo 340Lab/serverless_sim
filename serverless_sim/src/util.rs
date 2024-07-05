@@ -8,7 +8,7 @@ use std::{
 use priority_queue::PriorityQueue;
 use rand::Rng;
 use windows::Win32::{
-    System::Threading::{ GetCurrentThread, GetThreadTimes },
+    System::Threading::{ GetCurrentThread, GetThreadTimes, INFINITE },
     Foundation::FILETIME,
 };
 use crate::sim_env::SimEnv;
@@ -405,51 +405,53 @@ pub fn stop_trace(session_name: PCWSTR) {
 
 pub fn entry_trace() -> Result<()> {
     unsafe {
-        let mut properties: EVENT_TRACE_PROPERTIES = unsafe { zeroed() };
-        let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE {
-            Value: 0,
-        };
-        let mut buffer: [u16; 1024] = [0; 1024];
-        let session_name = KERNEL_LOGGER_NAMEW;
+        // let mut properties: EVENT_TRACE_PROPERTIES = unsafe { zeroed() };
+        // let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE {
+        //     Value: 0,
+        // };
+        // let mut buffer: [u16; 1024] = [0; 1024];
+        // let session_name = KERNEL_LOGGER_NAMEW;
 
-        stop_trace(session_name);
+        // stop_trace(session_name);
 
-        properties.Wnode.BufferSize =
-            (size_of::<EVENT_TRACE_PROPERTIES>() as u32) +
-            ((buffer.len() * size_of::<u16>()) as u32);
-        properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-        properties.Wnode.ClientContext = 1;
-        properties.Wnode.Guid = SystemTraceControlGuid;
-        properties.LogFileMode = 0x00000100; // EVENT_TRACE_REAL_TIME_MODE
-        properties.LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
-        properties.EnableFlags = EVENT_TRACE_FLAG_CSWITCH;
+        // properties.Wnode.BufferSize =
+        //     (size_of::<EVENT_TRACE_PROPERTIES>() as u32) +
+        //     ((buffer.len() * size_of::<u16>()) as u32);
+        // properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        // properties.Wnode.ClientContext = 1;
+        // properties.Wnode.Guid = SystemTraceControlGuid;
+        // properties.LogFileMode = 0x00000100; // EVENT_TRACE_REAL_TIME_MODE
+        // properties.LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
+        // properties.EnableFlags = EVENT_TRACE_FLAG_CSWITCH;
 
         unsafe {
-            let status = StartTraceW(&mut session_handle, session_name, &mut properties);
-            if let Err(e) = status {
-                println!("StartTrace failed with {}", e);
-                return Err(windows::core::Error::from_win32());
-            }
+            // let status = StartTraceW(&mut session_handle, session_name, &mut properties);
+            // if let Err(e) = status {
+            //     println!("StartTrace failed with {}", e);
+            //     return Err(windows::core::Error::from_win32());
+            // }
 
-            let status = EnableTraceEx2(
-                session_handle,
-                &KERNEL_PROVIDER_GUID,
-                EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
-                TRACE_LEVEL_VERBOSE as u8,
-                0,
-                0,
-                0,
-                None
-            );
-            if let Err(e) = status {
-                println!("EnableTraceEx2 failed with {:?}", e);
-                return Err(windows::core::Error::from_win32());
-            }
+            // let status = EnableTraceEx2(
+            //     session_handle,
+            //     &KERNEL_PROVIDER_GUID,
+            //     EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
+            //     TRACE_LEVEL_INFORMATION as u8,
+            //     0,
+            //     0,
+            //     0,
+            //     None
+            // );
+            // if let Err(e) = status {
+            //     println!("EnableTraceEx2 failed with {:?}", e);
+            //     return Err(windows::core::Error::from_win32());
+            // }
 
             let mut logfile: EVENT_TRACE_LOGFILEW = zeroed();
-            logfile.LoggerName = PWSTR::from_raw(session_name.as_ptr() as *mut _);
+            logfile.LogFileName = PWSTR::from_raw(&"spotless-tracing.etl" as *const _ as *mut _);
+            // logfile.LoggerName = PWSTR::from_raw(session_name.as_ptr() as *mut _);
             logfile.Anonymous1.ProcessTraceMode = 0x00000100 | 0x00000010; // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
             logfile.Anonymous2.EventRecordCallback = Some(event_record_callback);
+            logfile.IsKernelTrace = 1;
 
             let trace_handle = OpenTraceW(&mut logfile);
             if trace_handle.Value == 0xffffffffffffffff {

@@ -159,7 +159,7 @@ impl SimEnv {
             }
 
             // 每帧跑完休息50ms
-            // sleep(Duration::from_millis(50));
+            sleep(Duration::from_millis(20));
         }
 
         // state should has prompt info for next action
