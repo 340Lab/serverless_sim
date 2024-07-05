@@ -1,7 +1,4 @@
-use std::{
-    thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{ thread, time::{ Duration, SystemTime, UNIX_EPOCH } };
 
 use crate::network::SIM_ENVS;
 
@@ -29,7 +26,7 @@ pub fn start_gc() {
                     if now > Duration::from_secs(60) + env.recent_use_time {
                         let key = env.help.config().str();
                         log::warn!("gc env {}", key);
-                        env.help.metric_record().flush(&env);
+                        env.help.metric_record().as_ref().unwrap().flush(&env);
                         to_remove.push(key);
                     }
                 }

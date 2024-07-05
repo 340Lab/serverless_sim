@@ -123,7 +123,7 @@ impl ApiHandler for ApiHandlerImpl {
                     if let Some(sim_env) = sim_envs.get(&key) {
                         let mut sim_env = sim_env.lock();
                         // 调用模拟环境的帮助方法来记录指标，并刷新记录
-                        sim_env.help.metric_record().flush(&sim_env);
+                        sim_env.help.metric_record().as_ref().unwrap().flush(&sim_env);
                         // 用新的配置创建一个新的模拟环境实例
                         *sim_env = SimEnv::new(config);
                     } else {
@@ -161,7 +161,7 @@ impl ApiHandler for ApiHandlerImpl {
             // 调用SimEnv实例的step方法
             let (score, state) = tokio::task::block_in_place(|| {
                 let res = sim_env.step(action as u32);
-                sim_env.help.metric_record().flush(&sim_env);
+                sim_env.help.metric_record().as_ref().unwrap().flush(&sim_env);
                 res
             });
 

@@ -16,7 +16,7 @@ use crate::{
     fn_dag::{ DagId, FnDAG, FnId, Func },
     mechanism::ConfigNewMec,
     mechanism_thread::{ self, MechScheduleOnce },
-    metric::{ MechMetric, OneFrameMetric, Records },
+    metric::{ MechMetric, OneFrameMetric, Records, Recorder },
     node::{ Node, NodeId },
     request::{ ReqId, Request },
     scale::{ down_exec::DefaultScaleDownExec, num::ScaleNum, up_exec::ScaleUpExec },
@@ -64,7 +64,7 @@ pub struct SimEnvHelperState {
     fn_next_id: RefCell<FnId>,
     cost: RefCell<f32>,
     metric: RefCell<OneFrameMetric>,
-    metric_record: RefCell<Records>,
+    metric_record: RefCell<Option<Recorder>>,
     mech_metric: RefCell<MechMetric>,
     fn_call_frequency: RefCell<BTreeMap<DagId, (f64, f64)>>,
     // key: frame_idx  value: exe_time
@@ -79,9 +79,7 @@ impl Clone for SimEnvHelperState {
             fn_next_id: self.fn_next_id.clone(),
             cost: self.cost.clone(),
             metric: self.metric.clone(),
-            metric_record: RefCell::new(
-                Records::new(self.metric_record.borrow().record_name.clone())
-            ),
+            metric_record: RefCell::new(None),
             fn_call_frequency: self.fn_call_frequency.clone(),
             mech_metric: self.mech_metric.clone(),
             algo_exc_time: self.algo_exc_time.clone(),
@@ -109,7 +107,7 @@ impl SimEnvHelperState {
     pub fn metric<'a>(&'a self) -> Ref<'a, OneFrameMetric> {
         self.metric.borrow()
     }
-    pub fn metric_record<'a>(&'a self) -> Ref<'a, Records> {
+    pub fn metric_record<'a>(&'a self) -> Ref<'a, Option<Recorder>> {
         self.metric_record.borrow()
     }
 
@@ -119,7 +117,7 @@ impl SimEnvHelperState {
     pub fn metric_mut<'a>(&'a self) -> RefMut<'a, OneFrameMetric> {
         self.metric.borrow_mut()
     }
-    pub fn metric_record_mut<'a>(&'a self) -> RefMut<'a, Records> {
+    pub fn metric_record_mut<'a>(&'a self) -> RefMut<'a, Option<Recorder>> {
         self.metric_record.borrow_mut()
     }
     pub fn mech_metric<'a>(&'a self) -> Ref<'a, MechMetric> {
@@ -301,7 +299,7 @@ impl SimEnv {
                 fn_next_id: RefCell::new(0),
                 cost: RefCell::new(0.00000001),
                 metric: RefCell::new(OneFrameMetric::new()),
-                metric_record: RefCell::new(Records::new(config.str())),
+                metric_record: RefCell::new(Some(Recorder::new(config.str()))),
                 config: config.clone(),
                 mech_metric: RefCell::new(MechMetric::new()),
                 fn_call_frequency: RefCell::new(BTreeMap::new()),
@@ -469,7 +467,7 @@ impl SimEnv {
         }
 
         // 将这一帧的数据记录到表中
-        self.help.metric_record_mut().add_frame(self);
+        self.help.metric_record_mut().as_mut().unwrap().add_frame(self);
 
         // 自增 frame
         let mut cur_frame = self.core.current_frame.borrow_mut();
