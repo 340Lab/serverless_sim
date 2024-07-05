@@ -51,12 +51,17 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
                 return;
             }
         };
+        let _measure = util::MeasureThreadTime::new();
         let begin_ms = util::now_ms();
         mech.step(&res.sim_env, res.action, &res.responser);
+        // let passed_ms = measure.passed_100ns();
+
+        // log::info!("master mech run {:?} 100 ns", measure.passed_100ns());
         let end_ms = util::now_ms();
         res.responser
             .send(MechScheduleOnceRes::End {
                 mech_run_ms: end_ms - begin_ms,
+                //  (passed_ms.0 + passed_ms.1) / 10000,
             })
             .unwrap();
     }

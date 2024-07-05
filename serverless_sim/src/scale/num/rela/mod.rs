@@ -1,7 +1,7 @@
 // Policy in paper Cejoss
 // by ActivePeter
 
-use std::{ collections::HashMap, sync::Arc, ptr::NonNull };
+use std::{ collections::HashMap, sync::Arc };
 
 use parking_lot::{ Mutex };
 
@@ -42,9 +42,28 @@ impl Default for EachFnState {
     }
 }
 
+enum ScalePolicy {
+    Hpa(HpaScaleNum),
+    Direct(usize),
+}
+
+impl ScalePolicy {
+    fn update_with_action(&mut self, action: usize) {
+        match self {
+            ScalePolicy::Hpa(hpa) => {
+                let v = 0.1 + 0.8 * ((action as f32) / 10.0);
+                hpa.set_target(Target::MemUseRate(v));
+            }
+            ScalePolicy::Direct(d) => {
+                *d = action;
+            }
+        }
+    }
+}
+
 struct RelaRlTargetInner {
     pub state_score: Mutex<(Vec<f64>, f32, bool)>,
-    each_fn: HashMap<FnId, (HpaScaleNum, EachFnState)>,
+    each_fn: HashMap<FnId, (ScalePolicy, EachFnState)>,
     fncnt: usize,
     curfn: FnId,
 }
@@ -57,34 +76,87 @@ unsafe impl Send for RelaRlTargetInner {}
 
 unsafe impl Sync for RelaRlTargetInner {}
 
+fn new_state(
+    cur_frame: usize,
+    total_mem: f32,
+    total_cpu: f32,
+    used_mem: f32,
+    used_cpu: f32,
+    time_per_req: f32,
+    cost_per_req: f32
+) -> Vec<f64> {
+    let mut ret = vec![
+        cur_frame as f64,
+        total_mem as f64,
+        total_cpu as f64,
+        used_mem as f64,
+        used_cpu as f64,
+        time_per_req as f64,
+        cost_per_req as f64,
+        0.0, //7 fnid
+        0.0, //8 fnbusyness
+        0.0, //9 fncpu
+        0.0, //10 fnmem
+        0.0, //11 fncpu_use
+        0.0 //12 fnmem_use
+    ];
+    let baselen = ret.len();
+    ret.resize(baselen + SCALE_WINDOW_SIZE, 0.0);
+    ret
+}
+fn state_set_for_fn(
+    state: &mut Vec<f64>,
+    fnid: FnId,
+    fn_busyness: f32,
+    fn_cpu: f32,
+    fn_mem: f32,
+    fn_cpu_use: f32,
+    fn_mem_use: f32,
+    history_target: &Window
+) {
+    let beginidx = 7;
+    state[beginidx + 0] = fnid as f64;
+    state[beginidx + 1] = fn_busyness as f64;
+    state[beginidx + 2] = fn_cpu as f64;
+    state[beginidx + 3] = fn_mem as f64;
+    state[beginidx + 4] = fn_cpu_use as f64;
+    state[beginidx + 5] = fn_mem_use as f64;
+    for (i, v) in history_target.queue.iter().enumerate() {
+        state[beginidx + 6 + i] = *v as f64;
+    }
+}
+
 impl RlTarget for RelaRlTarget {
     fn step(&self, action: usize) -> (Vec<f64>, f32, bool) {
         let next_fn = unsafe {
-            let mut inner: NonNull<RelaRlTargetInner> = util::non_null(&*self.inner);
+            let mut inner = util::non_null(&*self.inner);
             // env maybe reset, but not inited
-            if inner.as_mut().fncnt == 0 {
+            if inner.0.as_mut().fncnt == 0 {
                 return (vec![], 0.0, true);
             }
-            let cur_fn = inner.as_mut().curfn;
+            let cur_fn = inner.0.as_mut().curfn;
             // update hpa
-            let v = 0.1 + 0.8 * ((action as f32) / 10.0);
-            inner.as_mut().each_fn.get_mut(&cur_fn).unwrap().0.set_target(Target::MemUseRate(v));
+            // let v = 0.1 + 0.8 * ((action as f32) / 10.0);
+            inner.0.as_mut().each_fn.get_mut(&cur_fn).unwrap().0.update_with_action(action);
 
-            inner.as_mut().curfn += 1;
-            inner.as_mut().curfn %= inner.as_mut().fncnt;
+            inner.0.as_mut().curfn += 1;
+            inner.0.as_mut().curfn %= inner.0.as_mut().fncnt;
 
-            inner.as_mut().curfn
+            inner.0.as_mut().curfn
         };
 
         let mut ret = self.inner.state_score.lock().clone();
-        let eachfn = self.inner.each_fn.get(&next_fn).unwrap();
-        ret.0[5] = eachfn.1.fn_mem as f64;
-        ret.0[6] = eachfn.1.fn_cpu as f64;
-        ret.0[7] = eachfn.1.fn_total_mem as f64;
-        ret.0[8] = eachfn.1.fn_total_cpu as f64;
-        for (i, v) in eachfn.1.history_target.queue.iter().enumerate() {
-            ret.0[9 + i] = *v as f64;
-        }
+        let f = self.inner.each_fn.get(&next_fn).unwrap();
+        state_set_for_fn(
+            &mut ret.0,
+            next_fn,
+            0.0,
+            f.1.fn_cpu,
+            f.1.fn_mem,
+            f.1.fn_total_cpu,
+            f.1.fn_total_mem,
+            &f.1.history_target
+        );
         ret
     }
     fn set_stop(&self) {
@@ -126,16 +198,29 @@ impl RelaScaleNum {
 // 函数上一帧使用计算量
 // 平均请求延迟
 // 平均请求成本
-
 impl ScaleNum for RelaScaleNum {
     fn scale_for_fn(&mut self, env: &SimEnvObserve, fnid: FnId, action: &ESActionWrapper) -> usize {
         if self.last_env_frame.is_none() {
             unsafe {
-                let mut rl: NonNull<RelaRlTargetInner> = util::non_null(&*self.rl);
+                let mut rl = util::non_null(&*self.rl);
                 let fncnt = env.core().fns().len();
-                rl.as_mut().fncnt = fncnt;
-                rl.as_mut().each_fn = (0..fncnt)
-                    .map(|v| { (v, (HpaScaleNum::new(), EachFnState::default())) })
+                rl.0.as_mut().fncnt = fncnt;
+
+                rl.0.as_mut().each_fn = (0..fncnt)
+                    .map(|v| {
+                        (
+                            v,
+                            (
+                                // if env.dag(env.func(v).dag_id).len() > 1 {
+                                ScalePolicy::Hpa(HpaScaleNum::new()),
+                                // } else
+                                // {
+                                //     ScalePolicy::Direct(0)
+                                // }
+                                EachFnState::default(),
+                            ),
+                        )
+                    })
                     .collect();
             }
         }
@@ -180,18 +265,15 @@ impl ScaleNum for RelaScaleNum {
                     .map(|n| n.last_frame_cpu)
                     .sum::<f32>();
 
-                state_score.0 = vec![
-                    cur_frame as f64,
-                    total_mem as f64,
-                    total_cpu as f64,
-                    used_mem as f64,
-                    used_cpu as f64,
-                    0.0, //5 fncpu
-                    0.0, //6 fnmem
-                    0.0, //7 fncpu_use
-                    0.0 //8 fnmem_use
-                ];
-                state_score.0.resize(9 + SCALE_WINDOW_SIZE, 0.0);
+                state_score.0 = new_state(
+                    cur_frame,
+                    total_mem,
+                    total_cpu,
+                    used_mem,
+                    used_cpu,
+                    env.req_done_time_avg(),
+                    env.cost_each_req()
+                );
                 state_score.1 = env.quality_price_ratio();
             }
 
@@ -199,7 +281,7 @@ impl ScaleNum for RelaScaleNum {
                 let mut each_fn = util::non_null(&self.rl.each_fn);
 
                 for f in env.core().fns().iter() {
-                    let each_fn = each_fn.as_mut().get_mut(&f.fn_id).unwrap();
+                    let each_fn = each_fn.0.as_mut().get_mut(&f.fn_id).unwrap();
                     each_fn.1.fn_mem = f.mem;
                     each_fn.1.fn_cpu = f.cpu;
                     let mut fn_mem_use = 0.0;
@@ -208,12 +290,21 @@ impl ScaleNum for RelaScaleNum {
                         fn_mem_use += c.last_frame_mem;
                         fn_cpu_use += c.last_frame_cpu_used;
                     });
+                    each_fn.1.fn_total_mem = fn_mem_use;
+                    each_fn.1.fn_total_cpu = fn_cpu_use;
                 }
             }
         }
         unsafe {
             let mut each_fn = util::non_null(&self.rl.each_fn);
-            each_fn.as_mut().get_mut(&fnid).unwrap().0.scale_for_fn(env, fnid, action)
+            let f = each_fn.0.as_mut().get_mut(&fnid).unwrap();
+            let scale = match &mut f.0 {
+                ScalePolicy::Hpa(hpa) => { hpa.scale_for_fn(env, fnid, action) }
+                ScalePolicy::Direct(d) => *d,
+            };
+            // record scale
+            f.1.history_target.push(scale as f32);
+            scale
         }
     }
 }

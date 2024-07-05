@@ -473,7 +473,7 @@ impl SimEnv {
 
         // 自增 frame
         let mut cur_frame = self.core.current_frame.borrow_mut();
-        log::info!("frame done: {}", *cur_frame);
+        // log::info!("frame done: {}", *cur_frame);
         *cur_frame += 1;
     }
 }

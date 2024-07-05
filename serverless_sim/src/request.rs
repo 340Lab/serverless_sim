@@ -1,8 +1,4 @@
-use std::{
-    borrow::{ Borrow, BorrowMut },
-    cell::{ Ref, RefMut },
-    collections::{ BTreeMap, HashMap, HashSet },
-};
+use std::{ cell::{ Ref, RefMut }, collections::{ BTreeMap, HashMap, HashSet } };
 
 use daggy::{ petgraph::visit::Topo };
 
@@ -367,7 +363,7 @@ impl SimEnv {
                 }
             }
 
-            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
+            // log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
 
         //let env = self;

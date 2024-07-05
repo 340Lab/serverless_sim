@@ -5,38 +5,38 @@
     "scale_sche_joint": null
   },
   "scale_num": {
-    "hpa": null,
-    "full_placement": null,
     "rela": null,
-    "lass": null,
     "no": null,
+    "hpa": null,
+    "lass": null,
+    "full_placement": null,
     "temp_scaler": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "no": null,
-    "least_task": null
+    "least_task": null,
+    "no": null
   },
   "sche": {
-    "bp_balance": null,
-    "pos": null,
     "fnsche": null,
+    "pos": null,
+    "greedy": null,
     "consistenthash": null,
     "hash": null,
+    "bp_balance": null,
     "faasflow": null,
     "random": null,
     "rotate": null,
-    "greedy": null,
     "pass": null
   },
   "filter": {
     "careful_down": null
   },
   "instance_cache_policy": {
-    "lru": null,
     "no_evict": null,
+    "lru": null,
     "fifo": null
   }
 }

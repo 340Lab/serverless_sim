@@ -87,7 +87,7 @@ def run_env_loop(
             a_tm1 = a_t
             observation, reward, done, info = env.step(a_tm1)
 
-            print("one env step: ", observation, reward, done, info)
+            # print("one env step: ", observation, reward, done, info)
 
             first_step = False
 

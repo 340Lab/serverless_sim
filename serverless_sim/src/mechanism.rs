@@ -429,9 +429,9 @@ impl MechanismImpl {
             let cur = env.fn_container_cnt(func.fn_id);
             let tar = self.scale_num(func.fn_id);
 
-            // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
-            // 不进行扩缩容，在调度时候一起进行
             log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
+            // 不进行扩缩容，在调度时候一起进行
+            // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
         }
 
         // 获得扩容、调度、缩容指令

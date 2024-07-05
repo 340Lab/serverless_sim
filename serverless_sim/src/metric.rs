@@ -1,5 +1,6 @@
 use crate::fn_dag::EnvFnExt;
 use crate::node::EnvNodeExt;
+use crate::request::ReqId;
 use crate::score::EnvMetricExt;
 use crate::{
     config::Config,
@@ -11,6 +12,8 @@ use crate::{
 use chrono;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
+use std::collections::HashSet;
+
 use std::{ collections::{ BTreeMap, HashMap }, fs::{ self, File }, io::{ Read, Write } };
 
 // #[derive(Serialize, Deserialize)]
@@ -52,6 +55,11 @@ pub struct MechMetric {
     // 函数-未被调度的数量
     fn_unsche_req_cnt: HashMap<FnId, usize>,
 
+    // 前驱函数都已完成 但未被调度的任务
+    fn_2_ready_sche_tasks: HashMap<FnId, HashSet<ReqId>>,
+
+    req_2_ready_sche_tasks: HashMap<ReqId, HashSet<FnId>>,
+
     // 节点-任务数量
     node_task_new_cnt: HashMap<FnId, usize>,
 }
@@ -62,6 +70,8 @@ impl MechMetric {
             fn_recent_req_cnt_window: HashMap::new(),
             fn_unsche_req_cnt: HashMap::new(),
             node_task_new_cnt: HashMap::new(),
+            fn_2_ready_sche_tasks: HashMap::new(),
+            req_2_ready_sche_tasks: HashMap::new(),
         }
     }
 
@@ -71,6 +81,8 @@ impl MechMetric {
         // 清空数据表
         self.fn_unsche_req_cnt.clear();
         self.node_task_new_cnt.clear();
+        self.req_2_ready_sche_tasks.clear();
+        self.fn_2_ready_sche_tasks.clear();
 
         // 记录这一帧中每个函数的未被调度的请求数量
         let mut fn_count = HashMap::new();
@@ -100,6 +112,10 @@ impl MechMetric {
                             *v += 1;
                         })
                         .or_insert(1);
+                    if req.parents_all_done(env, fnid) {
+                        self.req_2_ready_sche_tasks.entry(req.req_id).or_default().insert(fnid);
+                        self.fn_2_ready_sche_tasks.entry(fnid).or_default().insert(req.req_id);
+                    }
                 }
 
                 // 如果请求的已完成函数列表中不包含fnid，则计数+1
@@ -136,6 +152,15 @@ impl MechMetric {
             .map(|v| v.avg())
             .unwrap_or(0.0)
     }
+
+    pub fn fn_ready_sche_tasks(&self, fnid: FnId) -> Option<&HashSet<ReqId>> {
+        self.fn_2_ready_sche_tasks.get(&fnid)
+    }
+
+    pub fn req_ready_sche_tasks(&self, reqid: ReqId) -> Option<&HashSet<FnId>> {
+        self.req_2_ready_sche_tasks.get(&reqid)
+    }
+
     pub fn fn_unsche_req_cnt(&self, fnid: FnId) -> usize {
         *self.fn_unsche_req_cnt.get(&fnid).unwrap_or(&0)
     }
@@ -191,21 +216,21 @@ pub struct Records {
     pub frames: Vec<Vec<serde_json::Value>>,
 }
 
-const FRAME_IDX_FRAME: usize = 0;                           // 帧数
-const FRAME_IDX_RUNNING_REQS: usize = 1;                    // 请求数量
-const FRAME_IDX_NODES: usize = 2;                           // 节点的状态：cpu、mem
-const FRAME_IDX_REQ_DONE_TIME_AVG: usize = 3;               // 请求的平均完成时间
-const FRAME_IDX_REQ_DONE_TIME_STD: usize = 4;               // 请求的完成时间的标准差
-const FRAME_IDX_REQ_DONE_TIME_AVG_90P: usize = 5;           // 请求的90%完成时间
-const FRAME_IDX_COST: usize = 6;                            // 成本
-const FRAME_IDX_SCORE: usize = 7;                           // 得分（强化学习用）
-const FRAME_IDX_DONE_REQ_COUNT: usize = 8;                  // 已完成请求数量
-const FRAME_IDX_REQ_WAIT_SCHE_TIME: usize = 9;              // 等待调度的时间
-const FRAME_IDX_REQ_WAIT_COLDSTART_TIME: usize = 10;        // 冷启动的时间
-const FRAME_IDX_REQ_DATA_RECV_TIME: usize = 11;             // 数据接收时间
-const FRAME_IDX_REQ_EXE_TIME: usize = 12;                   // 请求的执行时间
-const FRAME_IDX_ALGO_EXE_TIME: usize = 13;                  // 算法执行时间
-const FRAME_IDX_FNCONTAINER_COUNT: usize = 14;              // 总的容器数量
+const FRAME_IDX_FRAME: usize = 0; // 帧数
+const FRAME_IDX_RUNNING_REQS: usize = 1; // 请求数量
+const FRAME_IDX_NODES: usize = 2; // 节点的状态：cpu、mem
+const FRAME_IDX_REQ_DONE_TIME_AVG: usize = 3; // 请求的平均完成时间
+const FRAME_IDX_REQ_DONE_TIME_STD: usize = 4; // 请求的完成时间的标准差
+const FRAME_IDX_REQ_DONE_TIME_AVG_90P: usize = 5; // 请求的90%完成时间
+const FRAME_IDX_COST: usize = 6; // 成本
+const FRAME_IDX_SCORE: usize = 7; // 得分（强化学习用）
+const FRAME_IDX_DONE_REQ_COUNT: usize = 8; // 已完成请求数量
+const FRAME_IDX_REQ_WAIT_SCHE_TIME: usize = 9; // 等待调度的时间
+const FRAME_IDX_REQ_WAIT_COLDSTART_TIME: usize = 10; // 冷启动的时间
+const FRAME_IDX_REQ_DATA_RECV_TIME: usize = 11; // 数据接收时间
+const FRAME_IDX_REQ_EXE_TIME: usize = 12; // 请求的执行时间
+const FRAME_IDX_ALGO_EXE_TIME: usize = 13; // 算法执行时间
+const FRAME_IDX_FNCONTAINER_COUNT: usize = 14; // 总的容器数量
 
 // the last + 1
 const FRAME_LEN: usize = 15;
