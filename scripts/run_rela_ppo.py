@@ -56,8 +56,8 @@ def train():
     eps_clip = 0.2          # clip parameter for PPO
     gamma = 0.99            # discount factor
 
-    lr_actor = 0.0003       # learning rate for actor network
-    lr_critic = 0.001       # learning rate for critic network
+    lr_actor = 0.0001       # learning rate for actor network
+    lr_critic = 0.0001       # learning rate for critic network
 
     random_seed = 0         # set random seed if required (0 = no random seed)
     
@@ -70,7 +70,7 @@ def train():
     # state space dimension
     # - basic
     # - scale num window
-    state_dim = 9+10
+    state_dim = 11+10
 
     # action space dimension
     if has_continuous_action_space:

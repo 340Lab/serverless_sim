@@ -53,8 +53,8 @@ flags.DEFINE_string('environment_name', 'ServerlessSim', 'Atari name without NoF
 flags.DEFINE_integer('num_actors', 1, 'Number of worker processes to use.')
 flags.DEFINE_bool('clip_grad', False, 'Clip gradients, default off.')
 flags.DEFINE_float('max_grad_norm', 10.0, 'Max gradients norm when do gradients clip.')
-flags.DEFINE_float('learning_rate', 0.00045, 'Learning rate.')
-flags.DEFINE_float('icm_learning_rate', 0.00025, 'Learning rate for ICM module.')
+flags.DEFINE_float('learning_rate', 0.00035, 'Learning rate.')
+flags.DEFINE_float('icm_learning_rate', 0.00015, 'Learning rate for ICM module.')
 
 flags.DEFINE_float('discount', 0.99, 'Discount rate.')
 flags.DEFINE_float('gae_lambda', 0.95, 'Lambda for the GAE general advantage estimator.')
@@ -93,19 +93,27 @@ class EnvWrapper:
     spec = type('', (object,), {"id": "ServerlessSim"})()
     state_dim = (1,84,84) #9+10
     action_dim = 10
-    # env=
-    # def __init__(self):
-        
-        
+
+    score=0
+    ep=0
+    stepcnt=0
 
     def step(self,action):
         a,b,c,d = self.env.rl_step(action)
         padded_state = np.zeros(self.state_dim)
-        padded_state.flat[:19] = a
+        padded_state.flat[:21] = a
         a = padded_state#torch.from_numpy(empty_state).float().unsqueeze(0)
         # res[0] 2 state_dim
+        self.score+=b
+        self.stepcnt+=1
         return a,b,c,d 
     def reset(self):
+        if self.stepcnt>0:
+            print("score:",self.score, ", avgscore:",self.score/self.stepcnt,", ep:",self.ep)
+        self.score=0
+        self.stepcnt=0
+        self.ep+=1
+
         self.env=ProxyEnv3()
         
         self.env.config["mech"]["mech_type"]['scale_sche_joint']=''
@@ -115,7 +123,7 @@ class EnvWrapper:
         self.env.config["mech"]["sche"]['pos']=''
         self.env.config["mech"]["filter"]['careful_down']=''
         self.env.config["mech"]["instance_cache_policy"]['no_evict']=''
-        print("env config:",self.env.config)
+        # print("env config:",self.env.config)
         self.env.reset()
         self.env.start_async_sim()
         return np.zeros(self.state_dim) 

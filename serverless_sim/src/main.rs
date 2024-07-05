@@ -26,21 +26,64 @@ mod util;
 mod with_env_sub;
 mod rl_target;
 
+use env_logger::{ Builder };
+use log::LevelFilter;
 use mechanism_conf::ModuleMechConf;
-
-use std::{ env::set_var, time::Duration };
+use std::io::Write;
+use std::{ time::Duration };
 
 #[macro_use]
 extern crate lazy_static;
 
+struct KeywordFilter {
+    keyword: Vec<String>,
+}
+
+impl KeywordFilter {
+    fn new(keyword: Vec<String>) -> Self {
+        Self {
+            keyword: keyword,
+        }
+    }
+}
+
+impl log::Log for KeywordFilter {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Info
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            for k in &self.keyword {
+                if !record.args().to_string().contains(k) {
+                    return;
+                }
+            }
+
+            println!("{}", record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
 #[tokio::main]
 async fn main() {
-    set_var("RUST_LOG", "debug,error,warn,info");
-    // 遇到 panic 时自动打印回溯信息
-    set_var("RUST_BACKTRACE", "1");
-    // 指定要记录的日志级别
-    // 读取之前设置的 RUST_LOG 环境变量, 初始化 env_logger 日志记录器
-    env_logger::init();
+    let keyword: Vec<&'static str> = //vec![];
+        vec!["::sche", "::mech", "::scale"]; // no algo log
+    Builder::new()
+        .filter(None, LevelFilter::Info)
+        .format(move |buf, record| {
+            let message = format!("{} {}", record.module_path().unwrap_or("no_mod"), record.args());
+            for k in &keyword {
+                if message.contains(k) {
+                    return Ok(());
+                }
+            }
+            writeln!(buf, "{}: {}", record.level(), message)
+        })
+        .init();
+
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
     // 启动垃圾回收（Garbage Collection, GC）机制

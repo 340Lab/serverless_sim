@@ -1,8 +1,19 @@
-use std::{ collections::{ HashMap, HashSet, VecDeque }, ptr::NonNull };
+use std::{
+    collections::{ HashMap, HashSet, VecDeque },
+    ptr::NonNull,
+    fmt::{ Debug },
+    mem::zeroed,
+};
+
+
+
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
-
+use windows::Win32::{
+    System::Threading::{ GetCurrentThread, GetThreadTimes },
+    Foundation::FILETIME,
+};
 use crate::sim_env::SimEnv;
 // use rand::Rng;
 
@@ -243,10 +254,104 @@ impl SimEnv {
 pub fn now_ms() -> u64 {
     let now = std::time::SystemTime::now();
     now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+    // unsafe {
+    //     let h_thread = GetCurrentThread();
+    //     let mut creation_time: FILETIME = zeroed();
+    //     let mut exit_time: FILETIME = zeroed();
+    //     let mut kernel_start: FILETIME = zeroed();
+    //     let mut user_start: FILETIME = zeroed();
+    //     // let mut kernel_end: FILETIME = zeroed();
+    //     // let mut user_end: FILETIME = zeroed();
+    //     // Get initial thread times
+    //     GetThreadTimes(
+    //         h_thread,
+    //         &mut creation_time,
+    //         &mut exit_time,
+    //         &mut kernel_start,
+    //         &mut user_start
+    //     );
+
+    //     user_start_u64.
+    // }
 }
 
-pub unsafe fn non_null<T>(v: &T) -> NonNull<T> {
+pub struct MeasureThreadTime {
+    kernel_start: FILETIME,
+    user_start: FILETIME,
+}
+
+fn filetime_to_u64(ft: FILETIME) -> u64 {
+    ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64)
+}
+
+impl MeasureThreadTime {
+    pub fn new() -> Self {
+        unsafe {
+            let h_thread = GetCurrentThread();
+            let mut creation_time: FILETIME = zeroed();
+            let mut exit_time: FILETIME = zeroed();
+            let mut kernel_start: FILETIME = zeroed();
+            let mut user_start: FILETIME = zeroed();
+            // let mut kernel_end: FILETIME = zeroed();
+            // let mut user_end: FILETIME = zeroed();
+            // Get initial thread times
+            GetThreadTimes(
+                h_thread,
+                &mut creation_time,
+                &mut exit_time,
+                &mut kernel_start,
+                &mut user_start
+            ).unwrap();
+
+            // user_start_u64.
+            Self {
+                kernel_start,
+                user_start,
+            }
+        }
+    }
+    pub fn passed_100ns(&self) -> (u64, u64) {
+        unsafe {
+            let h_thread = GetCurrentThread();
+            let mut creation_time: FILETIME = zeroed();
+            let mut exit_time: FILETIME = zeroed();
+            let mut kernel_end: FILETIME = zeroed();
+            let mut user_end: FILETIME = zeroed();
+            // let mut kernel_end: FILETIME = zeroed();
+            // let mut user_end: FILETIME = zeroed();
+            // Get initial thread times
+            GetThreadTimes(
+                h_thread,
+                &mut creation_time,
+                &mut exit_time,
+                &mut kernel_end,
+                &mut user_end
+            ).unwrap();
+
+            let kernel_start_u64 = filetime_to_u64(self.kernel_start);
+            let user_start_u64 = filetime_to_u64(self.user_start);
+            let kernel_end_u64 = filetime_to_u64(kernel_end);
+            let user_end_u64 = filetime_to_u64(user_end);
+
+            (kernel_end_u64 - kernel_start_u64, user_end_u64 - user_start_u64)
+        }
+    }
+}
+
+// pub fn now_ns() -> u128 {
+//     let duration_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+//     let timestamp_nanos = duration_since_epoch.as_nanos(); // u128
+//     timestamp_nanos
+// }
+
+pub struct SendNonNull<T>(pub NonNull<T>);
+
+// impl<T> Deref for SendNonNull<T> {}
+
+unsafe impl<T> Send for SendNonNull<T> {}
+
+pub unsafe fn non_null<T>(v: &T) -> SendNonNull<T> {
     let ptr = v as *const T as *mut T;
     let non_null = NonNull::new_unchecked(ptr);
-    non_null
+    SendNonNull(non_null)
 }

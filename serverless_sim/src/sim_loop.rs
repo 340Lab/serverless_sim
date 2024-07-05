@@ -20,12 +20,12 @@ impl SimEnv {
     ) -> bool {
         // 进行帧开始时处理
         self.on_frame_begin();
-        if let Some(mut f) = hook_frame_begin.as_mut() {
+        if let Some(f) = hook_frame_begin.as_mut() {
             f(self);
         }
         // 生成新的请求，并添加到环境对象的请求映射中
         self.req_sim_gen_requests();
-        if let Some(mut f) = hook_req_gen.as_mut() {
+        if let Some(f) = hook_req_gen.as_mut() {
             f(self);
         }
 
@@ -123,9 +123,10 @@ impl SimEnv {
                                     }
                                 }
                                 log::info!(
-                                    "master mech ran in {} ms, catch up {} gap frames",
+                                    "master mech ran in {} ms, catch up {} gap frames, cur frame: {}",
                                     mech_run_ms,
-                                    gap
+                                    gap,
+                                    self.current_frame()
                                 );
                                 self.help
                                     .algo_exc_time_mut()
