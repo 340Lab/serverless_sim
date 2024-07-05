@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 
-use thread_priority::{ set_current_thread_priority, ThreadPriority };
+use thread_priority::{ set_current_thread_priority, ThreadPriority, WinAPIThreadPriority };
+use windows::Win32::System::Threading::{ SetThreadPriority, GetCurrentThread, THREAD_PRIORITY };
 
 use crate::actions::ESActionWrapper;
 use crate::mechanism::{ DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd };
@@ -33,6 +34,12 @@ pub fn spawn(mech: MechanismImpl) -> mpsc::Sender<MechScheduleOnce> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         // 尝试设置当前线程的优先级
+        // unsafe {
+        //     SetThreadPriority(
+        //         GetCurrentThread(),
+        //         THREAD_PRIORITY(WinAPIThreadPriority::TimeCritical as i32)
+        //     ).unwrap();
+        // }
         if let Err(e) = set_current_thread_priority(ThreadPriority::Max) {
             eprintln!("设置线程优先级失败: {:?}", e);
         }
@@ -56,7 +63,6 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
         // let begin_cpu = cpu_time::ThreadTime::now();
         mech.step(&res.sim_env, res.action, &res.responser);
         // let passed_ms = measure.passed_100ns();
-        std::thread::sleep(std::time::Duration::from_millis(1));
         let end_ms = util::now_ms();
         // log::info!("master mech run cpu:{:?}, total:{} ms", begin_cpu.elapsed(), end_ms - begin_ms);
 
@@ -66,6 +72,7 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
                 //  (passed_ms.0 + passed_ms.1) / 10000,
             })
             .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 

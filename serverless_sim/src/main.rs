@@ -37,8 +37,8 @@ extern crate lazy_static;
 
 #[tokio::main]
 async fn main() {
-    let keyword: Vec<&'static str> = vec![];
-    vec!["::sche", "::mechansim ", "::scale"]; // no algo log
+    let keyword: Vec<&'static str> = //vec![];
+        vec!["::sche", "::mechanism ", "::scale"]; // no algo log
     Builder::new()
         .filter(None, LevelFilter::Info)
         .format(move |buf, record| {
@@ -51,16 +51,6 @@ async fn main() {
             writeln!(buf, "{}: {}", record.level(), message)
         })
         .init();
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        util::entry_trace().unwrap();
-        tx.send(()).unwrap();
-    });
-    rx.recv().expect(
-        "将用户添加到 Performance Log Users 组\n \
-    net localgroup \"Performance Log Users\" <username> /add"
-    );
 
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
