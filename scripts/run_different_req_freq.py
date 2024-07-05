@@ -57,26 +57,30 @@ class Task:
         
         state,score,stop,info=self.env.step(1)
         print(state,score,stop,info)
-        self.env.reset()
+        # self.env.reset()
         return self
 
 algos=[
     # mechtype, scale_num, scale_down_exec, scale_up_exec, sche
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["lru","10"]],
     # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["bp_balance",""],[{'careful_down':''}],["no_evict",""]],
-    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["no_evict",""]],
-    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}],["no_evict",""]],
-    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}],["lru","10"]],
-    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["no_evict",""]],
-    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["lru","10"]],
-    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["no_evict",""]],
-    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["lru","10"]],
     [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["no_evict",""]], 
     
-    # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["lru","10"]],
     [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["no_evict",""]],
+
+    [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["no_evict",""]],
+    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["greedy",""],[{'careful_down':''}],["lru","10"]],
+    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}],["no_evict",""]],
+    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["random",""],[{'careful_down':''}],["lru","10"]],
+    # # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["lru","10"]],
+    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["rotate",""],[{'careful_down':''}],["no_evict",""]],
+    # # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["lru","10"]],
+    # [['scale_sche_separated',''],["hpa",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["no_evict",""]],
+    # [['scale_sche_joint',''],["hpa",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["lru","10"]],
+    
+    
+    # [['scale_sche_joint',''],["temp_scaler",""],["default",""],["least_task",""],["pos",""],[{'careful_down':''}],["lru","10"]],
+    
     # [['scale_sche_separated',''],["temp_scaler",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["lru","10"]],
     # [['scale_sche_separated',''],["temp_scaler",""],["default",""],["least_task",""],["hash",""],[{'careful_down':''}],["no_evict",""]],
 ]

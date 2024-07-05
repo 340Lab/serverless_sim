@@ -174,7 +174,7 @@ impl ApiHandler for ApiHandlerImpl {
                 info: "".to_owned(),
             }
         } else {
-            let msg = format!("Sim env {key} not found, create new one");
+            let msg = format!("Sim env {key} not found, create new one by reset");
             log::warn!("{}", msg);
             StepResp::EnvNotFound { msg }
         };

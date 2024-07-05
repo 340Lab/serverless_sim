@@ -233,6 +233,27 @@ pub struct Recorder {
     file: RefCell<File>,
 }
 
+impl Drop for Recorder {
+    fn drop(&mut self) {
+        // if file size <100 remove it
+        // Implement logic to check file size and remove if < 100 bytes
+        if let Ok(metadata) = self.file.borrow().metadata() {
+            if metadata.len() < 100 {
+                // Close the file before attempting to remove it
+                let file_path = format!("records/{}.json", self.record_name);
+                drop(self.file.borrow_mut());
+
+                // Remove the file
+                if let Err(err) = fs::remove_file(&file_path) {
+                    eprintln!("Failed to remove file: {}", err);
+                }
+            }
+        } else {
+            panic!("Failed to get file metadata");
+        }
+    }
+}
+
 const FRAME_IDX_FRAME: usize = 0; // 帧数
 const FRAME_IDX_RUNNING_REQS: usize = 1; // 请求数量
 const FRAME_IDX_NODES: usize = 2; // 节点的状态：cpu、mem

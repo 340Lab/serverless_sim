@@ -3,3 +3,4 @@ Cargo.lock
 records*
 log
 module_conf_es.json
+cache

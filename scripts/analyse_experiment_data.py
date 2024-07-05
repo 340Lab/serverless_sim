@@ -1,4 +1,10 @@
 # 自动运行同路径下的run_different_req_freq.py
+import os
+CUR_FPATH = os.path.abspath(__file__)
+CUR_FDIR = os.path.dirname(CUR_FPATH)
+# chdir to the directory of this script
+os.chdir(CUR_FDIR)
+
 import json
 import os
 import subprocess
@@ -32,9 +38,16 @@ FRAME_IDX_REQ_WAIT_COLDSTART_TIME = 10;        # 冷启动的时间
 """
 
 # 记录文件的路径，相对路径报错
-records_path = "D:\\Desktop\\Program\\serverless_sim\\serverless_sim\\records"
+records_path = "..\\serverless_sim\\records"
 script_path = ".\\run_different_req_freq.py"       # py脚本的路径
-output_path = "D:\\Desktop\\实验结果\\算法延迟\\实验结果-10帧生成"
+output_path = "实验结果\\算法延迟\\实验结果-10帧生成"
+
+# create outout dir
+try:
+    os.makedirs(output_path)
+except:
+    pass
+
 RUN_TIMES = 10                                  # 运行次数
 # 算法组合，key为算法名，value为数组，数组的元素为字典，key为参数名，value为参数值
 algos_metrics = {}  # HashMap<algo, List<HashMap<param, value>>>
@@ -75,6 +88,7 @@ def analyze_same_algo_metrics_bytimes():
         algo_name = compete_name[5][4:] + "." + compete_name[9][4:] + "." + compete_name[11][3:]
 
         with open(os.path.join(records_path, file), 'r') as f:
+            # print("fcontent: ", f.read())
             # 读取json数据
             record = json.load(f)
             frames = record['frames']
@@ -129,7 +143,7 @@ def analyze_diff_algo_avg_metrics():
 
 
 if __name__ == "__main__":
-    run_script()
+    # run_script()
 
     analyze_which_algo()
 

@@ -1,12 +1,9 @@
 use std::{
     collections::{ HashMap, HashSet, VecDeque },
-    ptr::NonNull,
+    ptr::{ NonNull, self },
     fmt::{ Debug },
-    mem::zeroed,
+    mem::{ zeroed, size_of },
 };
-
-
-
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -303,6 +300,12 @@ impl MeasureThreadTime {
                 &mut user_start
             ).unwrap();
 
+            log::info!(
+                "thread_start: kernel_start={:?}, user_start={:?}",
+                kernel_start,
+                user_start
+            );
+
             // user_start_u64.
             Self {
                 kernel_start,
@@ -327,6 +330,8 @@ impl MeasureThreadTime {
                 &mut kernel_end,
                 &mut user_end
             ).unwrap();
+
+            log::info!("thread_end: kernel_end={:?}, user_end={:?}", kernel_end, user_end);
 
             let kernel_start_u64 = filetime_to_u64(self.kernel_start);
             let user_start_u64 = filetime_to_u64(self.user_start);
@@ -354,4 +359,110 @@ pub unsafe fn non_null<T>(v: &T) -> SendNonNull<T> {
     let ptr = v as *const T as *mut T;
     let non_null = NonNull::new_unchecked(ptr);
     SendNonNull(non_null)
+}
+
+use windows::core::*;
+use windows::Win32::Foundation::*;
+use windows::Win32::System::Diagnostics::Etw::*;
+use std::ptr::null_mut;
+
+unsafe extern "system" fn event_record_callback(event_record: *mut EVENT_RECORD) {
+    if (*event_record).EventHeader.EventDescriptor.Opcode == 36 {
+        println!("Context Switch Event Captured");
+    }
+}
+
+const KERNEL_PROVIDER_GUID: GUID = GUID::from_u128(0x9e814aad_3204_11d2_9a82_006008a86939);
+
+pub fn stop_trace(session_name: PCWSTR) {
+    unsafe {
+        let mut properties: EVENT_TRACE_PROPERTIES = zeroed();
+        properties.Wnode.BufferSize = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
+
+        let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE { Value: 0 };
+        // let session_name_wide: Vec<u16> = session_name.encode_utf16().collect();
+
+        let status = ControlTraceW(
+            session_handle,
+            session_name,
+            &mut properties,
+            EVENT_TRACE_CONTROL_STOP
+        );
+
+        // if status != ERROR_SUCCESS {
+        //     if status == ERROR_WMI_INSTANCE_NOT_FOUND {
+        //         // No existing trace to stop, this is not an error in this context.
+        //         Ok(())
+        //     } else {
+        //         println!("ControlTrace (stop) failed with error code: {}", status);
+        //         Err(windows::core::Error::from_win32())
+        //     }
+        // } else {
+        //     Ok(())
+        // }
+    }
+}
+
+pub fn entry_trace() -> Result<()> {
+    unsafe {
+        let mut properties: EVENT_TRACE_PROPERTIES = unsafe { zeroed() };
+        let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE {
+            Value: 0,
+        };
+        let mut buffer: [u16; 1024] = [0; 1024];
+        let session_name = KERNEL_LOGGER_NAMEW;
+
+        stop_trace(session_name);
+
+        properties.Wnode.BufferSize =
+            (size_of::<EVENT_TRACE_PROPERTIES>() as u32) +
+            ((buffer.len() * size_of::<u16>()) as u32);
+        properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        properties.Wnode.ClientContext = 1;
+        properties.Wnode.Guid = SystemTraceControlGuid;
+        properties.LogFileMode = 0x00000100; // EVENT_TRACE_REAL_TIME_MODE
+        properties.LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
+        properties.EnableFlags = EVENT_TRACE_FLAG_CSWITCH;
+
+        unsafe {
+            let status = StartTraceW(&mut session_handle, session_name, &mut properties);
+            if let Err(e) = status {
+                println!("StartTrace failed with {}", e);
+                return Err(windows::core::Error::from_win32());
+            }
+
+            let status = EnableTraceEx2(
+                session_handle,
+                &KERNEL_PROVIDER_GUID,
+                EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
+                TRACE_LEVEL_VERBOSE as u8,
+                0,
+                0,
+                0,
+                None
+            );
+            if let Err(e) = status {
+                println!("EnableTraceEx2 failed with {:?}", e);
+                return Err(windows::core::Error::from_win32());
+            }
+
+            let mut logfile: EVENT_TRACE_LOGFILEW = zeroed();
+            logfile.LoggerName = PWSTR::from_raw(session_name.as_ptr() as *mut _);
+            logfile.Anonymous1.ProcessTraceMode = 0x00000100 | 0x00000010; // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
+            logfile.Anonymous2.EventRecordCallback = Some(event_record_callback);
+
+            let trace_handle = OpenTraceW(&mut logfile);
+            if trace_handle.Value == 0xffffffffffffffff {
+                println!("OpenTrace failed with {}", windows::core::Error::from_win32());
+                return Err(windows::core::Error::from_win32());
+            }
+
+            let status = ProcessTrace(&[trace_handle], None, None);
+            if let Err(e) = status {
+                println!("ProcessTrace failed with {:?}", e);
+                return Err(windows::core::Error::from_win32());
+            }
+        }
+    }
+    Ok(())
 }

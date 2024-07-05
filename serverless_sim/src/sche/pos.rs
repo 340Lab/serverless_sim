@@ -1,15 +1,16 @@
 use crate::fn_dag::EnvFnExt;
-use crate::mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes};
+use crate::mechanism_thread::{ MechCmdDistributor, MechScheduleOnceRes };
 use crate::node::EnvNodeExt;
-use crate::with_env_sub::{WithEnvCore, WithEnvHelp};
+use crate::util;
+use crate::with_env_sub::{ WithEnvCore, WithEnvHelp };
 use crate::{
     fn_dag::FnId,
-    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
+    mechanism::{ MechanismImpl, ScheCmd, SimEnvObserve },
     node::NodeId,
     request::Request,
-    sim_run::{schedule_helper, Scheduler},
+    sim_run::{ schedule_helper, Scheduler },
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{ HashMap, HashSet };
 
 pub struct PosScheduler {
     new_scale_up_nodes: HashMap<FnId, HashSet<NodeId>>,
@@ -60,16 +61,10 @@ impl PosScheduler {
         if !self.new_scale_up_nodes.contains_key(&fnid) {
             self.new_scale_up_nodes.insert(fnid, HashSet::new());
         }
-        self.new_scale_up_nodes
-            .get_mut(&fnid)
-            .unwrap()
-            .insert(node_id);
+        self.new_scale_up_nodes.get_mut(&fnid).unwrap().insert(node_id);
     }
     fn new_scale_up_nodes(&self, fnid: FnId) -> HashSet<NodeId> {
-        self.new_scale_up_nodes
-            .get(&fnid)
-            .cloned()
-            .unwrap_or_default()
+        self.new_scale_up_nodes.get(&fnid).cloned().unwrap_or_default()
     }
     // fn node_new_task_cnt(&self, node_id: NodeId) -> usize {
     //     self.node_new_task_cnt.get(&node_id).cloned().unwrap_or(0)
@@ -79,22 +74,24 @@ impl PosScheduler {
         env: &SimEnvObserve,
         mech: &MechanismImpl,
         req: &mut Request,
-        cmd_distributor: &MechCmdDistributor,
+        cmd_distributor: &MechCmdDistributor
     ) {
         let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
-            schedule_helper::CollectTaskConfig::PreAllSched,
+            schedule_helper::CollectTaskConfig::PreAllSched
         );
 
         // let mut node2node_connection_count = env.core.node2node_connection_count().clone();
         schedule_able_fns.sort_by(|&a, &b| {
-            env.func(a)
-                .cpu
-                .partial_cmp(&env.func(b).cpu)
-                .unwrap()
-                .reverse()
+            env.func(a).cpu.partial_cmp(&env.func(b).cpu).unwrap().reverse()
         });
+
+        log::info!(
+            "schedule_some sort fns cost {}",
+            // req.req_id,
+            util::now_ms() - *mech.step_begin.borrow()
+        );
 
         let scale_up_exec = mech.scale_up_exec();
         let mech_metric = || env.help().mech_metric_mut();
@@ -106,11 +103,21 @@ impl PosScheduler {
                 target_cnt = 1;
             }
 
-            let fn_scale_up_cmds =
-                scale_up_exec.exec_scale_up(target_cnt, fnid, env, cmd_distributor);
+            let fn_scale_up_cmds = scale_up_exec.exec_scale_up(
+                target_cnt,
+                fnid,
+                env,
+                cmd_distributor
+            );
             for cmd in fn_scale_up_cmds.iter() {
                 self.record_new_scale_up_node(cmd.fnid, cmd.nid);
             }
+            log::info!(
+                "schedule_some schduling fn {} {}",
+                fnid,
+                // req.req_id,
+                util::now_ms() - *mech.step_begin.borrow()
+            );
 
             // 选择节点算法，首先选出包含当前函数容器的节点
             let mut nodes2select: Vec<NodeId> = env
@@ -160,7 +167,7 @@ impl PosScheduler {
 
             let nodes_task_cnt = nodes2select
                 .iter()
-                .map(|n| (mech_metric().node_task_new_cnt(*n) as f32))
+                .map(|n| mech_metric().node_task_new_cnt(*n) as f32)
                 .collect::<Vec<_>>();
             let fparents = env.func(fnid).parent_fns(env);
             let nodes_parent_distance = nodes2select
@@ -172,14 +179,9 @@ impl PosScheduler {
                     fparents
                         .iter()
                         .map(|&p| {
-                            if req.get_fn_node(p).unwrap() == *n {
-                                0.0
-                            } else {
-                                1.0
-                            }
+                            if req.get_fn_node(p).unwrap() == *n { 0.0 } else { 1.0 }
                         })
-                        .sum::<f32>()
-                        / fparents.len() as f32
+                        .sum::<f32>() / (fparents.len() as f32)
                 })
                 .collect::<Vec<_>>();
 
@@ -198,8 +200,7 @@ impl PosScheduler {
                     let score2 = score_of_idx(*idx2);
                     score1.partial_cmp(&score2).unwrap()
                 })
-                .unwrap()
-                .1;
+                .unwrap().1;
             // .min_by(|&&a, &&b| {
             //     // let atime = get_on_node_time(a);
             //     // let btime = get_on_node_time(b);
@@ -215,12 +216,14 @@ impl PosScheduler {
             // env.schedule_reqfn_on_node(req, fnid, best_node);
             mech_metric().add_node_task_new_cnt(best_node);
             cmd_distributor
-                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
-                    reqid: req.req_id,
-                    fnid,
-                    nid: best_node,
-                    memlimit: None,
-                }))
+                .send(
+                    MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        reqid: req.req_id,
+                        fnid,
+                        nid: best_node,
+                        memlimit: None,
+                    })
+                )
                 .unwrap();
         }
     }
@@ -231,13 +234,17 @@ impl Scheduler for PosScheduler {
         &mut self,
         env: &SimEnvObserve,
         mech: &MechanismImpl,
-        cmd_distributor: &MechCmdDistributor,
+        cmd_distributor: &MechCmdDistributor
     ) {
         self.new_scale_up_nodes.clear();
         self.schealeable_fns.clear();
         for (_req_id, req) in env.core().requests().iter() {
             self.collect_scheable_fns_for_req(env, req);
         }
+        log::info!(
+            "schedule_some collect_scheable_fns_for_req cost {}",
+            util::now_ms() - *mech.step_begin.borrow()
+        );
         // log::info!("try put fn");
         // let nodes_taskcnt = env
         //     .nodes()
@@ -254,13 +261,23 @@ impl Scheduler for PosScheduler {
                     env,
                     func.fn_id,
                     cur - target,
-                    cmd_distributor,
+                    cmd_distributor
+                );
+                log::info!(
+                    "schedule_some scale_down_exec {} cost {}",
+                    func.fn_id,
+                    util::now_ms() - *mech.step_begin.borrow()
                 );
             }
         }
 
         for (_req_id, req) in env.core().requests_mut().iter_mut() {
             self.schedule_one_req_fns(env, mech, req, cmd_distributor);
+            log::info!(
+                "schedule_some schedule_one_req_fns {} cost {}",
+                req.req_id,
+                util::now_ms() - *mech.step_begin.borrow()
+            );
         }
     }
 }

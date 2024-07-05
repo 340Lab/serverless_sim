@@ -26,14 +26,14 @@ class ProxyEnv3:
         "rand_seed": "",
         "request_freq": "low",
 
-        "dag_type": "mix",
+        # "dag_type": "mix",
         # "dag_type": "dag",
-        # "dag_type": "single",
+        "dag_type": "single",
         
         "cold_start": "high",
         "fn_type": "cpu",
         "no_log": False,
-        "total_frame":2000,
+        "total_frame":1000,
         # // optional
         "mech": {}
     }
@@ -45,8 +45,8 @@ class ProxyEnv3:
         # read ./serverless_sim/module_conf_es.json and set to config["es"]
         with open("../serverless_sim/module_conf_es.json", "r") as f:
             self.config["mech"] = json.load(f)
-        # print(f"Config Templete {self.config}")
-        # print("\n\n")
+        print(f"Config Templete {self.config}")
+        print("\n\n")
 
     
 
@@ -82,19 +82,15 @@ class ProxyEnv3:
             print("env_id is empty, please reset the environment first.")
             print("\n\n")
             return
-        try:
-            # 向模拟环境的API发送一个step请求，其中包含action和env_id信息
-            res = self.__request("step", {"action": action, "env_id": self.env_id})
-            return res.json()['kernel']
-        except Exception as e:
-            print("!!!step err",e)
+        
+        # 向模拟环境的API发送一个step请求，其中包含action和env_id信息
+        res = self.__request("step", {"action": action, "env_id": self.env_id})
+        return res.json()['kernel']
 
     def start_async_sim(self):
         def __start_sim():
-            try:
-                res = self.__request("step", {"action": 0, "env_id": self.env_id})
-            except Exception as e:
-                print("!!!start_async_sim err",e)
+            res = self.__request("step", {"action": 0, "env_id": self.env_id})
+            return res.json()['kernel']
         # start a thread
         import threading
         threading.Thread(target=__start_sim).start()
@@ -107,11 +103,6 @@ class ProxyEnv3:
             print("\n\n")
             return
         # 向模拟环境的API发送一个step请求，其中包含action和env_id信息
-        try:
-            res = self.__request("rl_step", {"action": action})
-            res = res.json()['kernel']
-            # print("state",res['state'],", score",res['score'])
-            return res['state'],res['score'],res['stop'],''
-        except Exception as e:
-            print("!!!rl_step err",e)
-            return [],0,True,''
+        res = self.__request("rl_step", {"action": action})
+        res = res.json()['kernel']
+        return res['state'],res['score'],res['stop'],''

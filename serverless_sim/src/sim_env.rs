@@ -358,14 +358,28 @@ impl SimEnv {
         // 创建 DAG 实例，并将其加入到 dags 列表中
         self.fn_gen_fn_dags(self);
 
-        //为每个dag生成调用频率和CV
-        for dag in self.core.dags().iter() {
-            let rng = self.env_rand_f(0.0, 1.0);
-            let avg_freq = call_python_script("IAT", rng);
-            let cv = call_python_script("CV", rng);
-            self.help.fn_call_frequency_mut().insert(dag.dag_i, (avg_freq, cv));
-            log::info!("gen cv:{}, freq:{} for app:{} by rng{}", cv, avg_freq, dag.dag_i, rng);
+        let cache_req_freq = format!("cache/{}", self.help.config.no_mech_str());
+        if std::fs::metadata(&cache_req_freq).is_err() {
+            //为每个dag生成调用频率和CV
+            for dag in self.core.dags().iter() {
+                let rng = self.env_rand_f(0.0, 1.0);
+                let avg_freq = call_python_script("IAT", rng);
+                let cv = call_python_script("CV", rng);
+                self.help.fn_call_frequency_mut().insert(dag.dag_i, (avg_freq, cv));
+                log::info!("gen cv:{}, freq:{} for app:{} by rng{}", cv, avg_freq, dag.dag_i, rng);
+            }
+            // mkdir
+            std::fs::create_dir("cache").unwrap();
+            // write to file
+            let mut file = std::fs::File::create(cache_req_freq).unwrap();
+            serde_json::to_writer(&mut file, &*self.help.fn_call_frequency()).unwrap();
+        } else {
+            // read frome file
+            let mut file = std::fs::File::open(cache_req_freq).unwrap();
+            let freq: BTreeMap<DagId, (f64, f64)> = serde_json::from_reader(&mut file).unwrap();
+            *self.help.fn_call_frequency_mut() = freq;
         }
+
         log::info!("env init done");
     }
 
