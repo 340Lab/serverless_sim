@@ -349,7 +349,7 @@ impl SimEnv {
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().iter() {
                 // avg_frequency *= 100.0;
-                avg_frequency *= 10.0;
+                // avg_frequency *= 10.0;
                 let random_frequency = self.get_random_frequency(avg_frequency, cv);
                 let req_cnt = random_frequency.round() as usize;
 

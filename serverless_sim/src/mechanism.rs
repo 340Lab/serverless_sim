@@ -17,6 +17,7 @@ use crate::{
     sim_env::{ SimEnvCoreState, SimEnvHelperState },
     sim_run::Scheduler,
     with_env_sub::{ WithEnvCore, WithEnvHelp },
+    util,
 };
 #[derive(Clone)]
 pub struct UpCmd {
@@ -269,6 +270,7 @@ impl ConfigNewMec for Config {
             filters,
             fn_scale_num: RefCell::new(HashMap::new()),
             config: self.clone(),
+            step_begin: RefCell::new(0),
         })
     }
 }
@@ -281,6 +283,7 @@ pub struct MechanismImpl {
     scale_up_exec: RefCell<Box<dyn ScaleUpExec>>,
     filters: Vec<RefCell<Box<dyn ScaleFilter>>>,
     fn_scale_num: RefCell<HashMap<FnId, usize>>,
+    pub step_begin: RefCell<u64>,
 }
 
 pub struct SimEnvObserve {
@@ -313,6 +316,7 @@ impl Mechanism for MechanismImpl {
         raw_action: ESActionWrapper,
         cmd_distributor: &MechCmdDistributor
     ) {
+        *self.step_begin.borrow_mut() = util::now_ms();
         match &*self.config.mech.mech_type().0 {
             "no_scale" => self.step_no_scaler(env, self, cmd_distributor, raw_action),
             "scale_sche_separated" => {
@@ -422,14 +426,20 @@ impl MechanismImpl {
         raw_action: ESActionWrapper
     ) {
         // 遍历每个函数（每一帧都对每个函数进行scale_for_fn，每个函数都进行扩缩容判断）
+
         for func in env.core.fns().iter() {
             self.update_scale_num(env, func.fn_id, &raw_action);
 
             // 获取对该函数当前容器数量
-            let cur = env.fn_container_cnt(func.fn_id);
-            let tar = self.scale_num(func.fn_id);
+            // let cur = env.fn_container_cnt(func.fn_id);
+            // let tar = self.scale_num(func.fn_id);
 
-            log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
+            log::info!(
+                "scale fn{} cost {}",
+                func.fn_id,
+                util::now_ms() - *self.step_begin.borrow()
+            );
+            // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
             // 不进行扩缩容，在调度时候一起进行
             // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
         }

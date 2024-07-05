@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 
 use crate::mechanism_conf::MechConfig;
 
@@ -157,6 +157,16 @@ impl Config {
     //         }
     //     }
     // }
+    pub fn no_mech_str(&self) -> String {
+        format!(
+            "sd{}.rf{}.dt{}.cs{}.ft{}",
+            self.rand_seed,
+            self.request_freq,
+            self.dag_type,
+            self.cold_start,
+            self.fn_type
+        )
+    }
     pub fn str(&self) -> String {
         let scnum = self.mech.scale_num_conf();
         let scdown = self.mech.scale_down_exec_conf();

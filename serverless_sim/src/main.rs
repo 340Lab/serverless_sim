@@ -35,42 +35,10 @@ use std::{ time::Duration };
 #[macro_use]
 extern crate lazy_static;
 
-struct KeywordFilter {
-    keyword: Vec<String>,
-}
-
-impl KeywordFilter {
-    fn new(keyword: Vec<String>) -> Self {
-        Self {
-            keyword: keyword,
-        }
-    }
-}
-
-impl log::Log for KeywordFilter {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Info
-    }
-
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            for k in &self.keyword {
-                if !record.args().to_string().contains(k) {
-                    return;
-                }
-            }
-
-            println!("{}", record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-
 #[tokio::main]
 async fn main() {
-    let keyword: Vec<&'static str> = //vec![];
-        vec!["::sche", "::mech", "::scale"]; // no algo log
+    let keyword: Vec<&'static str> = vec![];
+    vec!["::sche", "::mechansim ", "::scale"]; // no algo log
     Builder::new()
         .filter(None, LevelFilter::Info)
         .format(move |buf, record| {
@@ -83,6 +51,16 @@ async fn main() {
             writeln!(buf, "{}: {}", record.level(), message)
         })
         .init();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        util::entry_trace().unwrap();
+        tx.send(()).unwrap();
+    });
+    rx.recv().expect(
+        "将用户添加到 Performance Log Users 组\n \
+    net localgroup \"Performance Log Users\" <username> /add"
+    );
 
     std::thread::sleep(Duration::from_secs(1));
     output::print_logo();
@@ -100,7 +78,6 @@ mix模式生成的应用为单函数、dag各5个
 请求数量没变。
 node的cpu资源从1000到200
 */
-
 
 const REQUEST_GEN_FRAME_INTERVAL: usize = 1;
 // const REQUEST_GEN_FRAME_INTERVAL: usize = 10;
