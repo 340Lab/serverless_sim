@@ -40,7 +40,7 @@ impl SimEnv {
         self.on_frame_end();
 
         if self.current_frame() > self.help().config().total_frame {
-            self.help.metric_record_mut().flush(self);
+            self.help.metric_record_mut().as_ref().unwrap().flush(self);
             RL_TARGET.as_ref().map(|v| v.set_stop());
             self.reset();
             false

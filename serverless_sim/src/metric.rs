@@ -12,8 +12,10 @@ use crate::{
 use chrono;
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashSet;
 
+use std::io::{ SeekFrom, Seek };
 use std::{ collections::{ BTreeMap, HashMap }, fs::{ self, File }, io::{ Read, Write } };
 
 // #[derive(Serialize, Deserialize)]
@@ -214,6 +216,21 @@ pub struct Records {
     // 5 req_done_time_avg_90p,
     // 6 cost
     pub frames: Vec<Vec<serde_json::Value>>,
+    // file: File,
+}
+
+// #[derive(Serialize, Deserialize)]
+pub struct Recorder {
+    pub record_name: String,
+    // 0 frame,
+    // 1 running_reqs,
+    // 2 nodes,
+    // 3 req_done_time_avg,
+    // 4 req_done_time_std,
+    // 5 req_done_time_avg_90p,
+    // 6 cost
+    // pub frames: Vec<Vec<serde_json::Value>>,
+    file: RefCell<File>,
 }
 
 const FRAME_IDX_FRAME: usize = 0; // 帧数
@@ -235,7 +252,7 @@ const FRAME_IDX_FNCONTAINER_COUNT: usize = 14; // 总的容器数量
 // the last + 1
 const FRAME_LEN: usize = 15;
 
-impl Records {
+impl Recorder {
     pub fn new(mut key: String) -> Self {
         // let args = parse_arg::get_arg();
         key = key.replace(":", "_");
@@ -250,9 +267,23 @@ impl Records {
             // },
             chrono::offset::Utc::now().format("UTC_%Y_%m_%d_%H_%M_%S")
         );
+
+        //mkdir
+        let _ = fs::create_dir("records");
+        let mut file = File::create(format!("records/{}.json", record_name)).unwrap();
+
+        file.write_all(
+            format!("\
+{{ \n\
+    \"record_name\":\"{}\",\n\
+    \"frames\":[ \n\
+", record_name).as_bytes()
+        ).unwrap();
+
         Self {
             record_name,
-            frames: Vec::new(),
+            // frames: Vec::new(),
+            file: file.into(),
         }
     }
 
@@ -302,27 +333,48 @@ impl Records {
             .sum::<usize>()
             .into();
 
-        self.frames.push(frame);
+        self.file
+            .borrow_mut()
+            .write_all(serde_json::to_string(&frame).unwrap().as_bytes())
+            .unwrap();
+        self.file.borrow_mut().write_all(",\n".as_bytes()).unwrap();
+        // self.file.write(&[b'\n']).unwrap();
+        // self.frames.push(frame);
     }
 
     pub fn flush(&self, env: &SimEnv) {
-        if env.help.config().no_log {
-            log::info!("no metric record, skip flush");
+        // seek back 2 bytes ",\n"
+        let flen = self.file.borrow_mut().metadata().unwrap().len();
+        if flen < 100 {
             return;
         }
-        if self.frames.len() > 9 {
-            fs::create_dir_all("records").unwrap();
+        self.file
+            .borrow_mut()
+            .seek(SeekFrom::Start(flen - (",\n".as_bytes().len() as u64)))
+            .unwrap();
 
-            log::info!("flush to target key: {}", self.record_name);
-            let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
-            file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
+        self.file.borrow_mut().write_all("\n]}".as_bytes()).unwrap();
+        // self.file.flush().unwrap();
+        // if env.help.config().no_log {
+        //     log::info!("no metric record, skip flush");
+        //     return;
+        // }
+        // if self.frames.len() > 9 {
+        //     fs::create_dir_all("records").unwrap();
 
-            // 计算几个关键指标，输出到对应seed的文件中
-        } else {
-            log::info!("frame is too small, skip flush");
-        }
+        //     log::info!("flush to target key: {}", self.record_name);
+        //     let mut file = File::create(format!("records/{}.json", self.record_name)).unwrap();
+        //     file.write_all(serde_json::to_string(self).unwrap().as_bytes()).unwrap();
+
+        //     // 计算几个关键指标，输出到对应seed的文件中
+        // } else {
+        //     log::info!("frame is too small, skip flush");
+        // }
     }
 }
+
+// #[derive(Serialize, Deserialize)]
+// struct RecordFile {}
 
 #[derive(Clone)]
 struct RecordFile {
@@ -538,5 +590,32 @@ pub fn get_seed_metrics(seed: &String) -> Option<Vec<Vec<Value>>> {
         Some(seed_metrics)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+
+    use crate::{ sim_env::SimEnv, config::Config };
+
+    #[test]
+    fn test_record_file() {
+        // let mut file = File::create("hhhhh").expect("Failed to create file");
+        println!("test_record_file in dir {:?}", std::env::current_dir().unwrap());
+        let conf = Config::new_test();
+        // conf.total_frame = 30;
+        let env = SimEnv::new(conf);
+        for i in 0..10 {
+            env.help.metric_record_mut().as_mut().unwrap().add_frame(&env);
+        }
+        // flush
+        env.help.metric_record().as_ref().unwrap().flush(&env);
+        let record_name = env.help.metric_record().as_ref().unwrap().record_name.clone();
+        let filename = format!("records/{}.json", record_name);
+        let mut open = std::fs::File::open(filename).unwrap();
+        let mut readall = String::new();
+        std::io::Read::read_to_string(&mut open, &mut readall).unwrap();
+        let records: serde_json::Value = serde_json::from_str(&readall).unwrap();
     }
 }

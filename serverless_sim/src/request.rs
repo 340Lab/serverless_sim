@@ -145,12 +145,13 @@ impl Request {
             // assert!(begin);
             let sche_time = metric.sche_time.unwrap();
             let ready_sche_time = metric.ready_sche_time.unwrap();
-            let cold_start_done_time =
-                if let Some(cold_start_done_time) = metric.cold_start_done_time {
-                    cold_start_done_time.max(sche_time.max(ready_sche_time))
-                } else {
-                    sche_time.max(ready_sche_time)
-                };
+            let cold_start_done_time = if
+                let Some(cold_start_done_time) = metric.cold_start_done_time
+            {
+                cold_start_done_time.max(sche_time.max(ready_sche_time))
+            } else {
+                sche_time.max(ready_sche_time)
+            };
             let data_done_time = if let Some(data_recv_done_time) = metric.data_recv_done_time {
                 data_recv_done_time
             } else {
@@ -346,7 +347,7 @@ impl SimEnv {
         if env.core.current_frame() % REQUEST_GEN_FRAME_INTERVAL == 0 {
             let mut total_req_cnt = 0;
 
-            for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().borrow().iter() {
+            for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().iter() {
                 // avg_frequency *= 100.0;
                 avg_frequency *= 10.0;
                 let random_frequency = self.get_random_frequency(avg_frequency, cv);
@@ -517,7 +518,7 @@ mod tests {
             let frame_begin = move |env: &SimEnv| {
                 log::info!("hook frame begin {}", env.current_frame());
                 unsafe {
-                    *begin_req_cnt1.as_mut() = env.core.requests().len();
+                    *begin_req_cnt1.0.as_mut() = env.core.requests().len();
                 }
             };
             let mut run1 = unsafe { util::non_null(&run) };
@@ -525,9 +526,9 @@ mod tests {
                 let aft_gen_req_cnt = env.core.requests().len();
 
                 unsafe {
-                    let cnt = aft_gen_req_cnt - *begin_req_cnt2.as_ref();
+                    let cnt = aft_gen_req_cnt - *begin_req_cnt2.0.as_ref();
                     log::info!("hook req gen {} at {}", cnt, env.current_frame());
-                    run1.as_mut().push(cnt);
+                    run1.0.as_mut().push(cnt);
                 }
             };
             sim_env.step_es(
