@@ -1,10 +1,10 @@
 use bp_balance::BpBalanceScheduler;
 
-use crate::{config::Config, sim_run::Scheduler};
+use crate::{ config::Config, sim_run::Scheduler };
 
 use self::{
     consistenthash::ConsistentHashScheduler, // rule_based::{RuleBasedScheduler, ScheduleRule},
-                                             // time_aware::TimeScheduler,
+    // time_aware::TimeScheduler,
     faasflow::FaasFlowScheduler,
     fnsche::FnScheScheduler,
     greedy::GreedyScheduler,
@@ -34,7 +34,7 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
     // let (scale_num_name, scale_num_attr) = es.scale_num_conf();
     // let (scale_up_exec_name, scale_up_exec_attr) = es.scale_up_exec_conf();
     // let (scale_down_exec_name, scale_down_exec_attr) = es.scale_down_exec_conf();
-    let (sche_name, _sche_attr) = es.sche_conf();
+    let (sche_name, sche_attr) = es.sche_conf();
     match &*sche_name {
         "faasflow" => {
             return Some(Box::new(FaasFlowScheduler::new()));
@@ -43,7 +43,7 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
             return Some(Box::new(PassScheduler::new()));
         }
         "pos" => {
-            return Some(Box::new(PosScheduler::new()));
+            return Some(Box::new(PosScheduler::new(&sche_attr)));
         }
         "fnsche" => {
             return Some(Box::new(FnScheScheduler::new()));
@@ -59,13 +59,13 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "consistenthash" => {
             return Some(Box::new(ConsistentHashScheduler::new()));
-        },
+        }
         "hash" => {
             return Some(Box::new(HashScheduler::new()));
-        },
+        }
         "rotate" => {
             return Some(Box::new(RotateScheduler::new()));
-        },
+        }
         _ => {
             return None;
         }

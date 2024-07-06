@@ -1,0 +1,59 @@
+run_time: 10
+
+params:
+  request_freq:
+  - low:
+  - middle:
+  - high:
+  dag_type:
+  - single:
+
+mech_scale_sche:
+  scale_sche_joint:
+    scale_num:
+    - hpa:
+    - temp_scaler:
+    scale_down_exec:
+    - default:
+    scale_up_exec:
+    - least_task:
+    sche:
+    - pos: greedy
+    - pos: random
+    filter:
+    - []
+    - [{'careful_down':''}]
+  scale_sche_separated:
+    scale_num:
+    - hpa:
+    scale_down_exec:
+    - default:
+    scale_up_exec:
+    - least_task:
+    sche:
+    - greedy:
+    - random:
+    - rotate:
+    filter:
+    - []
+    - [{'careful_down':''}]
+  no_scale:
+    scale_num:
+    - no:
+    scale_down_exec:
+    - default:
+    scale_up_exec:
+    - no:
+    sche:
+    - greedy:
+    - random:
+    - rotate:
+    filter:
+    - []
+
+mech_other:
+  instance_cache_policy:
+  - no_evict:
+  # - lru: 15
+  - lru: 10
+  # - lru: 5
