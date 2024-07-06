@@ -8,7 +8,6 @@ name = "serverless_sim"
 path = "src/main.rs"
 
 
-
 [dependencies]
 rand = "0.8.5"
 daggy = "0.8.0"
@@ -34,16 +33,16 @@ async-trait = "0.1.51"
 parking_lot = "0.12"
 rand_distr = "0.4.3"
 thread-priority = "0.3"
-futures = "0.3"
-cpu-time = "1.0.0"
+# futures = "0.3"
+# cpu-time = "1.0.0"
 
-[dependencies.windows]
-version = "0.52"
-features = [
-    "Win32_Foundation",
-    "Win32_System_Threading",
-    "Win32_System_Diagnostics_Etw",
-    "Win32_System_Time",
-    "Win32_Foundation",
-    "Win32_Security"
-]
+# [dependencies.windows]
+# version = "0.52"
+# features = [
+#     "Win32_Foundation",
+#     "Win32_System_Threading",
+#     "Win32_System_Diagnostics_Etw",
+#     "Win32_System_Time",
+#     "Win32_Foundation",
+#     "Win32_Security"
+# ]

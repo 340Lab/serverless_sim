@@ -5,12 +5,12 @@
     "scale_sche_joint": null
   },
   "scale_num": {
-    "temp_scaler": null,
     "rela": null,
+    "lass": null,
     "no": null,
-    "full_placement": null,
+    "temp_scaler": null,
     "hpa": null,
-    "lass": null
+    "full_placement": null
   },
   "scale_down_exec": {
     "default": null
@@ -20,16 +20,16 @@
     "no": null
   },
   "sche": {
-    "greedy": null,
-    "bp_balance": null,
-    "hash": null,
-    "random": null,
-    "rotate": null,
-    "faasflow": null,
+    "consistenthash": null,
     "fnsche": null,
-    "pos": null,
+    "hash": null,
+    "faasflow": null,
+    "rotate": null,
+    "random": null,
     "pass": null,
-    "consistenthash": null
+    "pos": null,
+    "bp_balance": null,
+    "greedy": null
   },
   "filter": {
     "careful_down": null
