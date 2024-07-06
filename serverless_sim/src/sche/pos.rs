@@ -17,15 +17,22 @@ use crate::{
 use std::cell::RefCell;
 use std::collections::{ HashMap, HashSet, VecDeque };
 
+enum PosMode {
+    Greedy,
+    Random,
+    Auto,
+}
+
 pub struct PosScheduler {
     // new_scale_up_nodes: HashMap<FnId, HashSet<NodeId>>,
     schealeable_fns: RefCell<HashMap<FnId, HashSet<NodeId>>>,
     sche_queue: Vec<(ReqId, Vec<FnId>)>,
     // node_new_task_cnt: HashMap<NodeId, usize>,
+    mode: PosMode,
 }
 
 impl PosScheduler {
-    pub fn new() -> Self {
+    pub fn new(arg: &str) -> Self {
         Self {
             // node_new_task_cnt: HashMap::new(),
             // new_scale_up_nodes: HashMap::new(),
@@ -35,6 +42,12 @@ impl PosScheduler {
                 let mut v = Vec::new();
                 v.reserve(1024);
                 v
+            },
+            mode: match arg {
+                "greedy" => { PosMode::Greedy }
+                "random" => { PosMode::Random }
+                _ => { panic!("pos arg can only be 1 of: greedy, random") }
+                // "auto"
             },
         }
     }
@@ -147,60 +160,61 @@ impl PosScheduler {
             let mut nodes2select = self.new_scale_up_nodes(fnid);
 
             // random
-            let i = thread_rng().gen_range(0..nodes2select.len());
-            let best_node = *nodes2select.iter().nth(i).unwrap();
+            let best_node = match &self.mode {
+                PosMode::Random => {
+                    let i = thread_rng().gen_range(0..nodes2select.len());
+                    let best_node = *nodes2select.iter().nth(i).unwrap();
+                    best_node
+                }
+                PosMode::Greedy => {
+                    {
+                        //greedy
+                        let nodes_task_cnt = nodes2select
+                            .iter()
+                            .map(|n| mech_metric().node_task_new_cnt(*n) as f32)
+                            .collect::<Vec<_>>();
+                        // let fparents = env.func(fnid).parent_fns(env);
+                        // let nodes_parent_distance = nodes2select
+                        //     .iter()
+                        //     .map(|n| {
+                        //         if fparents.len() == 0 {
+                        //             return 0.0;
+                        //         }
+                        //         fparents
+                        //             .iter()
+                        //             .map(|&p| {
+                        //                 if req.get_fn_node(p).unwrap() == *n { 0.0 } else { 1.0 }
+                        //             })
+                        //             .sum::<f32>() / (fparents.len() as f32)
+                        //     })
+                        //     .collect::<Vec<_>>();
+
+                        let score_of_idx = |idx: usize| {
+                            let task_cnt = nodes_task_cnt[idx];
+                            // let parent_distance = nodes_parent_distance[idx];
+                            let score = 1.0 / (task_cnt + 1.0);
+                            // let score = 1.0 / (task_cnt + 1.0) - parent_distance;
+                            score
+                        };
+
+                        let best_node = *nodes2select
+                            .iter()
+                            .enumerate()
+                            .max_by(|(idx1, _n1), (idx2, _n2)| {
+                                let score1 = score_of_idx(*idx1);
+                                let score2 = score_of_idx(*idx2);
+                                score1.partial_cmp(&score2).unwrap()
+                            })
+                            .unwrap().1;
+                        best_node
+                    }
+                }
+                PosMode::Auto => {
+                    todo!();
+                }
+            };
+
             // let best_node = { *nodes2select.choose(&mut thread_rng()).unwrap() };
-
-            // { greedy
-            //     let nodes_task_cnt = nodes2select
-            //         .iter()
-            //         .map(|n| mech_metric().node_task_new_cnt(*n) as f32)
-            //         .collect::<Vec<_>>();
-            //     let fparents = env.func(fnid).parent_fns(env);
-            //     let nodes_parent_distance = nodes2select
-            //         .iter()
-            //         .map(|n| {
-            //             if fparents.len() == 0 {
-            //                 return 0.0;
-            //             }
-            //             fparents
-            //                 .iter()
-            //                 .map(|&p| {
-            //                     if req.get_fn_node(p).unwrap() == *n { 0.0 } else { 1.0 }
-            //                 })
-            //                 .sum::<f32>() / (fparents.len() as f32)
-            //         })
-            //         .collect::<Vec<_>>();
-
-            //     let score_of_idx = |idx: usize| {
-            //         let task_cnt = nodes_task_cnt[idx];
-            //         let parent_distance = nodes_parent_distance[idx];
-            //         let score = 1.0 / (task_cnt + 1.0) - parent_distance;
-            //         score
-            //     };
-
-            //     let best_node = *nodes2select
-            //         .iter()
-            //         .enumerate()
-            //         .max_by(|(idx1, _n1), (idx2, _n2)| {
-            //             let score1 = score_of_idx(*idx1);
-            //             let score2 = score_of_idx(*idx2);
-            //             score1.partial_cmp(&score2).unwrap()
-            //         })
-            //         .unwrap().1;
-            // }
-
-            // .min_by(|&&a, &&b| {
-            //     // let atime = get_on_node_time(a);
-            //     // let btime = get_on_node_time(b);
-            //     env.node(a)
-            //         .all_task_cnt()
-            //         .partial_cmp(&env.node(b).all_task_cnt())
-            //         .unwrap()
-            //     // atime.partial_cmp(&btime).unwrap()
-            //     // a.total_cmp(&b)
-            // })
-            // .unwrap();
 
             // env.schedule_reqfn_on_node(req, fnid, best_node);
             mech_metric().add_node_task_new_cnt(best_node);

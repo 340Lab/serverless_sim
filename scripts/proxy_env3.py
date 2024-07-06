@@ -15,6 +15,9 @@ import random
 SIM_URL = "http://127.0.0.1:3000/"
 
 
+import records_read
+
+
 
 class ProxyEnv3:
 
@@ -72,8 +75,13 @@ class ProxyEnv3:
         res=self.__request("reset", {
             "config":self.config
         })
-        print(f"reset success: {res.json()}")
+        # print(f"reset success: {res.json()}")
         self.env_id = res.json()['kernel']["env_id"]
+        pyid=records_read.conf_str(self.config)
+        rsid=self.env_id
+        print(f"pyid: {pyid}")
+        print(f"rsid: {rsid}")
+        assert(pyid==rsid)
         return res.json()['kernel']
 
     # 用于向模拟环境的API发送执行步骤的请求，并返回API响应中的kernel部分

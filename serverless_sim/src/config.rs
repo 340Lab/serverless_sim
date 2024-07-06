@@ -173,19 +173,32 @@ impl Config {
         let scup = self.mech.scale_up_exec_conf();
         let sche = self.mech.sche_conf();
         let ins_cache = self.mech.instance_cache_policy_conf();
+        let mut some_filter = self.mech.filter
+            .iter()
+            .filter(|v| v.1.is_some())
+            .map(|v| (v.0, v.1.clone().unwrap()))
+            .collect::<Vec<_>>();
+        some_filter.sort();
+        let some_filter = some_filter
+            .iter()
+            .map(|v| format!("({}.{})", v.0, v.1))
+            .collect::<String>();
+        // .join(",");
         format!(
-            "sd{}.rf{}.dt{}.cs{}.ft{}.scl({},{})({},{})({},{}).scd({},{}).ic({},{})",
+            "sd{}.rf{}.dt{}.cs{}.ft{}.mt{}.scl({}.{})({}.{})({}.{})[{}].scd({}.{}).ic({}.{})",
             self.rand_seed,
             self.request_freq,
             self.dag_type,
             self.cold_start,
             self.fn_type,
+            self.mech.mech_type().0,
             scnum.0,
             scnum.1,
             scdown.0,
             scdown.1,
             scup.0,
             scup.1,
+            some_filter,
             sche.0,
             sche.1,
             ins_cache.0,

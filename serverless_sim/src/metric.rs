@@ -276,9 +276,9 @@ const FRAME_LEN: usize = 15;
 impl Recorder {
     pub fn new(mut key: String) -> Self {
         // let args = parse_arg::get_arg();
-        key = key.replace(":", "_");
-        key = key.replace(",", ".");
-        key = key.replace("\"", "");
+        // key = key.replace(":", "_");
+        // key = key.replace(",", ".");
+        // key = key.replace("\"", "");
         let record_name = format!(
             "{}.{}",
             key,
@@ -485,9 +485,11 @@ pub fn group_records_by_seed() {
         let config_metrics = seeds_metrics_cache.get_mut(&seed).unwrap();
         for (configstr, f) in recordfiles.iter().rev() {
             let mut read_data = || {
-                let mut records: Records = serde_json
-                    ::from_str(&fs::read_to_string(format!("records/{}", f.file_name)).unwrap())
-                    .unwrap();
+                let Ok(mut records): serde_json::Result<Records> = serde_json::from_str(
+                    &fs::read_to_string(format!("records/{}", f.file_name)).unwrap()
+                ) else {
+                    return None;
+                };
                 count -= 1;
                 log::info!("deserialed one record file: {}, left:{}", f.file_name, count);
                 if records.frames.len() < 999 {

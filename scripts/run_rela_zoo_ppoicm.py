@@ -120,7 +120,7 @@ class EnvWrapper:
         self.env.config["mech"]["scale_num"]['rela']=''
         self.env.config["mech"]["scale_down_exec"]['default']=''
         self.env.config["mech"]["scale_up_exec"]['least_task']=''
-        self.env.config["mech"]["sche"]['pos']=''
+        self.env.config["mech"]["sche"]['pos']='greedy'
         self.env.config["mech"]["filter"]['careful_down']=''
         self.env.config["mech"]["instance_cache_policy"]['no_evict']=''
         # print("env config:",self.env.config)

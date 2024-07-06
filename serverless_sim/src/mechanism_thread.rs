@@ -58,6 +58,9 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
                 return;
             }
         };
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
         let begin_ms = util::now_ms();
         // let measure = util::MeasureThreadTime::new();
         // let begin_cpu = cpu_time::ThreadTime::now();
@@ -72,7 +75,6 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
                 //  (passed_ms.0 + passed_ms.1) / 10000,
             })
             .unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
