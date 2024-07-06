@@ -1,17 +1,17 @@
 use std::{
-    collections::{ HashMap, HashSet, VecDeque },
-    ptr::{ NonNull, self },
-    fmt::{ Debug },
-    mem::{ zeroed, size_of },
+    collections::{HashMap, HashSet, VecDeque},
+    fmt::Debug,
+    mem::{size_of, zeroed},
+    ptr::{self, NonNull},
 };
 
+use crate::sim_env::SimEnv;
 use priority_queue::PriorityQueue;
 use rand::Rng;
-use windows::Win32::{
-    System::Threading::{ GetCurrentThread, GetThreadTimes, INFINITE },
-    Foundation::FILETIME,
-};
-use crate::sim_env::SimEnv;
+// use windows::Win32::{
+//     Foundation::FILETIME,
+//     System::Threading::{GetCurrentThread, GetThreadTimes, INFINITE},
+// };
 // use rand::Rng;
 
 // pub fn rand_f(begin: f32, end: f32) -> f32 {
@@ -67,7 +67,13 @@ pub fn to_range(r: f32, begin: usize, end: usize) -> usize {
 }
 
 pub fn in_range(n: usize, begin: usize, end: usize) -> usize {
-    if n < begin { begin } else if n > end { end } else { n }
+    if n < begin {
+        begin
+    } else if n > end {
+        end
+    } else {
+        n
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -91,7 +97,10 @@ impl Ord for OrdF32 {
 
 pub mod graph {
     use super::*;
-    use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
+    use daggy::{
+        petgraph::visit::{Topo, Visitable},
+        Dag, NodeIndex, Walker,
+    };
 
     pub fn new_dag_walker<N, E>(dag: &Dag<N, E>) -> Topo<NodeIndex, <Dag<N, E> as Visitable>::Map> {
         Topo::new(dag)
@@ -106,7 +115,9 @@ pub mod graph {
             let mut parents = dag.parents(node);
             while let Some((e, p)) = parents.walk_next(dag) {
                 // let p = nodes.entry(p).or_insert_with(|| inverse_dag.add_node(dag[p]));
-                inverse_dag.add_edge(node, p, dag.edge_weight(e).unwrap().clone()).unwrap();
+                inverse_dag
+                    .add_edge(node, p, dag.edge_weight(e).unwrap().clone())
+                    .unwrap();
             }
         }
         inverse_dag
@@ -191,7 +202,7 @@ impl DirectedGraph {
         &self,
         a: usize,
         b: usize,
-        a2bdist: F
+        a2bdist: F,
     ) -> Vec<usize> {
         let mut visited = HashSet::new();
         let mut dists = HashMap::new(); // tostart_dist, prev_node
@@ -250,7 +261,9 @@ impl SimEnv {
 
 pub fn now_ms() -> u64 {
     let now = std::time::SystemTime::now();
-    now.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+    now.duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
     // unsafe {
     //     let h_thread = GetCurrentThread();
     //     let mut creation_time: FILETIME = zeroed();
@@ -272,76 +285,85 @@ pub fn now_ms() -> u64 {
     // }
 }
 
-pub struct MeasureThreadTime {
-    kernel_start: FILETIME,
-    user_start: FILETIME,
-}
+// pub struct MeasureThreadTime {
+//     kernel_start: FILETIME,
+//     user_start: FILETIME,
+// }
 
-fn filetime_to_u64(ft: FILETIME) -> u64 {
-    ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64)
-}
+// fn filetime_to_u64(ft: FILETIME) -> u64 {
+//     ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64)
+// }
 
-impl MeasureThreadTime {
-    pub fn new() -> Self {
-        unsafe {
-            let h_thread = GetCurrentThread();
-            let mut creation_time: FILETIME = zeroed();
-            let mut exit_time: FILETIME = zeroed();
-            let mut kernel_start: FILETIME = zeroed();
-            let mut user_start: FILETIME = zeroed();
-            // let mut kernel_end: FILETIME = zeroed();
-            // let mut user_end: FILETIME = zeroed();
-            // Get initial thread times
-            GetThreadTimes(
-                h_thread,
-                &mut creation_time,
-                &mut exit_time,
-                &mut kernel_start,
-                &mut user_start
-            ).unwrap();
+// impl MeasureThreadTime {
+//     pub fn new() -> Self {
+//         unsafe {
+//             let h_thread = GetCurrentThread();
+//             let mut creation_time: FILETIME = zeroed();
+//             let mut exit_time: FILETIME = zeroed();
+//             let mut kernel_start: FILETIME = zeroed();
+//             let mut user_start: FILETIME = zeroed();
+//             // let mut kernel_end: FILETIME = zeroed();
+//             // let mut user_end: FILETIME = zeroed();
+//             // Get initial thread times
+//             GetThreadTimes(
+//                 h_thread,
+//                 &mut creation_time,
+//                 &mut exit_time,
+//                 &mut kernel_start,
+//                 &mut user_start,
+//             )
+//             .unwrap();
 
-            log::info!(
-                "thread_start: kernel_start={:?}, user_start={:?}",
-                kernel_start,
-                user_start
-            );
+//             log::info!(
+//                 "thread_start: kernel_start={:?}, user_start={:?}",
+//                 kernel_start,
+//                 user_start
+//             );
 
-            // user_start_u64.
-            Self {
-                kernel_start,
-                user_start,
-            }
-        }
-    }
-    pub fn passed_100ns(&self) -> (u64, u64) {
-        unsafe {
-            let h_thread = GetCurrentThread();
-            let mut creation_time: FILETIME = zeroed();
-            let mut exit_time: FILETIME = zeroed();
-            let mut kernel_end: FILETIME = zeroed();
-            let mut user_end: FILETIME = zeroed();
-            // let mut kernel_end: FILETIME = zeroed();
-            // let mut user_end: FILETIME = zeroed();
-            // Get initial thread times
-            GetThreadTimes(
-                h_thread,
-                &mut creation_time,
-                &mut exit_time,
-                &mut kernel_end,
-                &mut user_end
-            ).unwrap();
+//             // user_start_u64.
+//             Self {
+//                 kernel_start,
+//                 user_start,
+//             }
+//         }
+//     }
+//     pub fn passed_100ns(&self) -> (u64, u64) {
+//         unsafe {
+//             let h_thread = GetCurrentThread();
+//             let mut creation_time: FILETIME = zeroed();
+//             let mut exit_time: FILETIME = zeroed();
+//             let mut kernel_end: FILETIME = zeroed();
+//             let mut user_end: FILETIME = zeroed();
+//             // let mut kernel_end: FILETIME = zeroed();
+//             // let mut user_end: FILETIME = zeroed();
+//             // Get initial thread times
+//             GetThreadTimes(
+//                 h_thread,
+//                 &mut creation_time,
+//                 &mut exit_time,
+//                 &mut kernel_end,
+//                 &mut user_end,
+//             )
+//             .unwrap();
 
-            log::info!("thread_end: kernel_end={:?}, user_end={:?}", kernel_end, user_end);
+//             log::info!(
+//                 "thread_end: kernel_end={:?}, user_end={:?}",
+//                 kernel_end,
+//                 user_end
+//             );
 
-            let kernel_start_u64 = filetime_to_u64(self.kernel_start);
-            let user_start_u64 = filetime_to_u64(self.user_start);
-            let kernel_end_u64 = filetime_to_u64(kernel_end);
-            let user_end_u64 = filetime_to_u64(user_end);
+//             let kernel_start_u64 = filetime_to_u64(self.kernel_start);
+//             let user_start_u64 = filetime_to_u64(self.user_start);
+//             let kernel_end_u64 = filetime_to_u64(kernel_end);
+//             let user_end_u64 = filetime_to_u64(user_end);
 
-            (kernel_end_u64 - kernel_start_u64, user_end_u64 - user_start_u64)
-        }
-    }
-}
+//             (
+//                 kernel_end_u64 - kernel_start_u64,
+//                 user_end_u64 - user_start_u64,
+//             )
+//         }
+//     }
+// }
 
 // pub fn now_ns() -> u128 {
 //     let duration_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -361,110 +383,110 @@ pub unsafe fn non_null<T>(v: &T) -> SendNonNull<T> {
     SendNonNull(non_null)
 }
 
-use windows::core::*;
-use windows::Win32::Foundation::*;
-use windows::Win32::System::Diagnostics::Etw::*;
-use std::ptr::null_mut;
+// use windows::core::*;
+// use windows::Win32::Foundation::*;
+// use windows::Win32::System::Diagnostics::Etw::*;
+// use std::ptr::null_mut;
 
-unsafe extern "system" fn event_record_callback(event_record: *mut EVENT_RECORD) {
-    if (*event_record).EventHeader.EventDescriptor.Opcode == 36 {
-        println!("Context Switch Event Captured");
-    }
-}
+// unsafe extern "system" fn event_record_callback(event_record: *mut EVENT_RECORD) {
+//     if (*event_record).EventHeader.EventDescriptor.Opcode == 36 {
+//         println!("Context Switch Event Captured");
+//     }
+// }
 
-const KERNEL_PROVIDER_GUID: GUID = GUID::from_u128(0x9e814aad_3204_11d2_9a82_006008a86939);
+// const KERNEL_PROVIDER_GUID: GUID = GUID::from_u128(0x9e814aad_3204_11d2_9a82_006008a86939);
 
-pub fn stop_trace(session_name: PCWSTR) {
-    unsafe {
-        let mut properties: EVENT_TRACE_PROPERTIES = zeroed();
-        properties.Wnode.BufferSize = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
+// pub fn stop_trace(session_name: PCWSTR) {
+//     unsafe {
+//         let mut properties: EVENT_TRACE_PROPERTIES = zeroed();
+//         properties.Wnode.BufferSize = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
 
-        let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE { Value: 0 };
-        // let session_name_wide: Vec<u16> = session_name.encode_utf16().collect();
+//         let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE { Value: 0 };
+//         // let session_name_wide: Vec<u16> = session_name.encode_utf16().collect();
 
-        let status = ControlTraceW(
-            session_handle,
-            session_name,
-            &mut properties,
-            EVENT_TRACE_CONTROL_STOP
-        );
+//         let status = ControlTraceW(
+//             session_handle,
+//             session_name,
+//             &mut properties,
+//             EVENT_TRACE_CONTROL_STOP
+//         );
 
-        // if status != ERROR_SUCCESS {
-        //     if status == ERROR_WMI_INSTANCE_NOT_FOUND {
-        //         // No existing trace to stop, this is not an error in this context.
-        //         Ok(())
-        //     } else {
-        //         println!("ControlTrace (stop) failed with error code: {}", status);
-        //         Err(windows::core::Error::from_win32())
-        //     }
-        // } else {
-        //     Ok(())
-        // }
-    }
-}
+//         // if status != ERROR_SUCCESS {
+//         //     if status == ERROR_WMI_INSTANCE_NOT_FOUND {
+//         //         // No existing trace to stop, this is not an error in this context.
+//         //         Ok(())
+//         //     } else {
+//         //         println!("ControlTrace (stop) failed with error code: {}", status);
+//         //         Err(windows::core::Error::from_win32())
+//         //     }
+//         // } else {
+//         //     Ok(())
+//         // }
+//     }
+// }
 
-pub fn entry_trace() -> Result<()> {
-    unsafe {
-        // let mut properties: EVENT_TRACE_PROPERTIES = unsafe { zeroed() };
-        // let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE {
-        //     Value: 0,
-        // };
-        // let mut buffer: [u16; 1024] = [0; 1024];
-        // let session_name = KERNEL_LOGGER_NAMEW;
+// pub fn entry_trace() -> Result<()> {
+//     unsafe {
+//         // let mut properties: EVENT_TRACE_PROPERTIES = unsafe { zeroed() };
+//         // let mut session_handle: CONTROLTRACE_HANDLE = CONTROLTRACE_HANDLE {
+//         //     Value: 0,
+//         // };
+//         // let mut buffer: [u16; 1024] = [0; 1024];
+//         // let session_name = KERNEL_LOGGER_NAMEW;
 
-        // stop_trace(session_name);
+//         // stop_trace(session_name);
 
-        // properties.Wnode.BufferSize =
-        //     (size_of::<EVENT_TRACE_PROPERTIES>() as u32) +
-        //     ((buffer.len() * size_of::<u16>()) as u32);
-        // properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-        // properties.Wnode.ClientContext = 1;
-        // properties.Wnode.Guid = SystemTraceControlGuid;
-        // properties.LogFileMode = 0x00000100; // EVENT_TRACE_REAL_TIME_MODE
-        // properties.LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
-        // properties.EnableFlags = EVENT_TRACE_FLAG_CSWITCH;
+//         // properties.Wnode.BufferSize =
+//         //     (size_of::<EVENT_TRACE_PROPERTIES>() as u32) +
+//         //     ((buffer.len() * size_of::<u16>()) as u32);
+//         // properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+//         // properties.Wnode.ClientContext = 1;
+//         // properties.Wnode.Guid = SystemTraceControlGuid;
+//         // properties.LogFileMode = 0x00000100; // EVENT_TRACE_REAL_TIME_MODE
+//         // properties.LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
+//         // properties.EnableFlags = EVENT_TRACE_FLAG_CSWITCH;
 
-        unsafe {
-            // let status = StartTraceW(&mut session_handle, session_name, &mut properties);
-            // if let Err(e) = status {
-            //     println!("StartTrace failed with {}", e);
-            //     return Err(windows::core::Error::from_win32());
-            // }
+//         unsafe {
+//             // let status = StartTraceW(&mut session_handle, session_name, &mut properties);
+//             // if let Err(e) = status {
+//             //     println!("StartTrace failed with {}", e);
+//             //     return Err(windows::core::Error::from_win32());
+//             // }
 
-            // let status = EnableTraceEx2(
-            //     session_handle,
-            //     &KERNEL_PROVIDER_GUID,
-            //     EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
-            //     TRACE_LEVEL_INFORMATION as u8,
-            //     0,
-            //     0,
-            //     0,
-            //     None
-            // );
-            // if let Err(e) = status {
-            //     println!("EnableTraceEx2 failed with {:?}", e);
-            //     return Err(windows::core::Error::from_win32());
-            // }
+//             // let status = EnableTraceEx2(
+//             //     session_handle,
+//             //     &KERNEL_PROVIDER_GUID,
+//             //     EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
+//             //     TRACE_LEVEL_INFORMATION as u8,
+//             //     0,
+//             //     0,
+//             //     0,
+//             //     None
+//             // );
+//             // if let Err(e) = status {
+//             //     println!("EnableTraceEx2 failed with {:?}", e);
+//             //     return Err(windows::core::Error::from_win32());
+//             // }
 
-            let mut logfile: EVENT_TRACE_LOGFILEW = zeroed();
-            logfile.LogFileName = PWSTR::from_raw(&"spotless-tracing.etl" as *const _ as *mut _);
-            // logfile.LoggerName = PWSTR::from_raw(session_name.as_ptr() as *mut _);
-            logfile.Anonymous1.ProcessTraceMode = 0x00000100 | 0x00000010; // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
-            logfile.Anonymous2.EventRecordCallback = Some(event_record_callback);
-            logfile.IsKernelTrace = 1;
+//             let mut logfile: EVENT_TRACE_LOGFILEW = zeroed();
+//             logfile.LogFileName = PWSTR::from_raw(&"spotless-tracing.etl" as *const _ as *mut _);
+//             // logfile.LoggerName = PWSTR::from_raw(session_name.as_ptr() as *mut _);
+//             logfile.Anonymous1.ProcessTraceMode = 0x00000100 | 0x00000010; // PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD
+//             logfile.Anonymous2.EventRecordCallback = Some(event_record_callback);
+//             logfile.IsKernelTrace = 1;
 
-            let trace_handle = OpenTraceW(&mut logfile);
-            if trace_handle.Value == 0xffffffffffffffff {
-                println!("OpenTrace failed with {}", windows::core::Error::from_win32());
-                return Err(windows::core::Error::from_win32());
-            }
+//             let trace_handle = OpenTraceW(&mut logfile);
+//             if trace_handle.Value == 0xffffffffffffffff {
+//                 println!("OpenTrace failed with {}", windows::core::Error::from_win32());
+//                 return Err(windows::core::Error::from_win32());
+//             }
 
-            let status = ProcessTrace(&[trace_handle], None, None);
-            if let Err(e) = status {
-                println!("ProcessTrace failed with {:?}", e);
-                return Err(windows::core::Error::from_win32());
-            }
-        }
-    }
-    Ok(())
-}
+//             let status = ProcessTrace(&[trace_handle], None, None);
+//             if let Err(e) = status {
+//                 println!("ProcessTrace failed with {:?}", e);
+//                 return Err(windows::core::Error::from_win32());
+//             }
+//         }
+//     }
+//     Ok(())
+// }
