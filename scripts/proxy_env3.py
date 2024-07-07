@@ -79,8 +79,8 @@ class ProxyEnv3:
         self.env_id = res.json()['kernel']["env_id"]
         pyid=records_read.conf_str(self.config)
         rsid=self.env_id
-        print(f"pyid: {pyid}")
-        print(f"rsid: {rsid}")
+        # print(f"pyid: {pyid}")
+        # print(f"rsid: {rsid}")
         assert(pyid==rsid)
         return res.json()['kernel']
 

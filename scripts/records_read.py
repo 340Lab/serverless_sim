@@ -6,6 +6,8 @@ CUR_FDIR = os.path.dirname(CUR_FPATH)
 # chdir to the directory of this script
 os.chdir(CUR_FDIR)
 
+import re
+
 def conf_str(conf):
     rand_seed = conf['rand_seed']
     request_freq = conf['request_freq']
@@ -167,6 +169,7 @@ class PackedRecord:
     datarecv_time_per_req=0.0
     exe_time_per_req=0.0
     fn_container_cnt=0.0
+    undone_req_cnt=0.0
     
     rand_seed=""
     request_freq=""
@@ -183,11 +186,12 @@ class PackedRecord:
 
 class Frame:
     idxs={}
-    def __init__(self, frame_line):
-        self.frame_line = frame_line
-        self.frame = json.loads(frame_line)
+    def __init__(self, frame_arr):
+        # self.frame_line = frame_line
+        # print("frame_line", frame_line)
+        self.frame = frame_arr
         # self.idxs = {}
-        with open("../serverless_sim/src/metric.rs", 'r') as f:
+        with open("../serverless_sim/src/metric.rs", 'r', encoding="utf-8") as f:
             for line in f.readlines():
                 if line.find("const FRAME_IDX_")==-1:
                     continue
@@ -229,54 +233,87 @@ class Frame:
     
 
 def load_record_from_file(filename):
-    # seek to filesize - 1000 
-    # read lines
-    # parse last third line
-    with open(f"../serverless_sim/records/{filename}", 'r') as f:
-        f.seek(0, os.SEEK_END)
-        
-        if f.tell() < 10000:
-            f.seek(0)
-        else:
-            f.seek(f.tell() - 10000)
-        lines = f.readlines()
-        # print("\nlines",lines[-3].strip())
-        # print()
-        if len(lines) < 3:
-            print("!!! failed to read record from file", filename)
-            exit(1)
-        line=lines[-3].strip()
-        frame=Frame(line)
+    record = PackedRecord()
+    record.filename = filename
+    record.configstr = config_str_of_file(filename)
+    # read cache first
+    cache_filename = "cache/" + filename
+    
+    try:
+        f= open(cache_filename, 'r') 
+        cacherecord=json.load(f)
+    except:
+        cacherecord=None
+    if cacherecord is not None:
+        # cacherecord= json.load(f)
+        record.cost_per_req = cacherecord['cost_per_req']
+        record.time_per_req = cacherecord['time_per_req']
+        record.score = cacherecord['score']
+        record.rps = cacherecord['rps']
+        record.coldstart_time_per_req = cacherecord['coldstart_time_per_req']
+        record.waitsche_time_per_req = cacherecord['waitsche_time_per_req']
+        record.datarecv_time_per_req = cacherecord['datarecv_time_per_req']
+        record.exe_time_per_req = cacherecord['exe_time_per_req']
+        record.fn_container_cnt = cacherecord['fn_container_cnt']
+        record.undone_req_cnt = cacherecord['undone_req_cnt']
+    else:
+        # seek to filesize - 1000 
+        # read lines
+        # parse last third line
+        with open(f"../serverless_sim/records/{filename}", 'r') as f:
+            all=f.read()
+            frames_obj=json.loads(all)
+            frames=[]
+            for frame in frames_obj['frames']:
+                frames.append(Frame(frame))
 
-        record = PackedRecord()
-        record.filename = filename
-        record.configstr = config_str_of_file(filename)
+            total_done_req_count=0
+            total_container_count=0
+            for frame in frames:
+                total_done_req_count+=frame.done_req_count()
+                total_container_count+=frame.fncontainer_count()
+            frame=frames[-1]
 
-        # print("configstr",record.configstr)
+            record.cost_per_req = frame.done_req_count()/frame.cost()
+            record.time_per_req = frame.req_done_time_avg()
+            record.score = frame.score()
+            record.rps = total_done_req_count/frame.frame_cnt()
+            record.coldstart_time_per_req = frame.req_wait_coldstart_time()
+            record.waitsche_time_per_req = frame.req_wait_sche_time()
+            record.datarecv_time_per_req = frame.req_data_recv_time()
+            record.exe_time_per_req = frame.req_exe_time()
+            record.fn_container_cnt = total_container_count/frame.frame_cnt()
+            record.undone_req_cnt = len(frame.running_reqs())
 
-        record.cost_per_req = frame.done_req_count()/frame.cost()
-        record.time_per_req = frame.req_done_time_avg()
-        record.score = frame.score()
-        record.rps = frame.done_req_count()/frame.frame_cnt()
-        record.coldstart_time_per_req = frame.req_wait_coldstart_time()
-        record.waitsche_time_per_req = frame.req_wait_sche_time()
-        record.datarecv_time_per_req = frame.req_data_recv_time()
-        record.exe_time_per_req = frame.req_exe_time()
-        record.fn_container_cnt = frame.fncontainer_count()
+            # save cache
+            os.makedirs("cache", exist_ok=True)
+            with open(cache_filename, 'w') as f:
+                json.dump({
+                    'cost_per_req': record.cost_per_req,
+                    'time_per_req': record.time_per_req,
+                    'score': record.score,
+                    'rps': record.rps,
+                    'coldstart_time_per_req': record.coldstart_time_per_req,
+                    'waitsche_time_per_req': record.waitsche_time_per_req,
+                    'datarecv_time_per_req': record.datarecv_time_per_req,
+                    'exe_time_per_req': record.exe_time_per_req,
+                    'fn_container_cnt': record.fn_container_cnt,
+                    'undone_req_cnt': record.undone_req_cnt
+                },f)
 
-        config=FlattenConfig(record.configstr)
-        record.rand_seed=config.rand_seed
-        record.request_freq=config.request_freq
-        record.dag_type=config.dag_type
-        record.cold_start=config.cold_start
-        record.scale_num=config.scale_num
-        record.scale_down_exec=config.scale_down_exec
-        record.scale_up_exec=config.scale_up_exec
-        record.sche=config.sche
-        record.fn_type=config.fn_type
-        record.instance_cache_policy=config.instance_cache_policy
-        record.filter=config.filter
-        return record
+    config=FlattenConfig(record.configstr)
+    record.rand_seed=config.rand_seed
+    record.request_freq=config.request_freq
+    record.dag_type=config.dag_type
+    record.cold_start=config.cold_start
+    record.scale_num=config.scale_num
+    record.scale_down_exec=config.scale_down_exec
+    record.scale_up_exec=config.scale_up_exec
+    record.sche=config.sche
+    record.fn_type=config.fn_type
+    record.instance_cache_policy=config.instance_cache_policy
+    record.filter=config.filter
+    return record
     
         
 def avg_records(records):
@@ -295,6 +332,7 @@ def avg_records(records):
     datarecv_time_per_req=0.0
     exe_time_per_req=0.0
     fn_container_cnt=0.0
+    undone_req_cnt=0.0
     for record in records:
         cost_per_req+=record.cost_per_req
         time_per_req+=record.time_per_req
@@ -305,6 +343,7 @@ def avg_records(records):
         datarecv_time_per_req+=record.datarecv_time_per_req
         exe_time_per_req+=record.exe_time_per_req
         fn_container_cnt+=record.fn_container_cnt
+        undone_req_cnt+=record.undone_req_cnt
     cost_per_req/=len(records)
     time_per_req/=len(records)
     score/=len(records)
@@ -314,6 +353,7 @@ def avg_records(records):
     datarecv_time_per_req/=len(records)
     exe_time_per_req/=len(records)
     fn_container_cnt/=len(records)
+    undone_req_cnt/=len(records)
 
     # copyback 2 first
     records[0].cost_per_req=cost_per_req
@@ -325,6 +365,7 @@ def avg_records(records):
     records[0].datarecv_time_per_req=datarecv_time_per_req
     records[0].exe_time_per_req=exe_time_per_req
     records[0].fn_container_cnt=fn_container_cnt
+    records[0].undone_req_cnt=undone_req_cnt
     return records[0]
 
         # lines = f.readlines()

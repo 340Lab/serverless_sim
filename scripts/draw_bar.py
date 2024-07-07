@@ -105,20 +105,38 @@ def get_record_filelist(drawconf):
         conf=records_read.FlattenConfig(confstr)
         confjson=conf.json()
         
+        nomatch_filter=False
+
         # check match draw filter
         for drawfilter in drawconf['filter']:
             if drawfilter in confjson:
                 if confjson[drawfilter]!=drawconf['filter'][drawfilter]:
-                    continue
+                    # continue
+                    nomatch_filter=True
+                    break
+        
+        if nomatch_filter:
+            continue
 
+        nomatch_targets=True
         # check match draw targets_alias
         for target in drawconf['targets_alias']:
+            nomatch_target=False
             for targetkey in target[0]:
                 if targetkey not in confjson:
                     print("!!! invalid target alias with key",targetkey)
                     exit(1)
                 if confjson[targetkey]!=target[0][targetkey]:
-                    continue
+                    # continue
+                    nomatch_target=True
+                    break
+            if not nomatch_target:
+                nomatch_targets=False
+                break
+            # if invalid:
+            #     continue
+        if nomatch_targets:
+            continue
         new[confstr]=conf_2_files[confstr]
     return new
 
@@ -214,7 +232,7 @@ def to_draw_meta(groups,conf):
                 exe_time_per_req=record.exe_time_per_req
                 rps=record.rps
                 fn_container_cnt=record.fn_container_cnt
-                
+                undone_req_cnt=record.undone_req_cnt
                 # score=0.0
                 # rps=0.0
                 # record.
