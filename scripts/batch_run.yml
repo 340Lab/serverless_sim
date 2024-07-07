@@ -1,9 +1,8 @@
-run_time: 10
+run_time: 2
 
 params:
   request_freq:
   - low:
-  - middle:
   - high:
   dag_type:
   - single:
@@ -39,11 +38,11 @@ mech_scale_sche:
     - [{'careful_down':''}]
   no_scale:
     scale_num:
-    - no:
+    - 'no':
     scale_down_exec:
     - default:
     scale_up_exec:
-    - no:
+    - 'no':
     sche:
     - greedy:
     - random:
@@ -55,5 +54,5 @@ mech_other:
   instance_cache_policy:
   - no_evict:
   # - lru: 15
-  - lru: 10
+  # - lru: 10
   # - lru: 5

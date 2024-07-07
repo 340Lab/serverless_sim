@@ -386,7 +386,7 @@ impl SimEnv {
                 );
             }
             // mkdir
-            std::fs::create_dir("cache").unwrap();
+            std::fs::create_dir("cache");
             // write to file
             let mut file = std::fs::File::create(cache_req_freq).unwrap();
             serde_json::to_writer(&mut file, &*self.help.fn_call_frequency()).unwrap();

@@ -111,7 +111,7 @@ impl ApiHandler for ApiHandlerImpl {
     async fn handle_reset(&self, req: ResetReq) -> ResetResp {
         log::info!("Reset sim env");
         // 将req.config反序列化为Config类型的数据，并使用match表达式处理反序列化结果
-        match serde_json::from_value::<Config>(req.config) {
+        match serde_json::from_value::<Config>(req.config.clone()) {
             Ok(config) => {
                 // 获取配置的标识键，并尝试获取或创建该SimEnv实例
                 let key = config.str();
@@ -137,10 +137,12 @@ impl ApiHandler for ApiHandlerImpl {
                 }
                 ResetResp::Success { env_id: key }
             }
-            Err(e) =>
+            Err(e) => {
+                log::info!("Invalid config: {:?}", e);
                 ResetResp::InvalidConfig {
                     msg: format!("Invalid config: {}", e),
-                },
+                }
+            }
         }
     }
 

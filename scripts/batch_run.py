@@ -31,6 +31,7 @@ def apply_mech(env,mechkey,mechconf):
     mechconfval=mechconf[mechconfkey]
     if mechconfval is None:
         mechconfval=''
+    mechconfval=str(mechconfval)
     # print("apply_mech",mechconfkey,mechconfval)
 
     # assert(mechconfval!=None)
@@ -97,8 +98,9 @@ def params_compistion():
                 print("")
                 print("-"*40)
 
-                env.reset()
-                env.step(1)
+                for i in range(needrun):
+                    env.reset()
+                    env.step(1)
                 
                 # mkdir ../serverless_sim/records
 #                 os.system(f"mkdir -p ../serverless_sim/records")
