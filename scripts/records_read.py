@@ -279,7 +279,7 @@ def load_record_from_file(filename):
                 total_container_count+=frame.fncontainer_count()
             frame=frames[-1]
 
-            record.cost_per_req = frame.done_req_count()/frame.cost()
+            record.cost_per_req = frame.cost()
             record.time_per_req = frame.req_done_time_avg()
             record.score = frame.score()
             record.rps = total_done_req_count/frame.frame_cnt()

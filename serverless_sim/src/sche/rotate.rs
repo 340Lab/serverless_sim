@@ -1,11 +1,9 @@
+use std::collections::HashSet;
+
 use crate::{
-    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve},
-    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
-    node::EnvNodeExt,
-    request::Request,
-    sim_run::{schedule_helper, Scheduler},
-    with_env_sub::WithEnvCore,
+    fn_dag::EnvFnExt, mechanism::{MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::EnvNodeExt, request::Request, sim_run::{schedule_helper, Scheduler}, with_env_sub::WithEnvCore
 };
+
 
 pub struct RotateScheduler {
     last_schedule_node_id: usize,
@@ -29,20 +27,51 @@ impl RotateScheduler {
             schedule_helper::CollectTaskConfig::All,
         );
 
-        for fnid in fns {
+        if _mech.mech_type().is_no_scale() {
+            for fnid in fns {
+                let node_id = self.last_schedule_node_id;
 
-            cmd_distributor
-                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
-                    nid: self.last_schedule_node_id,
-                    reqid: req.req_id,
-                    fnid,
-                    memlimit: None,
-                }))
-                .unwrap();
+                cmd_distributor
+                    .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        nid: node_id,
+                        reqid: req.req_id,
+                        fnid,
+                        memlimit: None,
+                    }))
+                    .unwrap();
 
-            self.last_schedule_node_id = (self.last_schedule_node_id + 1) % env.node_cnt();
+                self.last_schedule_node_id = (self.last_schedule_node_id + 1) % env.node_cnt();
+            }
+        } else {
+            for fnid in fns {
+                let mut nodes = HashSet::new();
+                env.fn_containers_for_each(fnid, |container| {
+                    nodes.insert(container.node_id);
+                });
 
+                let mut node_list = Vec::new();
+                for node_id in nodes.iter() {
+                    node_list.push(*node_id);
+                }
+
+                let mut node_id = self.last_schedule_node_id;
+
+                if !node_list.is_empty() {
+                    node_id = node_list[(self.last_schedule_node_id + 1) % node_list.len()];
+                }
+
+                cmd_distributor
+                    .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        nid: node_id,
+                        reqid: req.req_id,
+                        fnid,
+                        memlimit: None,
+                    }))
+                    .unwrap();
+
+            }
         }
+
     }
 }
 
