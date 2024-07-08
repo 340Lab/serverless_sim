@@ -1,5 +1,7 @@
 use std::{ cell::{ RefCell, RefMut }, collections::HashMap };
 
+use enum_as_inner::EnumAsInner;
+
 use crate::{
     actions::ESActionWrapper,
     config::Config,
@@ -330,6 +332,7 @@ impl Mechanism for MechanismImpl {
     }
 }
 
+#[derive(EnumAsInner)]
 pub enum MechType {
     NoScale,
     ScaleScheSeparated,
