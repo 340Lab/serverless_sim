@@ -1,5 +1,6 @@
 use std::sync::mpsc;
 
+use enum_as_inner::EnumAsInner;
 use thread_priority::{ set_current_thread_priority, ThreadPriority, WinAPIThreadPriority };
 // use windows::Win32::System::Threading::{ SetThreadPriority, GetCurrentThread, THREAD_PRIORITY };
 
@@ -7,6 +8,7 @@ use crate::actions::ESActionWrapper;
 use crate::mechanism::{ DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd };
 
 use crate::util;
+use crate::with_env_sub::WithEnvHelp;
 
 pub type MechCmdDistributor = mpsc::Sender<MechScheduleOnceRes>;
 
@@ -16,6 +18,7 @@ pub struct MechScheduleOnce {
     pub action: ESActionWrapper,
 }
 
+#[derive(EnumAsInner)]
 pub enum MechScheduleOnceRes {
     ScheCmd(ScheCmd),
     ScaleUpCmd(UpCmd),
@@ -68,10 +71,10 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
         // let passed_ms = measure.passed_100ns();
         let end_ms = util::now_ms();
         // log::info!("master mech run cpu:{:?}, total:{} ms", begin_cpu.elapsed(), end_ms - begin_ms);
-
+        let mech_latency = if mech.config.no_mech_latency { 0 } else { end_ms - begin_ms };
         res.responser
             .send(MechScheduleOnceRes::End {
-                mech_run_ms: end_ms - begin_ms,
+                mech_run_ms: mech_latency,
                 //  (passed_ms.0 + passed_ms.1) / 10000,
             })
             .unwrap();

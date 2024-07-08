@@ -422,6 +422,7 @@ impl RecordFile {
             dag_type: "".to_owned(),
             cold_start: "".to_owned(),
             fn_type: "".to_owned(),
+            no_mech_latency: false,
             // app_types: vec![],
             no_log: false,
 

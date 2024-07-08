@@ -44,7 +44,7 @@ def unapply_mech(env,mechkey):
 
 compose_cnt=0
 
-params=['request_freq','dag_type']
+params=['request_freq','dag_type','no_mech_latency']
 def dfs_params(paramsconf,i,cb):
     if i==len(params):
         cb()

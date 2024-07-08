@@ -63,7 +63,7 @@ values:
 # - {alias: Throughput, trans: throughput}
 - {alias: Cost, trans: cost_per_req}
 - {alias: Latency(ms), trans: '[waitsche_time_per_req,coldstart_time_per_req,datarecv_time_per_req,exe_time_per_req]'} # convert 10ms to ms
-- {alias: Quality-Price Ratio, trans: 'rps/cost_per_req/time_per_req if rps>0 else 0'}
+- {alias: Quality-Price Ratio, trans: 'rps/cost_per_req/time_per_req if cost_per_req>0 and time_per_req>0  else 0'}
 - {alias: Throuphput, trans: rps*1000}
 - {alias: Avg Container Count, trans: fn_container_cnt}
 """

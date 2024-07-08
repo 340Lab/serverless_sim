@@ -40,6 +40,7 @@ pub struct Config {
     /// cpu, data, mix
     pub fn_type: String,
     /// each stage control algorithm settings
+    pub no_mech_latency: bool,
     // pub app_types: Vec<APPConfig>,
     pub mech: MechConfig,
     /// whether to log the resultz
@@ -56,6 +57,7 @@ impl Config {
             cold_start: "high".to_string(),
             fn_type: "cpu".to_string(),
             mech: MechConfig::new_test(),
+            no_mech_latency: true,
             no_log: true,
         }
     }
@@ -185,12 +187,17 @@ impl Config {
             .collect::<String>();
         // .join(",");
         format!(
-            "sd{}.rf{}.dt{}.cs{}.ft{}.mt{}.scl({}.{})({}.{})({}.{})[{}].scd({}.{}).ic({}.{})",
+            "sd{}.rf{}.dt{}.cs{}.ft{}.nml{}.mt{}.scl({}.{})({}.{})({}.{})[{}].scd({}.{}).ic({}.{})",
             self.rand_seed,
             self.request_freq,
             self.dag_type,
             self.cold_start,
             self.fn_type,
+            if self.no_mech_latency {
+                1
+            } else {
+                0
+            },
             self.mech.mech_type().0,
             scnum.0,
             scnum.1,
