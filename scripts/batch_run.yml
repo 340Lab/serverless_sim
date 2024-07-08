@@ -1,4 +1,4 @@
-run_time: 2
+run_time: 4
 
 params:
   request_freq:
@@ -6,6 +6,9 @@ params:
   - high:
   dag_type:
   - single:
+  no_mech_latency:
+  - true:
+  - false:
 
 mech_scale_sche:
   scale_sche_joint:

@@ -276,7 +276,7 @@ impl ConfigNewMec for Config {
 }
 
 pub struct MechanismImpl {
-    config: Config,
+    pub config: Config,
     sche: RefCell<Box<dyn Scheduler>>,
     scale_num: RefCell<Box<dyn ScaleNum>>,
     scale_down_exec: RefCell<Box<dyn ScaleDownExec>>,

@@ -14,6 +14,7 @@ def conf_str(conf):
     dag_type = conf['dag_type']
     cold_start = conf['cold_start']
     fn_type= conf['fn_type']
+    no_mech_latency=conf['no_mech_latency']
 
     def mech_part_conf(mech):
         objmap=conf['mech'][mech]
@@ -41,8 +42,8 @@ def conf_str(conf):
 
     instance_cache_policy=mech_part_conf('instance_cache_policy')
 
-    return "sd{}.rf{}.dt{}.cs{}.ft{}.mt{}.scl({}.{})({}.{})({}.{})[{}].scd({}.{}).ic({}.{})".\
-        format(rand_seed,request_freq,dag_type,cold_start,fn_type,mech_type[0],\
+    return "sd{}.rf{}.dt{}.cs{}.ft{}.nml{}.mt{}.scl({}.{})({}.{})({}.{})[{}].scd({}.{}).ic({}.{})".\
+        format(rand_seed,request_freq,dag_type,cold_start,fn_type,1 if no_mech_latency else 0,mech_type[0],\
                scale_num[0],scale_num[1],\
                scale_down_exec[0],scale_down_exec[1],\
                scale_up_exec[0],scale_up_exec[1],\
@@ -96,6 +97,7 @@ class FlattenConfig:
     fn_type=""
     instance_cache_policy=""
     filter=""
+    no_mech_latency=""
 
     def __init__(self, configstr):
         self.configstr = configstr
@@ -111,6 +113,7 @@ class FlattenConfig:
             (r'\.dt(\w+)\.', 'dag_type'),
             (r'\.cs(\w+)\.', 'cold_start'),
             (r'\.ft(\w+)\.', 'fn_type'),
+            (r'\.nml(\w+)\.', 'no_mech_latency'),
             (r'\.scl\(([^)]+)\)\(([^)]+)\)\(([^)]+)\)\[(.*?)\].', 'scale_num', 'scale_down_exec', 'scale_up_exec','filter'),
             (r'\.scd\(([^)]+)\)', 'sche'),
             (r'\.ic\(([^)]+)\)', 'instance_cache_policy')
@@ -122,6 +125,7 @@ class FlattenConfig:
                 values = match.groups()
                 for key, value in zip(keys, values):
                     setattr(self, key, value)
+        print('no_mech_latency', self.no_mech_latency)
         # self.print_attributes()
 
     def json(self):
@@ -137,7 +141,8 @@ class FlattenConfig:
             'scale_up_exec': self.scale_up_exec,
             'sche': self.sche,
             'instance_cache_policy': self.instance_cache_policy,
-            'filter': self.filter
+            'filter': self.filter,
+            'no_mech_latency': self.no_mech_latency
         }
     # def print_attributes(self):
     #     attributes = [
@@ -181,7 +186,7 @@ class PackedRecord:
     sche=""
     fn_type=""
     instance_cache_policy=""
-
+    no_mech_latency=""
 
 
 class Frame:
@@ -313,6 +318,7 @@ def load_record_from_file(filename):
     record.fn_type=config.fn_type
     record.instance_cache_policy=config.instance_cache_policy
     record.filter=config.filter
+    record.no_mech_latency=config.no_mech_latency
     return record
     
         

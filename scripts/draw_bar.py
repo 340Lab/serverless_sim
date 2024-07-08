@@ -118,6 +118,7 @@ def get_record_filelist(drawconf):
         if nomatch_filter:
             continue
 
+
         nomatch_targets=True
         # check match draw targets_alias
         for target in drawconf['targets_alias']:
@@ -209,12 +210,12 @@ def group_records(records,conf):
 
 # [
 #     {
-#         value_y: xxx
+#         value_y: value_alias
 #         groups:[
 #             {
 #                 group: xxx
 #                 values: [
-#                     [alias, value]
+#                     [record_alias, value]
 #                 ]
 #             }
 #         ]
@@ -269,6 +270,60 @@ def to_draw_meta(groups,conf):
             'groups':groups_value(groups,valueconf)
         } for valueconf in values
     ]
+
+    if 'sort_by' in conf:
+        sort_by_value_alias=conf['sort_by'][0].keys().__iter__().__next__()
+        find_value_index=None
+        for v in res:
+            if v['value_y']==sort_by_value_alias:
+                find_value_index=res.index(v)
+        if find_value_index==None:
+            print("err!!!!!, sort by value not found")
+            exit(1)
+        
+        # [
+        #     {
+        #         value_y: value_alias
+        #         groups:[
+        #             {
+        #                 group: xxx
+        #                 values: [
+        #                     [record_alias, value]
+        #                 ]
+        #             }
+        #         ]
+        #     }
+        # ]
+
+        record_alias__values= res[find_value_index]['groups'][0]['values']
+        
+        def sort_access(target_alias):
+            # get value of target
+            v=None
+            for record_alias__value in record_alias__values:
+                # print("p: ",record_alias__value[0],target_alias[1])
+                if record_alias__value[0]==target_alias[1]:
+                    v=record_alias__value[1]
+    
+            if isinstance(v, list):
+                return v[-1]
+            return v
+        conf['targets_alias']=sorted(conf['targets_alias'], key=sort_access)
+        # # for reordered_rec_value in sort_value_records:
+        # for value_groups in res:
+        #     for group in value_groups['groups']:
+        #         # sync group values as sort_value_records
+        #         new_order_values=[None for _ in range(len(group['values']))]
+        #         # find new index for each value
+        #         for value in group['values']:
+        #             # index by value[0]
+        #             for new_index, sorted_value in enumerate(sort_value_records):
+        #                 if value[0] == sorted_value[0]:
+        #                     new_order_values[new_index] = value
+        #                     break
+        #         group['values'] = new_order_values
+        
+
     return res
 
 def draw_with_draw_meta(drawmeta,conf):
@@ -281,7 +336,7 @@ def draw_with_draw_meta(drawmeta,conf):
 
     plt.subplots_adjust(left=0.1, right=0.9, top=0.85, bottom=0.1)
     fig.set_size_inches(16, 4.5)
-    bar_width = 0.1
+    bar_width = 0.05
     index = np.arange(len(conf['group']['types']))
     opacity = 0.4
     error_config = {'ecolor': '0.3'}
