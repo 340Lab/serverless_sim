@@ -1,4 +1,4 @@
-use std::{ cell::{ Ref, RefMut }, collections::{ BTreeMap, HashMap, HashSet } };
+use std::{ cell::{ Ref, RefMut }, collections::{ BTreeMap, HashMap, HashSet }, thread::sleep, time::Duration };
 
 use daggy::petgraph::visit::Topo;
 
@@ -177,6 +177,8 @@ impl Request {
             };
             // log::info!("cold_start_done_time {}. sche_time.max(ready_sche_time) {}", cold_start_done_time, sche_time.max(ready_sche_time));
             wait_cold_start_time += cold_start_done_time - sche_time.max(ready_sche_time);
+
+            // log::info!("data_done_time {} cold_start_done_time {}", data_done_time, cold_start_done_time);
             data_recv_time += data_done_time - cold_start_done_time;
             exe_time += fn_done_time - data_done_time;
         }
@@ -351,6 +353,12 @@ impl SimEnv {
                 if env.help.config().request_freq_low() {
                     avg_frequency *= 0.1;
                 }
+                else if env.help.config().request_freq_middle() {
+                    avg_frequency *= 0.2;
+                }
+                else {
+                    avg_frequency *= 0.3;
+                }
                 // avg_frequency *= 100.0;
                 // avg_frequency *= 10.0;
                 let mut bind = self.help.dag_accumulate_call_frequency.borrow_mut();
@@ -361,7 +369,6 @@ impl SimEnv {
 
                 total_req_cnt += req_cnt;
 
-                // println!("DAG Index: {}, Avg Frequency: {}, CV: {}, Random Frequency: {}, Request Count: {}", dag_i, avg_frequency, cv, random_frequency, req_cnt);
 
                 for _ in 0..req_cnt {
                     let request = Request::new(env, *dag_i, env.core.current_frame());
@@ -370,7 +377,7 @@ impl SimEnv {
                 }
             }
 
-            // log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
+            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
 
         //let env = self;

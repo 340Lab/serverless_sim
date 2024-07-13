@@ -8,7 +8,7 @@ from records_read import FlattenConfig
 import json
 
 
-AVG_CNT=2
+AVG_CNT=4
 
 
 # #gen_tmp_yaml

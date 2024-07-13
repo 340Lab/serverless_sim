@@ -342,6 +342,13 @@ impl FnContainer {
         &self.state
     }
 
+    pub fn is_running(&self) -> bool {
+        match self.state {
+            FnContainerState::Running => true,
+            _ => false,
+        }
+    }
+
     pub fn is_idle(&self) -> bool {
         match self.state {
             FnContainerState::Running => self.req_fn_state.len() == 0,
@@ -449,7 +456,7 @@ impl SimEnv {
         // 检查配置中的dag_type
         if self.help.config().dag_type_dag() {
             // 如果dag_type为dag，则创建6个具有多个子节点的复杂DAG实例
-            for _ in 0..6 {
+            for _ in 0..100 {
                 // 随机确定每个图中节点的数量
                 let mapcnt = env.env_rand_i(2, 5); //2-4
                 let dag_i = env.core.dags().len();
@@ -475,8 +482,8 @@ impl SimEnv {
             // 跑指标2的实验用
             self.help.config().dag_type_mix()
         {
-            for i in 0..10 {
-                if i >= 5 {
+            for i in 0..100 {
+                if i >= 50 {
                     // 随机确定每个图中节点的数量
                     let mapcnt = env.env_rand_i(2, 5); //2-4
                     let dag_i = env.core.dags().len();
