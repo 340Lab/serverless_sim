@@ -263,9 +263,9 @@ impl Node {
                 fnid,
                 Box::new(move |to_replace| {
                     let node = node.as_ref();
-                    log::info!("节点{}要移除的容器{}", node.node_id, to_replace);
+                    // log::info!("节点{}要移除的容器{}", node.node_id, to_replace);
                     for (_k, v) in node.fn_containers.borrow().iter() {
-                        log::info!("{}", v.fn_id);
+                        // log::info!("{}", v.fn_id);
                     }
                     node.container(*to_replace).unwrap().is_idle()
                 }),
@@ -278,8 +278,8 @@ impl Node {
         if flag {
             // 1. 将old unload掉
             if old.is_some() {
-                self.try_unload_container(old.unwrap(), env, false);
-                log::info!("节点{}移除容器{}", self.node_id, old.unwrap());
+                self.try_unload_container(old.unwrap(), env);
+                // log::info!("节点{}移除容器{}", self.node_id, old.unwrap());
             }
             // 2. load 当前fnid
             // try cold start

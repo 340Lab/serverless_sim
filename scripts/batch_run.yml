@@ -3,9 +3,12 @@ run_time: 4
 params:
   request_freq:
   - low:
+  - middle:
   - high:
   dag_type:
   - single:
+  # - mix:
+  # - dag:
   no_mech_latency:
   - true:
   - false:
@@ -13,17 +16,18 @@ params:
 mech_scale_sche:
   scale_sche_joint:
     scale_num:
-    - hpa:
+    # - hpa:
     - temp_scaler:
     scale_down_exec:
     - default:
     scale_up_exec:
     - least_task:
     sche:
+    - bp_balance:
     - pos: greedy
-    - pos: random
+    # - pos: random
     filter:
-    - []
+    # - []
     - [{'careful_down':''}]
   scale_sche_separated:
     scale_num:
@@ -34,10 +38,11 @@ mech_scale_sche:
     - least_task:
     sche:
     - greedy:
-    - random:
+    - hash:
+    # - random:
     - rotate:
     filter:
-    - []
+    # - []
     - [{'careful_down':''}]
   no_scale:
     scale_num:
@@ -48,7 +53,8 @@ mech_scale_sche:
     - 'no':
     sche:
     - greedy:
-    - random:
+    - hash:
+    # - random:
     - rotate:
     filter:
     - []

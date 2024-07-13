@@ -34,11 +34,37 @@ RESULT_FILENAME = config['result_file']
 SAMPLE_NUM = config['sample_number']
 MANUAL_SAMPLE_GENERATION = config['manual_sample_generation']
 
+def compress_iat(iat):
+    # Parameters
+    offset = 0.0001
+    lower_threshold = 1
+    upper_threshold = 100
+    max_value = 10
+    
+    if iat < lower_threshold:
+        # Slightly adjust small values without increasing them too much
+        adjusted_iat = np.log1p(iat) / np.log(10)
+    elif iat >= lower_threshold and iat < upper_threshold:
+        # Linearly interpolate for values between lower and upper threshold
+        adjusted_iat = lower_threshold + (max_value - lower_threshold) * (iat - lower_threshold) / (upper_threshold - lower_threshold)
+    else:
+        # Compress larger values more significantly, but ensuring they don't exceed max_value
+        adjusted_iat = max_value - np.exp(-np.log(iat - lower_threshold + 1))
+    
+    # Ensure the value does not go below the offset
+    compressed_iat = max(adjusted_iat, offset)
+    
+    return compressed_iat
+
 # get random IAT according to the IAT csv
 def getRandAvgIAT(rng):
     IATCDFFile = os.path.join(os.path.dirname(__file__),'CDFs','invokesCDF.csv')
     invokeTime = utils.getRandValueRefByCDF(IATCDFFile, rng)
     IAT = invokeTime / SECONDS_OF_A_DAY 
+
+    # 让IAT经过一个激活函数，避免IAT过大，映射到10以内
+    IAT = compress_iat(IAT)
+
     return IAT
 
 # get random cv according to the CSV
