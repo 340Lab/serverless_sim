@@ -1,17 +1,17 @@
-run_time: 4
+run_time: 3
 
 params:
   request_freq:
   - low:
-  - middle:
-  - high:
+  # - middle:
+  # - high:
   dag_type:
   - single:
   # - mix:
   # - dag:
   no_mech_latency:
   - true:
-  - false:
+  # - false:
 
 mech_scale_sche:
   scale_sche_joint:
@@ -24,40 +24,41 @@ mech_scale_sche:
     - least_task:
     sche:
     - bp_balance:
-    - pos: greedy
+    # - pos: greedy
     # - pos: random
     filter:
     # - []
     - [{'careful_down':''}]
-  scale_sche_separated:
-    scale_num:
-    - hpa:
-    scale_down_exec:
-    - default:
-    scale_up_exec:
-    - least_task:
-    sche:
-    - greedy:
-    - hash:
-    # - random:
-    - rotate:
-    filter:
-    # - []
-    - [{'careful_down':''}]
-  no_scale:
-    scale_num:
-    - 'no':
-    scale_down_exec:
-    - default:
-    scale_up_exec:
-    - 'no':
-    sche:
-    - greedy:
-    - hash:
-    # - random:
-    - rotate:
-    filter:
-    - []
+  # scale_sche_separated:
+  #   scale_num:
+  #   - temp_scaler:
+  #   # - hpa:
+  #   scale_down_exec:
+  #   - default:
+  #   scale_up_exec:
+  #   - least_task:
+  #   sche:
+  #   - greedy:
+  #   # - hash:
+  #   # - random:
+  #   # - rotate:
+  #   filter:
+  #   # - []
+  #   - [{'careful_down':''}]
+  # no_scale:
+  #   scale_num:
+  #   - 'no':
+  #   scale_down_exec:
+  #   - default:
+  #   scale_up_exec:
+  #   - 'no':
+  #   sche:
+  #   - greedy:
+  #   - hash:
+  #   # - random:
+  #   - rotate:
+  #   filter:
+  #   - []
 
 mech_other:
   instance_cache_policy:
