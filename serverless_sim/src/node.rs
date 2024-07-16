@@ -3,21 +3,18 @@ use crate::cache::InstanceCachePolicy;
 use crate::config::Config;
 use crate::with_env_sub::WithEnvHelp;
 use crate::{
-    fn_dag::{ EnvFnExt, FnContainer, FnContainerState, FnId, Func },
+    fn_dag::{EnvFnExt, FnContainer, FnContainerState, FnId, Func},
     mechanism::SimEnvObserve,
     request::ReqId,
     sim_env::SimEnv,
     with_env_sub::WithEnvCore,
-    NODE_CNT,
-    NODE_LEFT_MEM_THRESHOLD,
-    NODE_SCORE_CPU_WEIGHT,
-    NODE_SCORE_MEM_WEIGHT,
+    NODE_CNT, NODE_LEFT_MEM_THRESHOLD, NODE_SCORE_CPU_WEIGHT, NODE_SCORE_MEM_WEIGHT,
 };
 use std::ptr::NonNull;
 use std::{
-    cell::{ Ref, RefCell, RefMut },
+    cell::{Ref, RefCell, RefMut},
     cmp::Ordering,
-    collections::{ BTreeSet, HashMap, HashSet },
+    collections::{BTreeSet, HashMap, HashSet},
 };
 
 pub type NodeId = usize;
@@ -139,8 +136,8 @@ impl Node {
 
     // 判断剩余的可用于部署容器的mem量是否足够部署特定函数的容器
     pub fn mem_enough_for_container(&self, func: &Func) -> bool {
-        self.left_mem_for_place_container() > func.cold_start_container_mem_use &&
-            self.left_mem_for_place_container() > func.container_mem()
+        self.left_mem_for_place_container() > func.cold_start_container_mem_use
+            && self.left_mem_for_place_container() > func.container_mem()
     }
     pub fn node_id(&self) -> NodeId {
         assert!(self.node_id < NODE_CNT);
@@ -156,7 +153,7 @@ impl Node {
     pub fn cmp_rsc_used(&self, other: &Self) -> Ordering {
         (self.cpu * NODE_SCORE_CPU_WEIGHT + self.unready_mem() * NODE_SCORE_MEM_WEIGHT)
             .partial_cmp(
-                &(other.cpu * NODE_SCORE_CPU_WEIGHT + other.unready_mem() * NODE_SCORE_MEM_WEIGHT)
+                &(other.cpu * NODE_SCORE_CPU_WEIGHT + other.unready_mem() * NODE_SCORE_MEM_WEIGHT),
             )
             .unwrap()
     }
@@ -187,7 +184,8 @@ impl Node {
             return None;
         }
         let res = RefMut::map(b, |map| {
-            map.get_mut(&fnid).unwrap_or_else(|| panic!("container {} not found", fnid))
+            map.get_mut(&fnid)
+                .unwrap_or_else(|| panic!("container {} not found", fnid))
         });
         Some(res)
         // .get_mut(&fnid)
@@ -200,7 +198,8 @@ impl Node {
             return None;
         }
         let res = Ref::map(b, |map| {
-            map.get(&fnid).unwrap_or_else(|| panic!("container {} not found", fnid))
+            map.get(&fnid)
+                .unwrap_or_else(|| panic!("container {} not found", fnid))
         });
         Some(res)
         // .get_mut(&fnid)
@@ -209,7 +208,7 @@ impl Node {
     //     self.fn_containers.get(&fnid)
     // }
 
-    pub fn try_unload_container(&self, fnid: FnId, env: &SimEnv) {
+    pub fn try_unload_container(&self, fnid: FnId, env: &SimEnv, if_down: bool) {
         // log::info!("scale down fn {fnid} from node {}", self.node_id());
         // env.set_scale_down_result(fnid, self.node_id());
 
@@ -219,10 +218,16 @@ impl Node {
             return;
         };
 
-        let mut cache = self.instance_cache_policy.borrow_mut();
-        assert!(cache.remove_all(&fnid));
+        //是主动缩容则要主动移除
+        if if_down {
+            assert!(self.instance_cache_policy.borrow_mut().remove_all(&fnid));
+        }
 
-        env.core.fn_2_nodes_mut().get_mut(&fnid).unwrap().remove(&nodeid);
+        env.core
+            .fn_2_nodes_mut()
+            .get_mut(&fnid)
+            .unwrap()
+            .remove(&nodeid);
         match cont.state() {
             FnContainerState::Starting { .. } => {
                 *self.mem.borrow_mut() -= env.func(fnid).cold_start_container_mem_use;
@@ -248,7 +253,7 @@ impl Node {
 
     pub fn try_load_container(&self, fnid: FnId, env: &SimEnv) {
         if self.container(fnid).is_some() {
-            //self.lru.borrow_mut().get(fnid);
+            log::info!("已经添加了{}", fnid);
             return;
         }
 
@@ -263,8 +268,9 @@ impl Node {
                         log::info!("{}", v.fn_id);
                     }
                     node.container(*to_replace).unwrap().is_idle()
-                })
+                }),
             );
+            log::info!("old{:?}", old);
             (old, flag)
         };
 
@@ -272,18 +278,16 @@ impl Node {
         if flag {
             // 1. 将old unload掉
             if old.is_some() {
-                self.try_unload_container(old.unwrap(), env);
+                self.try_unload_container(old.unwrap(), env, false);
                 log::info!("节点{}移除容器{}", self.node_id, old.unwrap());
             }
             // 2. load 当前fnid
             // try cold start
             // 首先从cache中寻找可用容器
             if self.mem_enough_for_container(&env.func(fnid)) {
-                //let fncon = FnContainer::new(fnid, self.node_id(), env);
                 let fncon = FnContainer::new(fnid, self.node_id(), env);
                 let con_mem_take = fncon.mem_take(env);
                 self.fn_containers.borrow_mut().insert(fnid, fncon);
-                // log::info!("节点{}添加容器{}", self.node_id, fnid);
                 let node_id = self.node_id();
                 env.core
                     .fn_2_nodes_mut()
@@ -301,6 +305,7 @@ impl Node {
                 // but we need to add mem to node in this frame because it's new container
                 *self.mem.borrow_mut() += con_mem_take;
             } else {
+                log::info!("内存不够，取消缓存标记{}", fnid);
                 let mut node_cache = self.instance_cache_policy.borrow_mut();
                 assert!(node_cache.remove_all(&fnid));
             }
@@ -329,11 +334,13 @@ impl Node {
                 self.instance_cache_policy.borrow_mut().get(fnid).unwrap();
                 // add to container
 
-                assert!(
-                    fncon.req_fn_state
-                        .insert(req_id, env.fn_new_fn_running_state(&env.request(req_id), fnid))
-                        .is_none()
-                );
+                assert!(fncon
+                    .req_fn_state
+                    .insert(
+                        req_id,
+                        env.fn_new_fn_running_state(&env.request(req_id), fnid)
+                    )
+                    .is_none());
                 removed_pending.push((req_id, fnid));
             }
         }
@@ -350,6 +357,7 @@ impl SimEnv {
         // 初始化一个节点
         fn _init_one_node(env: &SimEnv, node_id: NodeId) {
             let node = Node::new(node_id, env.help().config());
+
             // let node_i = nodecnt;
             env.core.nodes_mut().push(node);
 
@@ -400,8 +408,8 @@ impl SimEnv {
     }
 
     pub fn node_get_connection_count_between(&self, n1: NodeId, n2: NodeId) -> usize {
-        let _get_connection_count_between = |nbig: usize, nsmall: usize|
-            self.core.node2node_connection_count()[nbig][nsmall];
+        let _get_connection_count_between =
+            |nbig: usize, nsmall: usize| self.core.node2node_connection_count()[nbig][nsmall];
         if n1 > n2 {
             _get_connection_count_between(n1, n2)
         } else {
@@ -413,7 +421,7 @@ impl SimEnv {
         &self,
         n1: NodeId,
         n2: NodeId,
-        offerd: &Vec<Vec<usize>>
+        offerd: &Vec<Vec<usize>>,
     ) -> usize {
         let _get_connection_count_between = |nbig: usize, nsmall: usize| offerd[nbig][nsmall];
         if n1 > n2 {
@@ -428,7 +436,7 @@ impl SimEnv {
         n1: NodeId,
         n2: NodeId,
         count: usize,
-        offerd: &mut Vec<Vec<usize>>
+        offerd: &mut Vec<Vec<usize>>,
     ) {
         let mut _set_connection_count_between = |nbig: usize, nsmall: usize, count: usize| {
             offerd[nbig][nsmall] = count;
@@ -475,8 +483,8 @@ pub trait EnvNodeExt: WithEnvCore {
     /// 获取节点间网速
     /// - speed: MB/s
     fn node_get_speed_btwn(&self, n1: NodeId, n2: NodeId) -> f32 {
-        let _get_speed_btwn = |nbig: usize, nsmall: usize|
-            self.core().node2node_graph()[nbig][nsmall];
+        let _get_speed_btwn =
+            |nbig: usize, nsmall: usize| self.core().node2node_graph()[nbig][nsmall];
         if n1 > n2 {
             _get_speed_btwn(n1, n2)
         } else {

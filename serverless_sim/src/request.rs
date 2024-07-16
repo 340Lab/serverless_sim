@@ -1,11 +1,14 @@
-use std::{ cell::{ Ref, RefMut }, collections::{ BTreeMap, HashMap, HashSet } };
+use std::{
+    cell::{Ref, RefMut},
+    collections::{BTreeMap, HashMap, HashSet},
+};
 
 use daggy::petgraph::visit::Topo;
 
-use rand_distr::{ Distribution, Normal };
+use rand_distr::{Distribution, Normal};
 
 use crate::{
-    fn_dag::{ DagId, EnvFnExt, FnId },
+    fn_dag::{DagId, EnvFnExt, FnId},
     node::NodeId,
     sim_env::SimEnv,
     with_env_sub::WithEnvCore,
@@ -93,10 +96,13 @@ impl Request {
         let mut endtime_fn = BTreeMap::new();
         while let Some(fngi) = walker.next(&dag.dag_inner) {
             let fnid = dag.dag_inner[fngi];
-            endtime_fn.insert(self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(), (
-                self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
-                fnid,
-            ));
+            endtime_fn.insert(
+                self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
+                (
+                    self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
+                    fnid,
+                ),
+            );
         }
         let first = endtime_fn.iter().next().unwrap().1.clone().1;
         let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
@@ -145,13 +151,12 @@ impl Request {
             // assert!(begin);
             let sche_time = metric.sche_time.unwrap();
             let ready_sche_time = metric.ready_sche_time.unwrap();
-            let cold_start_done_time = if
-                let Some(cold_start_done_time) = metric.cold_start_done_time
-            {
-                cold_start_done_time.max(sche_time.max(ready_sche_time))
-            } else {
-                sche_time.max(ready_sche_time)
-            };
+            let cold_start_done_time =
+                if let Some(cold_start_done_time) = metric.cold_start_done_time {
+                    cold_start_done_time.max(sche_time.max(ready_sche_time))
+                } else {
+                    sche_time.max(ready_sche_time)
+                };
             let data_done_time = if let Some(data_recv_done_time) = metric.data_recv_done_time {
                 data_recv_done_time
             } else {
@@ -230,20 +235,22 @@ impl Request {
                 let mut walker = dag.new_dag_walker();
                 let mut map = HashMap::new();
                 while let Some(fngi) = walker.next(&dag.dag_inner) {
-                    let ready_sche_time = if
-                        env.func(dag.dag_inner[fngi]).parent_fns(env).is_empty()
-                    {
-                        Some(begin_frame)
-                    } else {
-                        None
-                    };
-                    map.insert(dag.dag_inner[fngi], ReqFnMetric {
-                        ready_sche_time,
-                        sche_time: None,
-                        data_recv_done_time: None,
-                        cold_start_done_time: None,
-                        fn_done_time: None,
-                    });
+                    let ready_sche_time =
+                        if env.func(dag.dag_inner[fngi]).parent_fns(env).is_empty() {
+                            Some(begin_frame)
+                        } else {
+                            None
+                        };
+                    map.insert(
+                        dag.dag_inner[fngi],
+                        ReqFnMetric {
+                            ready_sche_time,
+                            sche_time: None,
+                            data_recv_done_time: None,
+                            cold_start_done_time: None,
+                            fn_done_time: None,
+                        },
+                    );
                 }
                 map
             },
@@ -428,7 +435,10 @@ impl SimEnv {
     pub fn request<'a>(&'a self, i: ReqId) -> Ref<'a, Request> {
         let b = self.core.requests();
 
-        Ref::map(b, |map| { map.get(&i).unwrap_or_else(|| panic!("request {} not found", i)) })
+        Ref::map(b, |map| {
+            map.get(&i)
+                .unwrap_or_else(|| panic!("request {} not found", i))
+        })
     }
 
     // 返回指定请求ID的可变引用
@@ -436,7 +446,8 @@ impl SimEnv {
         let b = self.core.requests_mut();
 
         RefMut::map(b, |map| {
-            map.get_mut(&i).unwrap_or_else(|| panic!("request {} not found", i))
+            map.get_mut(&i)
+                .unwrap_or_else(|| panic!("request {} not found", i))
         })
     }
 }
@@ -450,7 +461,7 @@ mod tests {
     use crate::{
         actions::ESActionWrapper,
         config::Config,
-        fn_dag::{ EnvFnExt, FnDAG },
+        fn_dag::{EnvFnExt, FnDAG},
         request::Request,
         sim_env::SimEnv,
         util,
@@ -464,7 +475,10 @@ mod tests {
         sim_env.core.dags_mut()[0] = FnDAG::instance_map_reduce(0, &sim_env, 4);
         let dag = sim_env.dag(0);
 
-        sim_env.core.requests_mut().insert(0, Request::new(&sim_env, 0, 0));
+        sim_env
+            .core
+            .requests_mut()
+            .insert(0, Request::new(&sim_env, 0, 0));
         let mut req = sim_env.request_mut(0);
 
         let mut walker = dag.new_dag_walker();
@@ -525,6 +539,7 @@ mod tests {
                 log::info!("hook frame begin {}", env.current_frame());
                 unsafe {
                     *begin_req_cnt1.0.as_mut() = env.core.requests().len();
+                    *begin_req_cnt1.0.as_mut() = env.core.requests().len();
                 }
             };
             let mut run1 = unsafe { util::non_null(&run) };
@@ -533,7 +548,9 @@ mod tests {
 
                 unsafe {
                     let cnt = aft_gen_req_cnt - *begin_req_cnt2.0.as_ref();
+                    let cnt = aft_gen_req_cnt - *begin_req_cnt2.0.as_ref();
                     log::info!("hook req gen {} at {}", cnt, env.current_frame());
+                    run1.0.as_mut().push(cnt);
                     run1.0.as_mut().push(cnt);
                 }
             };
@@ -542,7 +559,7 @@ mod tests {
                 Some(Box::new(frame_begin)),
                 Some(Box::new(req_gen)),
                 None,
-                None
+                None,
             );
             runs.push(run);
         }
