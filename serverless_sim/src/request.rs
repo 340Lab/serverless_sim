@@ -1,3 +1,4 @@
+use std::{ cell::{ Ref, RefMut }, collections::{ BTreeMap, HashMap, HashSet }, thread::sleep, time::Duration };
 use std::{
     cell::{Ref, RefMut},
     collections::{BTreeMap, HashMap, HashSet},
@@ -184,6 +185,8 @@ impl Request {
             wait_cold_start_time += cold_start_done_time - sche_time.max(ready_sche_time);
 
             // log::info!("data_done_time {} cold_start_done_time {}", data_done_time, cold_start_done_time);
+
+            // log::info!("data_done_time {} cold_start_done_time {}", data_done_time, cold_start_done_time);
             data_recv_time += data_done_time - cold_start_done_time;
             exe_time += fn_done_time - data_done_time;
         }
@@ -366,6 +369,12 @@ impl SimEnv {
                 else {
                     avg_frequency *= 0.3;
                 }
+                else if env.help.config().request_freq_middle() {
+                    avg_frequency *= 0.2;
+                }
+                else {
+                    avg_frequency *= 0.3;
+                }
                 // avg_frequency *= 100.0;
                 // avg_frequency *= 10.0;
                 let mut bind = self.help.dag_accumulate_call_frequency.borrow_mut();
@@ -384,6 +393,7 @@ impl SimEnv {
                 }
             }
 
+            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
             log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
 

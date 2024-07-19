@@ -1,4 +1,4 @@
-run_time: 4
+run_time: 3
 
 params:
   request_freq:
@@ -9,13 +9,16 @@ params:
   - single:
   # - mix:
   # - dag:
+  # - mix:
+  # - dag:
   no_mech_latency:
   - true:
-  - false:
+  # - false:
 
 mech_scale_sche:
   scale_sche_joint:
     scale_num:
+    # - hpa:
     # - hpa:
     - temp_scaler:
     scale_down_exec:
@@ -27,6 +30,7 @@ mech_scale_sche:
     - pos: greedy
     # - pos: random
     filter:
+    # - []
     # - []
     - [{'careful_down':''}]
   scale_sche_separated:
