@@ -104,6 +104,7 @@ impl Request {
                 ),
             );
         }
+        // log::info!("endtime_fn: {:?}", endtime_fn);
         let first = endtime_fn.iter().next().unwrap().1.clone().1;
         let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
         let mut recur_path = vec![cur.1];
@@ -112,7 +113,12 @@ impl Request {
                 break;
             }
             // use cur fn's begin time to get prev fn's end time
-            let prev: (usize, FnId) = endtime_fn.get(&cur.0).unwrap().clone();
+            let prev: (usize, FnId) = endtime_fn
+                .get(&cur.0)
+                .unwrap_or_else(|| {
+                    panic!("can't find fn end at {}", cur.0);
+                })
+                .clone();
             recur_path.push(prev.1);
             if prev.1 == first {
                 break;

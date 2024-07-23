@@ -385,8 +385,8 @@ impl SimEnv {
                     rng
                 );
             }
-            // mkdir
-            std::fs::create_dir("cache");
+            // mkdir, allow failure
+            let _ = std::fs::create_dir("cache");
             // write to file
             let mut file = std::fs::File::create(cache_req_freq).unwrap();
             serde_json::to_writer(&mut file, &*self.help.fn_call_frequency()).unwrap();
@@ -507,7 +507,8 @@ impl SimEnv {
 
         // 自增 frame
         let mut cur_frame = self.core.current_frame.borrow_mut();
-        // log::info!("frame done: {}", *cur_frame);
+
+        log::info!("frame done: {}", *cur_frame);
         *cur_frame += 1;
     }
 }

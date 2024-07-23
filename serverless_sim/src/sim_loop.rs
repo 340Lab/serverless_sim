@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::{
@@ -62,9 +63,11 @@ impl SimEnv {
         mut hook_algo_end: Option<Box<dyn FnMut(&SimEnv) + 'static>>,
     ) -> (f32, String) {
         // 尝试设置当前线程的优先级
+        #[cfg(target_os = "windows")]
         if let Err(e) = set_current_thread_priority(ThreadPriority::Min) {
             eprintln!("设置线程优先级失败: {:?}", e);
         }
+
         self.avoid_gc();
         let mut master_mech_resp_rx: Option<Receiver<MechScheduleOnceRes>> = None;
         let mut frame_when_master_mech_begin = 0;
@@ -180,6 +183,7 @@ impl SimEnv {
                 hook_algo_begin.as_mut().map(|f| f(self));
             }
             if !self.one_frame(&mut hook_frame_begin, &mut hook_req_gen) {
+                log::info!("simulation end");
                 break;
             }
 

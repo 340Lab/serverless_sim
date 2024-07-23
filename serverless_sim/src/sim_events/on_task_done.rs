@@ -23,12 +23,11 @@ impl SimEnv {
     }
     pub fn on_task_done(&self, req: &mut Request, fnid: FnId) {
         self.check_sub_tasks_ready_sche(req, fnid);
-        assert!(req
-            .fn_metric
-            .get_mut(&fnid)
-            .unwrap()
+        let fn_metric = req.fn_metric.get_mut(&fnid).unwrap();
+        assert!(fn_metric
             .fn_done_time
             .replace(self.current_frame())
             .is_none());
+        assert!(fn_metric.ready_sche_time.is_some());
     }
 }
