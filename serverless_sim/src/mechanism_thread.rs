@@ -1,11 +1,12 @@
 use std::sync::mpsc;
 
-use enum_as_inner::EnumAsInner;
-use thread_priority::{ set_current_thread_priority, ThreadPriority, WinAPIThreadPriority };
-// use windows::Win32::System::Threading::{ SetThreadPriority, GetCurrentThread, THREAD_PRIORITY };
+#[cfg(target_os = "windows")]
+use thread_priority::{set_current_thread_priority, ThreadPriority, WinAPIThreadPriority};
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY};
 
 use crate::actions::ESActionWrapper;
-use crate::mechanism::{ DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd };
+use crate::mechanism::{DownCmd, Mechanism, MechanismImpl, ScheCmd, SimEnvObserve, UpCmd};
 
 use crate::util;
 use crate::with_env_sub::WithEnvHelp;
@@ -43,6 +44,8 @@ pub fn spawn(mech: MechanismImpl) -> mpsc::Sender<MechScheduleOnce> {
         //         THREAD_PRIORITY(WinAPIThreadPriority::TimeCritical as i32)
         //     ).unwrap();
         // }
+
+        #[cfg(target_os = "windows")]
         if let Err(e) = set_current_thread_priority(ThreadPriority::Max) {
             eprintln!("设置线程优先级失败: {:?}", e);
         }
@@ -71,7 +74,11 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
         // let passed_ms = measure.passed_100ns();
         let end_ms = util::now_ms();
         // log::info!("master mech run cpu:{:?}, total:{} ms", begin_cpu.elapsed(), end_ms - begin_ms);
-        let mech_latency = if mech.config.no_mech_latency { 0 } else { end_ms - begin_ms };
+        let mech_latency = if mech.config.no_mech_latency {
+            0
+        } else {
+            end_ms - begin_ms
+        };
         res.responser
             .send(MechScheduleOnceRes::End {
                 mech_run_ms: mech_latency,
@@ -85,11 +92,15 @@ fn mechanism_loop(rx: mpsc::Receiver<MechScheduleOnce>, mech: MechanismImpl) {
 pub mod tests {
     use std::sync::mpsc;
 
-    use crate::{ actions::ESActionWrapper, mechanism_thread::MechScheduleOnceRes, sim_env::SimEnv };
+    use crate::{actions::ESActionWrapper, mechanism_thread::MechScheduleOnceRes, sim_env::SimEnv};
 
     #[test]
     pub fn test_algo_latency() {
-        use std::{ cell::RefCell, rc::Rc, sync::{ atomic::AtomicU64, Arc } };
+        use std::{
+            cell::RefCell,
+            rc::Rc,
+            sync::{atomic::AtomicU64, Arc},
+        };
 
         use crate::config::Config;
         let _ = env_logger::try_init();
@@ -120,24 +131,20 @@ pub mod tests {
             ESActionWrapper::Int(0),
             None,
             None,
-            Some(
-                Box::new(move |env: &SimEnv| {
-                    *begin_frame.borrow_mut() = env.current_frame();
-                })
-            ),
-            Some(
-                Box::new(move |env: &SimEnv| {
-                    // calltime = env.current_frame() - begin_frame;
-                    assert!(
-                        env.current_frame() - *begin_frame2.borrow() == calltime,
-                        "begin_frame:{} current_frame:{} calltime:{}",
-                        begin_frame2.borrow(),
-                        env.current_frame(),
-                        calltime
-                    );
-                    calltime += 1;
-                })
-            )
+            Some(Box::new(move |env: &SimEnv| {
+                *begin_frame.borrow_mut() = env.current_frame();
+            })),
+            Some(Box::new(move |env: &SimEnv| {
+                // calltime = env.current_frame() - begin_frame;
+                assert!(
+                    env.current_frame() - *begin_frame2.borrow() == calltime,
+                    "begin_frame:{} current_frame:{} calltime:{}",
+                    begin_frame2.borrow(),
+                    env.current_frame(),
+                    calltime
+                );
+                calltime += 1;
+            })),
         );
     }
 }
