@@ -1,232 +1,296 @@
-use std::{borrow::Borrow, collections::{HashMap, HashSet}, vec};
+use core::alloc;
+use std::{borrow::Borrow, cell::Ref, collections::{HashMap, HashSet}, env, thread::{self, panicking, sleep}, time::Duration, vec};
 
 
 use crate::{
-    fn_dag::{EnvFnExt, FnId}, mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{EnvNodeExt, NodeId}, request::Request, sim_run::{schedule_helper, Scheduler}, with_env_sub::{WithEnvCore, WithEnvHelp}
+    fn_dag::{EnvFnExt, FnContainerState, FnId, RunningTask}, mechanism::{DownCmd, MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{self, EnvNodeExt, NodeId}, request::Request, sim_run::{schedule_helper, Scheduler}, with_env_sub::{WithEnvCore, WithEnvHelp}
 };
 
-struct bplistStatues{
-    avg_cpu_use_rate: f32,
-    avg_mem_use_rate: f32,
-    max_idle_nodeid_inbp: usize,
-    max_idle_nodeid_unbp: usize,
-}
+const CPU_THRESHOLD_TO_ADD: f32 = 1.0;
+const CPU_THRESHOLD_TO_REMOVE: f32 = 0.7;
+const MEM_THRESHOLD_TO_ADD: f32 = 0.9;
 
-impl bplistStatues {
-    pub fn new(avg_cpu_use_rate: f32, avg_mem_use_rate: f32, max_idle_nodeid_inbp: usize, max_idle_nodeid_unbp: usize) -> Self {
-        Self {
-            avg_cpu_use_rate,
-            avg_mem_use_rate,
-            max_idle_nodeid_inbp,
-            max_idle_nodeid_unbp,
-        }
-    }
+// 维护 bp 数组用
+struct BpListUpdateNodes{
+    // 平均cpu利用率
+    avg_cpu_starve_degree: f32,
+
+    // 平均mem利用率
+    avg_mem_use_rate: f32,
+
+    // binpack内饥饿程度最高的节点
+    expel_nodeid_inbp: usize,
+
+    // binpack外资源得分最高的节点
+    join_nodeid_outbp: usize,
 }
 
 struct NodeRescState {
     mem_used: f32,
     mem_limit: f32,
-}
+    cpu_limit: f32,
 
-impl NodeRescState {
-    pub fn new(mem_used: f32, mem_limit: f32) -> Self {
-        Self {
-            mem_used,
-            mem_limit,
-        }
-    }
+    // 资源得分
+    resource_score: f32,
+
+    // 所有任务数量
+    all_task_cnt: f32,
 }
 
 pub struct BpBalanceScheduler {
     // 每个函数的binpack节点集合
-    fn_binpack_map: HashMap<FnId, HashSet<NodeId>>,
+    binpack_map: HashMap<FnId, HashSet<NodeId>>,
 
     // 每个函数的最新节点集合
-    fn_latest_nodes: HashMap<FnId, HashSet<NodeId>>,
+    latest_nodes: HashMap<FnId, HashSet<NodeId>>,
 
-    // MARK 这个还没初始化的
-    // 每个节点的资源使用情况，实时更新
+    // 每个节点的资源使用情况，实时更新---调度时需要实时更新
     nodes_resc_state: HashMap<NodeId, NodeRescState>,
+
+    // 判断函数是否可以开始用bp_balance数组机制
+    mech_impl_sign: HashMap<FnId, bool>,
+
+    // 需要调度的函数集合
+    need_schedule_fn: HashSet<FnId>,
 }
 
 impl BpBalanceScheduler {
     pub fn new() -> Self {
         Self {
-            fn_binpack_map: HashMap::new(),
-            fn_latest_nodes: HashMap::new(),
+            binpack_map: HashMap::new(),
+            latest_nodes: HashMap::new(),
             nodes_resc_state: HashMap::new(),
+            mech_impl_sign: HashMap::new(),
+            need_schedule_fn: HashSet::new(),
         }
     }
 
-    // 找出binpack数组中空闲内存率最高的节点
-    fn find_max_idle_nodeid(&self, fnid: FnId, _env: &SimEnvObserve) -> usize{
-        // BUG 当binpack为空时，会返回9999，导致调度失败
-        let mut max_idle_nodeid: usize = 9999;
-        let binpack = self.fn_binpack_map.get(&fnid).unwrap();
+    // 找出binpack数组中 最合适的点(取决于贪婪的指标是什么) 的节点、并且要内存足够才行
+    fn find_schedule_nodeid(&self, fnid: FnId, env: &SimEnvObserve) -> usize{
+        let mut schedule_node_id: usize = 9999;
+        let mut best_node_metric = 0.0;
+        let bplist = self.binpack_map.get(&fnid).unwrap();
 
-        for nodeid in binpack {
+        // 遍历所有容器的资源状态
+        for node_id in bplist {
+            let iter_node_resource_status = self.nodes_resc_state.get(node_id).unwrap();
 
-            if max_idle_nodeid == 9999 {
-                max_idle_nodeid = *nodeid;
+            // 找出 饥饿程度 最小的
+            let iter_node_starve_degree = self.cal_cpu_starve_degree(iter_node_resource_status, fnid, env);
+            if schedule_node_id == 9999{
+                schedule_node_id = *node_id;
+                best_node_metric = iter_node_starve_degree;
             }
             else {
-                // 取出当前遍历节点的资源使用情况
-                let iter_node_resc_state = self.nodes_resc_state.get(&nodeid).unwrap();
-                // 取出目前最大空闲节点的资源状态
-                let max_node_resc_state = self.nodes_resc_state.get(&max_idle_nodeid).unwrap();
-
-                // 计算资源空闲率
-                let this_node_idle = 1.0 - iter_node_resc_state.mem_used / iter_node_resc_state.mem_limit;
-                let max_node_idle = 1.0 - max_node_resc_state.mem_used / max_node_resc_state.mem_limit;
-                if this_node_idle > max_node_idle {
-                    max_idle_nodeid = *nodeid;
+                // 比较出 饥饿程度 最小的节点
+                if iter_node_starve_degree < best_node_metric {
+                    schedule_node_id = *node_id;
+                    best_node_metric = iter_node_starve_degree;
                 }
             }
+
+            // // 找出 待处理任务数量 最小的节点
+            // if schedule_node_id == 9999{
+            //     schedule_node_id = *node_id;
+            //     best_node_metric = iter_node_resource_status.all_task_cnt;
+            // }
+            // else {
+            //     // 比较出 待处理任务数量 最小的节点
+            //     if iter_node_resource_status.all_task_cnt < best_node_metric {
+            //         schedule_node_id = *node_id;
+            //         best_node_metric = iter_node_resource_status.all_task_cnt;
+            //     }
+            // }
+            
         }
-        max_idle_nodeid
+
+        schedule_node_id
+    }
+    
+    // 计算函数分配到节点上后，cpu饥饿程度 = fn_cpu_use / cpu_local
+    fn cal_cpu_starve_degree(&self, node_resc_state: &NodeRescState, fnid: FnId, env: &SimEnvObserve)->f32{
+
+        // 先取出该函数所需要的cpu
+        let fn_cpu_use = env.func(fnid).cpu;
+
+        let cpu_local = node_resc_state.cpu_limit / (node_resc_state.all_task_cnt + 1.0);
+    
+        return fn_cpu_use / cpu_local;
     }
 
-
-    // TODO 也要计算cpu，计算指定函数binpack数组内的资源利用率，以及得出其内、其外的空闲资源最多的节点id
-    fn get_bplist_status(&self, fnid: FnId, env: &SimEnvObserve) -> bplistStatues{
+    // 获得数据，维护 bp 数组
+    fn get_bplist_node_status(&self, fnid: FnId, env: &SimEnvObserve) -> BpListUpdateNodes{
         
-        let binpack = self.fn_binpack_map.get(&fnid).unwrap();
+        let binpack = self.binpack_map.get(&fnid).unwrap();
 
-        // binpack内节点的平均mem、cpu利用率
+        assert!(binpack.len() != 0 && self.latest_nodes.get(&fnid).unwrap().len() != 0);
+
+        let mut avg_cpu_starve_degree = 0.0;
         let mut avg_mem_use_rate = 0.0;
-        let mut avg_cpu_use_rate = 0.0;
-        let mut bplist_have_container = 0;
+        let mut max_starve_nodeid_inbp = 9999;
+        let mut max_score_nodeid_outbp = 9999;
 
-        // binpack内或外最空闲的节点
-        let mut max_idle_nodeid_inbp = 9999;
-        let mut max_idle_nodeid_unbp = 9999;
+        let mut max_starve_degree = 1.0;
+        let mut max_resource_score = 0.0;
 
         // 遍历该函数的可执行节点集合
-        for nodeid in self.fn_latest_nodes.get(&fnid).unwrap().iter() {
+        for nodeid in self.latest_nodes.get(&fnid).unwrap().iter() {
 
             // 取出当前节点的资源使用情况
             let iter_node_resc_state = self.nodes_resc_state.get(&nodeid).unwrap();
 
-            // binpack内最空闲的节点,同时计算平均mem、cpu利用率
+            // 找到binpack内饥饿程度最高的节点、binpack外资源得分最高的节点,同时计算bp内平均mem利用率、cpu饥饿程度
             if binpack.contains(nodeid){
-                // 统计binpack内节点的平均资源利用率
+                // 统计binpack内节点的平均mem利用率
                 avg_mem_use_rate +=
                     iter_node_resc_state.mem_used / iter_node_resc_state.mem_limit;
 
-                // BUG 第一帧的时候，实际上还没有容器，这时候取cpu_use_rate会报错
-                // 取出这个节点内该函数的容器的cpu利用率
-                if env.node(*nodeid).container(fnid).is_some() {
-                    avg_cpu_use_rate += env.node(*nodeid).container(fnid).unwrap().borrow().cpu_use_rate();
-                    bplist_have_container += 1;
-                }
+                let cpu_starve_degree = self.cal_cpu_starve_degree(iter_node_resc_state, fnid, env);
 
+                // 统计bp数组内的节点的平均cpu饥饿程度
+                avg_cpu_starve_degree += cpu_starve_degree;
 
-                if max_idle_nodeid_inbp == 9999{
-                    max_idle_nodeid_inbp = *nodeid;
+                // 计算binpack内，针对于该函数容器的饥饿程度最高的节点
+                if max_starve_nodeid_inbp == 9999{
+                    max_starve_nodeid_inbp = *nodeid;
+                    max_starve_degree = cpu_starve_degree;
                 }
                 else {
-                    // 取出目前最大空闲节点的资源状态
-                    let max_node_resc_state = self.nodes_resc_state.get(&max_idle_nodeid_inbp).unwrap();
-
-                    // 计算资源空闲率
-                    let iter_nodeid_idle = 1.0 - iter_node_resc_state.mem_used / iter_node_resc_state.mem_limit;
-                    let max_nodeid_idle = 1.0 - max_node_resc_state.mem_used / max_node_resc_state.mem_limit;
-
-                    if iter_nodeid_idle > max_nodeid_idle {
-                        max_idle_nodeid_inbp = *nodeid;
+                    // 取出目前最饥饿节点的资源状态
+                    if cpu_starve_degree > max_starve_degree {
+                        max_starve_nodeid_inbp = *nodeid;
+                        max_starve_degree = cpu_starve_degree;
                     }
                 }
             }
-            // binpack外最空闲的节点
+            // binpack外资源得分最高的节点。资源得分 = 1.0 / (1.0 + 任务数 + 内存使用率)
             else {
-                if max_idle_nodeid_unbp == 9999{
-                    max_idle_nodeid_unbp = *nodeid;
+                if max_score_nodeid_outbp == 9999{
+                    max_score_nodeid_outbp = *nodeid;
+                    max_resource_score = iter_node_resc_state.resource_score;
                 }
                 else {
-                    // 取出目前最大空闲节点的资源状态
-                    let max_node_resc_state = self.nodes_resc_state.get(&max_idle_nodeid_unbp).unwrap();
-
-                    let iter_nodeid_idle = 1.0 - iter_node_resc_state.mem_used / iter_node_resc_state.mem_limit;
-                    let max_nodeid_idle = 1.0 - max_node_resc_state.mem_used / max_node_resc_state.mem_limit;
-                    
-                    if iter_nodeid_idle > max_nodeid_idle {
-                        max_idle_nodeid_unbp = *nodeid
+                    // 取出目前得分最高节点的资源状态
+                    if iter_node_resc_state.resource_score > max_resource_score {
+                        max_score_nodeid_outbp = *nodeid;
+                        max_resource_score = iter_node_resc_state.resource_score;
                     }
                 }
             }
-
-
         }
 
         // 计算平均
         avg_mem_use_rate /= binpack.len() as f32;
+        avg_cpu_starve_degree /= binpack.len() as f32;
 
-        if bplist_have_container != 0 {
-            avg_cpu_use_rate /= bplist_have_container as f32;
-        }
+        // 把平均cpu饥饿程度打在日志上
+        log::info!("func_id: {}, avg_cpu_starve_degree: {}, avg_mem_use_rate: {}", fnid, avg_cpu_starve_degree, avg_mem_use_rate);
+        log::info!("func_id: {}, max_starve_nodeid_inbp: {}, max_score_nodeid_outbp: {}", fnid, max_starve_nodeid_inbp, max_score_nodeid_outbp);
 
-        bplistStatues{
+        BpListUpdateNodes{
+            avg_cpu_starve_degree,
             avg_mem_use_rate,
-            avg_cpu_use_rate,
-            max_idle_nodeid_inbp,
-            max_idle_nodeid_unbp
+            expel_nodeid_inbp: max_starve_nodeid_inbp,
+            join_nodeid_outbp: max_score_nodeid_outbp,
         }
     }
-    
+
+    // 对 bp数组进行更新，因为对 bp 数组的更新都要伴随着对 fn_container_cpu_status 的更新，所以放在一个函数以便两者同时进行
+    fn update_bplist(&mut self, fnid: FnId, node_id: NodeId, operate: &str, _env: &SimEnvObserve){
+        let fn_binpack_map = self.binpack_map.get_mut(&fnid).unwrap();
+        if operate == "add" {
+            // 对 binpack 进行更新
+            fn_binpack_map.insert(node_id);
+        }
+        // 如果是 remove 操作，则移除该节点的状态
+        else if operate == "remove" {
+            // 对 binpack 进行更新
+            fn_binpack_map.remove(&node_id);
+        }
+        else {
+            panic!("operate: {} not supported", operate);
+        }
+    }
+
+    // 调度之后的资源情况需要更新
     fn schedule_one_req_fns(
         &mut self, 
-        env: &SimEnvObserve, 
+        env: &SimEnvObserve,
+        mech: &MechanismImpl, 
         req: &mut Request, 
         cmd_distributor: &MechCmdDistributor,
     ) {
         // 收集该请求中所有可以调度的函数
-        let mut schedule_able_fns = schedule_helper::collect_task_to_sche(
+        let schedule_able_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
             schedule_helper::CollectTaskConfig::PreAllSched,
         );
 
-        // 对所有函数进行优先级排序，cpu需求较大的在前面
-        schedule_able_fns.sort_by(|&a, &b| {
-            env.func(a)
-                .cpu
-                .partial_cmp(&env.func(b).cpu)
-                .unwrap()
-                .reverse()
-        });
-
-        // 进行调度，每次函数请求到达时，往binpack数组中空闲内存最多的节点上调度，并实时更新节点容量。
-        // let mut sche_cmds = vec![];
         let mech_metric = || env.help().mech_metric_mut();
+        let scale_up_exec = mech.scale_up_exec();
 
         for &fnid in &schedule_able_fns {
-            // 找出该函数的binpack数组中空闲内存最多的节点
-            let sche_nodeid = self.find_max_idle_nodeid(fnid, env);
 
-            mech_metric().add_node_task_new_cnt(sche_nodeid);
+            let mut target_cnt = mech.scale_num(fnid);
+            if target_cnt == 0 {
+                target_cnt = 1;
+            }
 
-            cmd_distributor
-                .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
-                    reqid: req.req_id,
-                    fnid,
-                    nid: sche_nodeid,
-                    memlimit: None,
-                }))
-                .unwrap();
+            let fn_scale_up_cmds = scale_up_exec.exec_scale_up(
+                target_cnt,
+                fnid,
+                env,
+                cmd_distributor
+            );
+            for cmd in fn_scale_up_cmds.iter() {
+                self.latest_nodes.get_mut(&fnid).unwrap().insert(cmd.nid);
+                self.binpack_map.get_mut(&fnid).unwrap().insert(cmd.nid);
+            }            
 
-            // 更新node_resc_state中的节点容量
-            self.nodes_resc_state.get_mut(&sche_nodeid).unwrap().mem_used += env.func(fnid).mem;
 
-            // 计算该函数binpack数组内的资源利用率，以及得出其外的空闲资源最多的节点id
-            let bplist_status = self.get_bplist_status(fnid, env);
+            if self.binpack_map.get(&fnid).unwrap().len() == 0 {
+                panic!("fnid:{}, last_nodes_len:{}", fnid, self.latest_nodes.get(&fnid).unwrap().len());
+            }
 
-            // 如果binpack内平均资源利用率大于所设阈值，则将含有该函数对应容器快照的目前空余资源量最多的节点加入该binpack数组
-            if (bplist_status.avg_mem_use_rate > 0.8 || bplist_status.avg_cpu_use_rate > 0.9) && bplist_status.max_idle_nodeid_unbp != 9999{
-                self.fn_binpack_map.get_mut(&fnid).unwrap().insert(bplist_status.max_idle_nodeid_unbp);
+            // 找到调度节点
+            let sche_nodeid = self.find_schedule_nodeid(fnid, env);
+
+            if sche_nodeid != 9999 {
+
+                mech_metric().add_node_task_new_cnt(sche_nodeid);
+                cmd_distributor
+                    .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
+                        reqid: req.req_id,
+                        fnid,
+                        nid: sche_nodeid,
+                        memlimit: None,
+                    }))
+                    .unwrap();
+
+                // 更新node_resc_state中的资源使用情况：mem_used, cpu_left_calc, cpu_starve_degree, resource_score
+                let sche_node_resc_state = self.nodes_resc_state.get_mut(&sche_nodeid).unwrap();
+
+                sche_node_resc_state.mem_used += env.func(fnid).mem;
+                sche_node_resc_state.all_task_cnt += 1.0;
+                sche_node_resc_state.resource_score = 1.0 / (1.0 + sche_node_resc_state.all_task_cnt + sche_node_resc_state.mem_used / sche_node_resc_state.mem_limit);
+
+                // 只有当机制触发的时候才扩容binpack数组
+                if self.mech_impl_sign.get(&fnid).unwrap() == &true {
+                    // 计算该函数binpack数组的资源情况
+                    let bplist_resource_status = self.get_bplist_node_status(fnid, env);
+
+                    // 如果binpack内平均资源利用率大于所设阈值，则将含有该函数对应容器快照的目前空余资源量最多的节点加入该binpack数组
+                    if (bplist_resource_status.avg_mem_use_rate > MEM_THRESHOLD_TO_ADD || bplist_resource_status.avg_cpu_starve_degree > CPU_THRESHOLD_TO_ADD) && bplist_resource_status.join_nodeid_outbp != 9999 {
+                        self.update_bplist(fnid, bplist_resource_status.join_nodeid_outbp, "add", env);
+                    }
+                }
+
             }
 
         }
     }
+
 }
 
 impl Scheduler for BpBalanceScheduler {
@@ -236,168 +300,241 @@ impl Scheduler for BpBalanceScheduler {
         mech: &MechanismImpl,
         cmd_distributor: &MechCmdDistributor,){
 
-        let mut up_cmds = vec![];
-        // let mut sche_cmds = vec![];
-        let mut down_cmds = vec![];
-
         // 遍历每个节点，更新其资源使用情况
         for node in env.core().nodes().iter() {
+            // 内存
             let mem_used = env.node(node.node_id()).last_frame_mem;
             let mem_limit = env.node(node.node_id()).rsc_limit.mem;
-            self.nodes_resc_state.insert(node.node_id(), NodeRescState::new(mem_used, mem_limit));
+            // cpu
+            let cpu_limit = env.node(node.node_id()).rsc_limit.cpu;
 
+            // 任务数量
+            let all_task_cnt = node.all_task_cnt() as f32;
+
+            // 资源得分，资源得分 = 1.0 / (1.0 + 任务数 + 内存使用率)
+            let resource_score = 1.0 / (1.0 + all_task_cnt + mem_used / mem_limit);
+            self.nodes_resc_state.insert(node.node_id(), 
+                NodeRescState
+                {
+                    mem_used, mem_limit, cpu_limit, resource_score, all_task_cnt,
+                }
+            );
         }
 
-        // 遍历每个函数，为其获取扩缩容命令，维护一个binpack节点数组和一个可执行节点数组
+        self.need_schedule_fn.clear();
+        // 找到这一帧需要调度的函数
+        for (_req_id, req) in env.core().requests_mut().iter_mut() {
+            let schedule_able_fns = schedule_helper::collect_task_to_sche(
+                req,
+                env,
+                schedule_helper::CollectTaskConfig::PreAllSched,
+            );
+            for fnid in schedule_able_fns.iter() {
+                self.need_schedule_fn.insert(*fnid);
+            }
+        }
+
+        // 遍历每个函数，为其获取扩缩容命令，维护 binpack 数组
         for func in env.core().fns().iter() {
+            // 初始化每个函数的 bp 数组
+            if !self.binpack_map.contains_key(&func.fn_id){
+                self.binpack_map.insert(func.fn_id, HashSet::new());
+            }
+
+            // 初始化每个函数的 latest_nodes 数组
+            if !self.latest_nodes.contains_key(&func.fn_id){
+                self.latest_nodes.insert(func.fn_id, HashSet::new());
+            }
+
+            // 初始化每个函数的 mech_impl_sign
+            if !self.mech_impl_sign.contains_key(&func.fn_id){
+                self.mech_impl_sign.insert(func.fn_id, false);
+            }
 
             // 进行其他处理之前，先更新最新节点集合
-            let mut nodes = HashSet::new();
-            env.fn_containers_for_each(func.fn_id, |container| {
-                nodes.insert(container.node_id);
-            });
+            // let mut nodes = HashSet::new();
+            // env.fn_containers_for_each(func.fn_id, |container| {
+            //     nodes.insert(container.node_id);
+            // });
+            let mut nodes = env
+                                            .core().fn_2_nodes()
+                                            .get(&func.fn_id)
+                                            .map(|v| { v.clone() })
+                                            .unwrap_or(HashSet::new());
 
-            // 根据 scaler 得出的容器数量进行扩容
-            let mut target = mech.scale_num(func.fn_id);
-            if target == 0 {
-                target = 1;
-            }
+
+            // 根据 scaler 得出的容器数量进行扩缩容--------------------------------------------------------------------
+            let mut scale_down_sign = false;
+            let target = mech.scale_num(func.fn_id);
             let cur = env.fn_container_cnt(func.fn_id);
-            // 如果当前容器数量少于目标数量，则进行扩容
-            if target > cur {
-                let up_cmd = mech.scale_up_exec().exec_scale_up(target, func.fn_id, env, cmd_distributor);
-                up_cmds.extend(up_cmd.clone());
+            if target > cur && self.need_schedule_fn.contains(&func.fn_id){
+                let up_cmd = mech.scale_up_exec().exec_scale_up(
+                    target, 
+                    func.fn_id, env, 
+                    cmd_distributor
+                );
 
-                // 实时更新函数的节点情况、新扩容的容器数量直接放入binpack数组中
+                // 实时更新函数的节点情况
                 for cmd in up_cmd.iter() {
                     nodes.insert(cmd.nid);
+                    self.binpack_map.get_mut(&func.fn_id).unwrap().insert(cmd.nid);
                 }
             }
+            // 如果需要缩容
+            else if target < cur && (cur != 1 || !self.need_schedule_fn.contains(&func.fn_id)) {
+                // 标记可以开始bp机制
+                if self.mech_impl_sign.get(&func.fn_id).unwrap() == &false {
+                    log::info!("fn_id: {}, 在第 {} 帧触发机制", func.fn_id, env.core().current_frame());
+                }
+                // MARK 注释下面这行，可以关闭bp机制，此时变成贪婪调度
+                self.mech_impl_sign.insert(func.fn_id, true);
+                
+                // 进行缩容
+                let down_cmd = mech.scale_down_exec().exec_scale_down(
+                    env,
+                    func.fn_id,
+                    cur - target,
+                    cmd_distributor
+                );
 
-            // MARK 试一下所有节点都放binpack数组中的情况
-            // 如果函数有binpack数组，则再进行超时缩容，并维护该 binpack 数组
-            if self.fn_binpack_map.contains_key(&func.fn_id){
-                // 获得节点总数和binpack数组
-                let binpack = self.fn_binpack_map.get(&func.fn_id).unwrap();
+                // 实时更新函数的节点情况
+                for cmd in down_cmd.iter() {
+                    nodes.remove(&cmd.nid);
+                }
 
-                // 遍历每个容器，对binpack数组外的容器进行超时缩容
-                env.fn_containers_for_each(func.fn_id, |container| {
-                    
-                    // TODO 添加CPU资源监控后这里应该修改逻辑，不需要节点总数大于1.5倍才缩容
-                    // 如果当前节点总数比binpack数组多，对于不是binpack数组中的节点，进行超时缩容
-                    if nodes.len() > binpack.len() + 1 && !binpack.contains(&container.node_id) {
-                    // if nodes.len() > (binpack.len() as f32 * 1.5).ceil() as usize && !binpack.contains(&container.node_id) {
-                        
-                        // 如果最近20帧都是空闲，且没有请求
-                        if container.recent_frame_is_idle(20) && container.req_fn_state.len() == 0  {
-                            down_cmds.push(
-                                DownCmd {
-                                nid: container.node_id,
-                                fnid: func.fn_id}
-                            );
+                // 如果有缩容命令，则标记 scale_down_sign 为 true
+                if down_cmd.len() != 0 {
+                    scale_down_sign = true;
+                }
+            }
+            // ---------------------------------------------------------------------------------------------------------------------------
 
-                            nodes.remove(&container.node_id);
-                        }
-                    }
-                    
-                });
-                // ----------------------超时缩容完成
-
-                // 更新最新节点集合
-                self.fn_latest_nodes.insert(func.fn_id, nodes.clone());
-
-                // ----------------------对 binpack 数组进行维护
-                let binpack = self.fn_binpack_map.get_mut(&func.fn_id).unwrap();
-
+            // 机制没有触发，则该函数的bp数组就是nodes
+            if !*self.mech_impl_sign.get(&func.fn_id).unwrap(){
+                // log::info!("fn_id: {}, frame:{}, 机制没有触发", func.fn_id, env.core().current_frame());
+                // 该函数的可调度节点和最新节点集合就是nodes
+                self.latest_nodes.insert(func.fn_id, nodes.clone());
+                self.binpack_map.insert(func.fn_id, nodes.clone());
+            }
+            // 如果bp机制触发，则开始维护该函数的bp数组
+            else {
                 // 清理一下binpack数组中被意外缩容的节点，一般不会出现这个情况
-                let binpack_nodeids = binpack.clone();
+                let binpack_nodeids = self.binpack_map.get(&func.fn_id).unwrap().clone();
                 for nodeid in binpack_nodeids.iter() {
                     if !nodes.contains(nodeid) {
-                        binpack.remove(nodeid);
+                        self.update_bplist(func.fn_id, *nodeid, "remove", env);
+                        log::info!("fnid:{}, 节点{}被意外缩容, 移除后binpack_len:{}", func.fn_id, nodeid, self.binpack_map.get(&func.fn_id).unwrap().len());
+                        log::info!("nodes.len():{}", nodes.len());
                     }
                 }
 
-                // 当binpack数组为空时（正常运行的话不会是空的），把所有节点都加进去
+                let binpack = self.binpack_map.get(&func.fn_id).unwrap();
+                // 该函数没有可调度节点，表示该函数最近一直没有请求，直接跳过
+                if nodes.len() == 0 {
+                    self.latest_nodes.insert(func.fn_id, nodes.clone());
+                    assert!(binpack.len() == 0);
+                    continue;
+                }
+
+                // 重新拿一次，避免借用冲突
+                let binpack = self.binpack_map.get(&func.fn_id).unwrap();
+
+                // 如果扩缩容器没有缩容，那么遍历每个容器，对binpack数组外的容器进行超时缩容------------------------------------------
+                if scale_down_sign == false {
+                    env.fn_containers_for_each(func.fn_id, |container| {
+                    
+                        // 对于不是binpack数组中的节点，进行超时缩容
+                        if !binpack.contains(&container.node_id) {
+                            
+                            // 如果该容器最近50帧都是空闲则缩容
+                            if container.recent_frame_is_idle(50) && container.req_fn_state.len() == 0  {
+                                
+                                // 发送缩容命令
+                                cmd_distributor
+                                    .send(MechScheduleOnceRes::ScaleDownCmd(DownCmd 
+                                        {
+                                            nid: container.node_id,
+                                            fnid: func.fn_id
+                                        }
+                                    ))
+                                    .unwrap();
+    
+                                nodes.remove(&container.node_id);
+                            }
+                        }
+    
+                    });
+                }
+                // 超时缩容完成----------------------------------------------------------------------------------------
+
+                // 到这里来的时候nodes集合一定不为空
+                assert!(nodes.len() != 0);
+
+                // 更新该函数的最新可调度节点集合
+                self.latest_nodes.insert(func.fn_id, nodes.clone());
+
+                // 对 binpack 数组进行维护----------------------------------------------------------------------------------------
+                let binpack = self.binpack_map.get(&func.fn_id).unwrap();
+
+                // 当binpack数组为空时，把所有节点都加进去
                 if binpack.len() == 0 {
-                    self.fn_binpack_map.insert(func.fn_id, nodes.clone());
+                    self.binpack_map.insert(func.fn_id, nodes.clone());
+                    assert!(self.binpack_map.get(&func.fn_id).unwrap().len() != 0);
                 }
 
                 // 计算该函数binpack数组内的资源利用率，以及得出其内、其外的空闲资源最多的节点id
-                let mut bplist_status = self.get_bplist_status(func.fn_id, env);
+                let mut bplist_resource_status = self.get_bplist_node_status(func.fn_id, env);
                 
-                // TODO 更改维护数组的逻辑，增加对cpu利用率的调控
-                // 维护binpack数组，直到其数组内资源利用率在50%到80%之间
-                while bplist_status.avg_mem_use_rate < 0.5 && (bplist_status.avg_mem_use_rate > 0.8 || bplist_status.avg_cpu_use_rate > 0.9) {
+                // 维护binpack数组
+                while bplist_resource_status.avg_cpu_starve_degree < CPU_THRESHOLD_TO_REMOVE || bplist_resource_status.avg_mem_use_rate > MEM_THRESHOLD_TO_ADD || bplist_resource_status.avg_cpu_starve_degree > CPU_THRESHOLD_TO_ADD {
+                    
+                    let binpack = self.binpack_map.get(&func.fn_id).unwrap();
 
-                    let binpack = self.fn_binpack_map.get_mut(&func.fn_id).unwrap();
-
-                    // 空数组或者已经没有外部可添加节点了
-                    if binpack.len() == 0 || bplist_status.max_idle_nodeid_unbp == 9999 {
+                    assert!(bplist_resource_status.avg_cpu_starve_degree != 0.0);
+                    
+                    // 退出循环逻辑
+                    if bplist_resource_status.avg_cpu_starve_degree < CPU_THRESHOLD_TO_REMOVE && binpack.len() == 1{
+                        break;
+                    }
+                    if (bplist_resource_status.avg_mem_use_rate > MEM_THRESHOLD_TO_ADD || bplist_resource_status.avg_cpu_starve_degree > CPU_THRESHOLD_TO_ADD) && bplist_resource_status.join_nodeid_outbp == 9999 {
                         break;
                     }
 
-                    // 如果binpack内平均资源利用率小于50%，则逐出数组中资源利用率最低的元素，但是至少要有一个节点
-                    if bplist_status.avg_mem_use_rate < 0.5 && bplist_status.max_idle_nodeid_inbp != 9999 && binpack.len() > 1{
-
-                        // 预计逐出后的平均资源利用率
-                        let mut new_mem_util = 0.0;
-                        let mut new_cpu_util = 0.0;
-                        for nodeid in binpack.iter() {
-                            if *nodeid != bplist_status.max_idle_nodeid_inbp {
-                                let node_resc_state = self.nodes_resc_state.get(&nodeid).unwrap();
-                                new_mem_util += node_resc_state.mem_used / node_resc_state.mem_limit;
-                                new_cpu_util += env.node(*nodeid).container(func.fn_id).unwrap().borrow().cpu_use_rate();
-                            }
-                        }
-                        // 计算逐出后的平均利用率
-                        new_mem_util /= (binpack.len() - 1) as f32;
-                        new_cpu_util /= (binpack.len() - 1) as f32;
-
-                        // 确保逐出后平均利用率依然在阈值之内
-                        if new_mem_util < 0.8 && new_cpu_util < 0.9 {
-                            binpack.remove(&bplist_status.max_idle_nodeid_inbp); 
-                        }
-
+                    // 如果binpack内平均cpu饥饿程度小于0.5，则逐出数组中饥饿程度最高的节点
+                    if bplist_resource_status.avg_cpu_starve_degree < CPU_THRESHOLD_TO_REMOVE && bplist_resource_status.expel_nodeid_inbp != 9999 {
+                        // log::info!("fnid:{}, avg_cpu_starve_degree:{}, expel_nodeid_inbp:{}", func.fn_id, bplist_resource_status.avg_cpu_starve_degree, bplist_resource_status.expel_nodeid_inbp);
+                        self.update_bplist(func.fn_id, bplist_resource_status.expel_nodeid_inbp, "remove", env);
+                        // log::info!("fnid:{}, 节点{}被逐出binpack, 剩余binpack_len:{}", func.fn_id, bplist_resource_status.expel_nodeid_inbp, self.binpack_map.get(&func.fn_id).unwrap().len());
+                        break;
                     }
-                    // 如果binpack内平均资源利用率大于80%，则将含有该函数对应容器快照的目前空余资源量最多的节点加入该binpack数组
-                    else if (bplist_status.avg_mem_use_rate > 0.8 || bplist_status.avg_cpu_use_rate > 0.9) && bplist_status.max_idle_nodeid_unbp != 9999 {
-                        binpack.insert(bplist_status.max_idle_nodeid_unbp);
+                    // 如果binpack内平均mem利用率大于80%或平均饥饿程度大于0.9，则将bp数组外资源得分最高的节点加入该binpack数组
+                    else if (bplist_resource_status.avg_mem_use_rate > MEM_THRESHOLD_TO_ADD || bplist_resource_status.avg_cpu_starve_degree > CPU_THRESHOLD_TO_ADD) && bplist_resource_status.join_nodeid_outbp != 9999 {
+                        self.update_bplist(func.fn_id, bplist_resource_status.join_nodeid_outbp, "add", env);
                     }
+
+                    // log::info!("bplist长度:{}, nodes长度:{}", self.binpack_map.get(&func.fn_id).unwrap().len(), self.latest_nodes.get(&func.fn_id).unwrap().len());
 
                     // 再次计算
-                    bplist_status = self.get_bplist_status(func.fn_id, env);
+                    bplist_resource_status = self.get_bplist_node_status(func.fn_id, env);
                 }
                 
                 // 为了防止借用冲突
-                let binpack = self.fn_binpack_map.get_mut(&func.fn_id).unwrap(); 
+                let binpack = self.binpack_map.get(&func.fn_id).unwrap();
 
-                log::info!("fnid:{}, binpack_len:{}, latest_nodes_len:{}", func.fn_id, binpack.len(), self.fn_latest_nodes.get(&func.fn_id).unwrap().len());
+                log::info!("fnid:{}, binpack_len:{}, latest_nodes_len:{}", func.fn_id, binpack.len(), self.latest_nodes.get(&func.fn_id).unwrap().len());
 
             }
-            // 如果函数没有binpack数组，则初始化，把该函数的所有可执行节点加入该数组
-            else{
-                // 更新最新节点集合
-                self.fn_latest_nodes.insert(func.fn_id, nodes.clone());
-                self.fn_binpack_map.insert(func.fn_id, nodes.clone());
-            }
+
+            // 每20帧，等待100ms。看长度情况
             
-            // self.fn_latest_nodes.insert(func.fn_id, nodes.clone());
-            // self.fn_binpack_map.insert(func.fn_id, nodes.clone());
-
-            // // 每20帧，等待100ms。看长度情况
-            // if *env.core.current_frame() % 10 == 0 {
-            //     let a_millis = 50;
-            //     let wait_duration = Duration::from_millis(a_millis);
-            //     // 让当前线程暂停指定的持续时间
-            //     thread::sleep(wait_duration);
-            // }
+            // 每帧要更新一次 container_cpu_status_bp
         }
 
         // 遍历调度每个请求
         for (_req_id, req) in env.core().requests_mut().iter_mut() {
-            self.schedule_one_req_fns(env, req, cmd_distributor);
+            self.schedule_one_req_fns(env, mech, req, cmd_distributor);
         }
 
-        // (up_cmds, sche_cmds, down_cmds)
     }
 }
+

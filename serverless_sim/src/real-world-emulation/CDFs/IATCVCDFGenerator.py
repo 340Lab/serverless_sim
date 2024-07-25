@@ -12,6 +12,7 @@
 # We don't include Azure's dataset in our repo, so the file is just for reference 
 # The dataset is open-source at https://github.com/Azure/AzurePublicDataset
 
+import os
 import numpy as np
 
 '''
@@ -40,9 +41,10 @@ def getAppIATCV(filename):
     CVs = []
     for invokeSeries in appInvokesDict.values():
         IATSeries = getIATSeriesFromInvokeSeries(invokeSeries)
+        IATSeries_inv = list(map(lambda x: 1/x, IATSeries))
         if IATSeries == []:
             continue
-        CVs.append(np.std(IATSeries) / np.mean(IATSeries))
+        CVs.append(np.std(IATSeries_inv) / np.mean(IATSeries_inv))
 
     return CVs
 

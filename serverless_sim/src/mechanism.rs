@@ -78,7 +78,7 @@ impl<S: SameTarget> CheckDup for Vec<S> {
     }
 }
 
-pub const SCHE_NAMES: [&'static str; 10] = [
+pub const SCHE_NAMES: [&'static str; 12] = [
     "rotate",
     "hash",
     "bp_balance",
@@ -89,16 +89,19 @@ pub const SCHE_NAMES: [&'static str; 10] = [
     "random",
     "greedy",
     "consistenthash", // "gofs",
+    "ensure_scheduler",
+    "load_least",
     // "load_least",
     // "random",
 ];
-pub const SCALE_NUM_NAMES: [&'static str; 6] = [
+pub const SCALE_NUM_NAMES: [&'static str; 7] = [
     "no",
     "hpa",
     "lass",
     "temp_scaler",
     "full_placement",
     "rela",
+    "ensure_scaler",
 ];
 pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
 pub const SCALE_UP_EXEC_NAMES: [&'static str; 2] = ["least_task", "no"];
@@ -181,7 +184,8 @@ impl ConfigNewMec for Config {
                     "greedy",
                     "consistenthash",
                     "hash",
-                    "rotate"
+                    "rotate",
+                    "load_least",
                 ];
                 let allow_scale_num = vec!["no"];
                 let allow_scale_down_exec = vec!["default"];
@@ -200,7 +204,7 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_separated" => {
-                let allow_sche = vec!["random", "greedy", "hash", "rotate"];
+                let allow_sche = vec!["random", "greedy", "hash", "rotate","load_least","pass"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
@@ -218,8 +222,8 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos", "bp_balance", "hash", "rotate"];
-                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela"];
+                let allow_sche = vec!["pos", "bp_balance", "ensure_scheduler"];
+                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela", "ensure_scaler"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
                 if
@@ -437,11 +441,11 @@ impl MechanismImpl {
             // let cur = env.fn_container_cnt(func.fn_id);
             // let tar = self.scale_num(func.fn_id);
 
-            log::info!(
-                "scale fn{} cost {}",
-                func.fn_id,
-                util::now_ms() - *self.step_begin.borrow()
-            );
+            // log::info!(
+            //     "scale fn{} cost {}",
+            //     func.fn_id,
+            //     util::now_ms() - *self.step_begin.borrow()
+            // );
             // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);
             // 不进行扩缩容，在调度时候一起进行
             // log::info!("scale fn {} from {} to {}", func.fn_id, cur, tar);

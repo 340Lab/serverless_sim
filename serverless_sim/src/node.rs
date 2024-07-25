@@ -253,7 +253,7 @@ impl Node {
 
     pub fn try_load_container(&self, fnid: FnId, env: &SimEnv) {
         if self.container(fnid).is_some() {
-            log::info!("已经添加了{}", fnid);
+            // log::info!("已经添加了{}", fnid);
             return;
         }
 
@@ -263,9 +263,9 @@ impl Node {
                 fnid,
                 Box::new(move |to_replace| {
                     let node = node.as_ref();
-                    log::info!("节点{}要移除的容器{}", node.node_id, to_replace);
+                    // log::info!("节点{}要移除的容器{}", node.node_id, to_replace);
                     for (_k, v) in node.fn_containers.borrow().iter() {
-                        log::info!("{}", v.fn_id);
+                        // log::info!("{}", v.fn_id);
                     }
                     node.container(*to_replace).unwrap().is_idle()
                 }),

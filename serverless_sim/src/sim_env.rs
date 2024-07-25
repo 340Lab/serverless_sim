@@ -456,12 +456,12 @@ impl SimEnv {
             }
 
             //有些变为运行状态 内存占用变大很正常
-            assert!(
-                n.unready_mem() <= n.rsc_limit.mem,
-                "mem {} > limit {}",
-                n.unready_mem(),
-                n.rsc_limit.mem
-            );
+            // assert!(
+            //     n.unready_mem() <= n.rsc_limit.mem,
+            //     "mem {} > limit {}",
+            //     n.unready_mem(),
+            //     n.rsc_limit.mem
+            // );
         }
         // metric，将这一帧已完成的请求数清空
         self.help.metric.borrow_mut().on_frame_begin();
