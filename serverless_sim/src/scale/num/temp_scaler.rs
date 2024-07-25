@@ -291,6 +291,7 @@ impl ScaleNum for TempScaleNum {
 
             // 如果温度增量的绝对值大于温度变化感知阈值，则进行扩缩容决策
             if temp_change.abs() > threshold {
+                // MARK 该增率的计算方式与论文中所写的不一致，后续有时间应该进一步实验测试对比一下现计算方式和论文中所写计算方式的优劣
                 // 计算容器数量的增率
                 let container_inc_rate = temp_change.abs() / threshold;
 
@@ -319,6 +320,7 @@ impl ScaleNum for TempScaleNum {
 
                 // 决策扩容
                 if temp_change > 0.0 {
+                    // MARK 该增量的计算方式与论文中所写的不一致，后续有时间应该进一步实验测试对比一下现计算方式和论文中所写计算方式的优劣
                     // 根据温度增量计算容器数量的增量
                     let container_change = (
                         (fn_instance_cnt as f64) *
@@ -384,9 +386,23 @@ impl ScaleNum for TempScaleNum {
         }
         // ----------------------------------------------------------------------------------------
 
-        // 每个函数至少要有一个容器
-        if desired_container_cnt == 0 {
+        // 先取出该函数的最后一次的调用时间
+        let mut last_call_frame = 0;
+        match self.fn_call_history.get(&fnid).unwrap().borrow().back() {
+            Some(last_call)=>{
+                last_call_frame = last_call.frame;
+            },
+            None=>{
+            }
+        }
+
+        // 对于容器数量为0的函数，如果最后一次调用距离现在的长度小于历史调用窗口长度，则变为一个容器
+        if desired_container_cnt == 0 && last_call_frame + self.call_history_window_len >= current_frame {
             desired_container_cnt = 1;
+        }
+        // 对于容器数量是1的函数，如果最后一次调用距离现在的长度大于历史调用窗口长度，则缩容为0个容器
+        else if desired_container_cnt == 1 && last_call_frame + self.call_history_window_len < current_frame {
+            desired_container_cnt = 0;
         }
 
         // log::info!("函数:{}, 在第{}帧的目标容器数量为：{}.scale_for_fn()结束", fnid, current_frame, desired_container_cnt);

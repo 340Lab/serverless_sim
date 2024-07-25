@@ -37,8 +37,8 @@ extern crate lazy_static;
 
 #[tokio::main]
 async fn main() {
-    let keyword: Vec<&'static str> = //vec![];
-        vec!["::sche", "::mechanism ", "::scale"]; // no algo log
+    let keyword: Vec<&'static str> = vec![];
+        // vec!["::sche", "::mechanism ", "::scale"]; // no algo log
     Builder::new()
         .filter(None, LevelFilter::Info)
         .format(move |buf, record| {

@@ -13,6 +13,8 @@ use self::{
     random::RandomScheduler,
     hash::HashScheduler,
     rotate::RotateScheduler,
+    ensure_scheduler::EnsureScheduler,
+    load_least::LoadLeastScheduler,
 };
 
 pub mod consistenthash;
@@ -25,6 +27,8 @@ pub mod random;
 pub mod bp_balance;
 pub mod hash;
 pub mod rotate;
+pub mod ensure_scheduler;
+pub mod load_least;
 
 // pub mod rule_based;
 // pub mod time_aware;
@@ -65,6 +69,12 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "rotate" => {
             return Some(Box::new(RotateScheduler::new()));
+        }
+        "ensure_scheduler"=>{
+            return Some(Box::new(EnsureScheduler::new()));
+        }
+        "load_least" => {
+            return Some(Box::new(LoadLeastScheduler::new()));
         }
         _ => {
             return None;

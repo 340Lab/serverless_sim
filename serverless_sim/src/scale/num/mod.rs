@@ -6,6 +6,7 @@ pub mod no;
 pub mod temp_scaler;
 pub mod full_placement;
 pub mod rela;
+pub mod ensure_scaler;
 
 use crate::{
     actions::ESActionWrapper,
@@ -22,6 +23,7 @@ use self::{
     temp_scaler::TempScaleNum,
     full_placement::FpScaleNum,
     rela::RelaScaleNum,
+    ensure_scaler::EnsureScaleNum,
 };
 
 pub trait ScaleNum: Send {
@@ -57,6 +59,9 @@ pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
         }
         "rela" => {
             return Some(Box::new(RelaScaleNum::new()));
+        }
+        "ensure_scaler" => {
+            return Some(Box::new(EnsureScaleNum::new()));
         }
         _ => {
             return None;

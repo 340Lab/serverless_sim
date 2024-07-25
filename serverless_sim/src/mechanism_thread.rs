@@ -1,5 +1,6 @@
 use std::sync::mpsc;
 
+use enum_as_inner::EnumAsInner;
 #[cfg(target_os = "windows")]
 use thread_priority::{set_current_thread_priority, ThreadPriority, WinAPIThreadPriority};
 #[cfg(target_os = "windows")]
