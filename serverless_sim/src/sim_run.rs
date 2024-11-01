@@ -262,11 +262,9 @@ impl SimEnv {
 
         let nodes_cnt = self.nodes().len();
         for x in 0..nodes_cnt {
-            for y in 0..nodes_cnt {
-                if x > y {
-                    let connection_count = node2node_trans.len();
-                    self.node_set_connection_count_between(x, y, connection_count);
-                }
+            for y in 0..x {
+                let connection_count = node2node_trans.len();
+                self.node_set_connection_count_between(x, y, connection_count);
             }
         }
 
@@ -291,11 +289,9 @@ impl SimEnv {
         //     p.1.recv_paths=new_recv_paths;
         // }
         for x in 0..nodes_cnt {
-            for y in 0..nodes_cnt {
-                if x > y {
-                    // simu transfer between node x and y
-                    self.sim_transfer_btwn_nodes(x, y, &mut node2node_trans);
-                }
+            for y in 0..x {
+                // simu transfer between node x and y
+                self.sim_transfer_btwn_nodes(x, y, &mut node2node_trans);
             }
         }
     }

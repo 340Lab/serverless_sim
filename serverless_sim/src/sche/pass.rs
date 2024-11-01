@@ -197,17 +197,6 @@ impl PassScheduler {
     }
 }
 
-// 图形调度器中分组和调度算法的关键步骤如下所示。
-// 在初始化阶段，每个函数节点都作为单独的组进行初始化，并且工作节点是随机分配的（第1-2行）。
-// 首先，算法从拓扑排序和迭代开始。在每次迭代的开始，它将使用贪婪方法来定位DAG图中关键路径上具有最长边的两个函数，
-// 并确定这两个函数是否可以合并到同一组（第3-8行）。
-// 如果这两个函数被分配到不同的组中，它们将被合并（第9行）。
-// 在合并组时，需要考虑额外的因素。
-//  首先，算法需要确保合并的函数组不超过工作节点的最大容量（第10-12行）。
-//  否则，合并的组将无法部署在任何节点上。其次，组内局部化的数据总量不能违反内存约束（第13-18行）。
-//  同时，在合并的组中不能存在任何资源竞争的函数对𝑐𝑜𝑛𝑡 (𝐺) = {(𝑓𝑖, 𝑓𝑗 )}（第19-20行）。
-//  最后，调度算法将采用装箱策略，根据节点容量为每个函数组选择适当的工作节点（第21-23行）。
-// 根据上述逻辑，算法迭代直到收敛，表示函数组不再更新。
 impl Scheduler for PassScheduler {
     fn schedule_some(
         &mut self,
@@ -220,19 +209,5 @@ impl Scheduler for PassScheduler {
                 self.schedule_for_one_req(req, env, cmd_distributor);
             }
         }
-        // let mut to_scale_down = vec![];
-        // // 回收空闲container
-        // for n in env.nodes.borrow().iter() {
-        //     for (_, c) in n.fn_containers.iter() {
-        //         if c.recent_frame_is_idle(3) && c.req_fn_state.len() == 0 {
-        //             to_scale_down.push((n.node_id(), c.fn_id));
-        //         }
-        //     }
-        // }
-        // for (n, f) in to_scale_down {
-        //     env.scale_executor
-        //         .borrow_mut()
-        //         .scale_down(env, ScaleOption::ForSpecNodeFn(n, f));
-        // }
     }
 }

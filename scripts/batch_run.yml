@@ -1,4 +1,4 @@
-run_time: 4
+run_time: 10
 
 params:
   request_freq:
@@ -16,40 +16,42 @@ params:
 mech_scale_sche:
   scale_sche_joint:
     scale_num:
-    # - hpa:
+    - hpa:
     # - temp_scaler:
-    - ensure_scaler:
+    # - ensure_scaler:
     scale_down_exec:
     - default:
     scale_up_exec:
     - least_task:
     sche:
     # - bp_balance:
-    # - pos: greedy
-    - ensure_scheduler:
+    - pos: greedy
+    # - ensure_scheduler:
+    - priority: a
+    - priority: b
     filter:
     # - []
     - [{'careful_down':''}]
 
-  scale_sche_separated:
-    scale_num:
-    - temp_scaler:
-    - hpa:
-    - lass:
-    scale_down_exec:
-    - default:
-    scale_up_exec:
-    - least_task:
-    sche:
-    # - greedy:
-    # - hash:
-    # - random:
-    - load_least:
-    # - rotate:
-    - pass:
-    filter:
-    # - []
-    - [{'careful_down':''}]
+  # scale_sche_separated:
+  #   scale_num:
+  #   - temp_scaler:
+  #   - hpa:
+  #   - lass:
+  #   scale_down_exec:
+  #   - default:
+  #   scale_up_exec:
+  #   - least_task:
+  #   sche:
+  #   # - greedy:
+  #   # - hash:
+  #   # - random:
+  #   - load_least:
+  #   # - rotate:
+  #   - pass:
+  #   filter:
+  #   # - []
+  #   - [{'careful_down':''}]
     
   # no_scale:
   #   scale_num:

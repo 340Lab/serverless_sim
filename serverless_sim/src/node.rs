@@ -100,8 +100,8 @@ impl Node {
         Self {
             node_id,
             rsc_limit: NodeRscLimit {
-                // cpu: 1000.0,
-                cpu: 200.0,
+                cpu: 1000.0,
+                // cpu: 200.0,
                 mem: 8000.0,
             },
             fn_containers: HashMap::new().into(),
@@ -264,9 +264,9 @@ impl Node {
                 Box::new(move |to_replace| {
                     let node = node.as_ref();
                     // log::info!("节点{}要移除的容器{}", node.node_id, to_replace);
-                    for (_k, v) in node.fn_containers.borrow().iter() {
-                        // log::info!("{}", v.fn_id);
-                    }
+                    // for (_k, v) in node.fn_containers.borrow().iter() {
+                    //     log::info!("{}", v.fn_id);
+                    // }
                     node.container(*to_replace).unwrap().is_idle()
                 }),
             );

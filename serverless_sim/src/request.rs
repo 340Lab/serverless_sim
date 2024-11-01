@@ -359,13 +359,13 @@ impl SimEnv {
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().iter() {
                 if env.help.config().request_freq_low() {
-                    avg_frequency *= 0.1;
+                    avg_frequency *= 0.3;
                 }
                 else if env.help.config().request_freq_middle() {
-                    avg_frequency *= 0.2;
+                    avg_frequency *= 0.5;
                 }
                 else {
-                    avg_frequency *= 0.3;
+                    avg_frequency *= 0.7;
                 }
                 // avg_frequency *= 100.0;
                 // avg_frequency *= 10.0;
