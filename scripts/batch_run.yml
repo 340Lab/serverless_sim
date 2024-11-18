@@ -3,8 +3,8 @@ run_time: 10
 params:
   request_freq:
   - low:
-  - middle:
-  - high:
+  # - middle:
+  # - high:
   dag_type:
   # - single:
   # - mix:

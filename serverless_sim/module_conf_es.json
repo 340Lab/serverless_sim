@@ -1,46 +1,46 @@
 {
   "mech_type": {
-    "scale_sche_separated": null,
     "scale_sche_joint": null,
+    "scale_sche_separated": null,
     "no_scale": null
   },
   "scale_num": {
     "no": null,
-    "hpa": null,
-    "ensure_scaler": null,
-    "full_placement": null,
     "temp_scaler": null,
+    "lass": null,
+    "full_placement": null,
     "rela": null,
-    "lass": null
+    "hpa": null,
+    "ensure_scaler": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "no": null,
-    "least_task": null
+    "least_task": null,
+    "no": null
   },
   "sche": {
-    "rotate": null,
-    "pos": null,
-    "ensure_scheduler": null,
-    "random": null,
-    "load_least": null,
     "faasflow": null,
     "pass": null,
-    "priority": null,
-    "hash": null,
-    "consistenthash": null,
-    "fnsche": null,
+    "pos": null,
     "bp_balance": null,
-    "greedy": null
+    "random": null,
+    "ensure_scheduler": null,
+    "load_least": null,
+    "rotate": null,
+    "hash": null,
+    "greedy": null,
+    "priority": null,
+    "consistenthash": null,
+    "fnsche": null
   },
   "filter": {
     "careful_down": null
   },
   "instance_cache_policy": {
-    "no_evict": null,
     "fifo": null,
-    "lru": null
+    "lru": null,
+    "no_evict": null
   }
 }

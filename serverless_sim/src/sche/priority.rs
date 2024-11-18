@@ -1,5 +1,4 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
     cmp::Ordering,
     collections::{HashMap, HashSet},
 };
@@ -8,7 +7,14 @@ use daggy::Walker;
 use rand::Rng;
 
 use crate::{
-    fn_dag::{DagId, EnvFnExt, FnId}, mechanism::{MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{self, EnvNodeExt, NodeId}, request::Request, scale::num::no, sim_run::Scheduler, with_env_sub::{WithEnvCore, WithEnvHelp}
+    fn_dag::{DagId, EnvFnExt, FnId}, 
+    mechanism::{MechanismImpl, ScheCmd, SimEnvObserve}, 
+    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, 
+    node::{EnvNodeExt, NodeId}, 
+    request::Request, 
+    sim_run::{schedule_helper, Scheduler}, 
+    util, 
+    with_env_sub::{WithEnvCore, WithEnvHelp}
 };
 
 pub struct PriorityScheduler {
@@ -99,10 +105,16 @@ impl PriorityScheduler {
             // 记录逆拓扑排序，按此顺序给函数赋予优先级
             let mut stack = vec![];
 
+            // DAG中关键路径上的节点
+            let critical_path_nodes = util::graph::aoe_critical_path(&dag.dag_inner);
+
             // 拓扑排序
             while let Some(func_g_i) = walker.next(&dag.dag_inner) {
                 let fnid = dag.dag_inner[func_g_i];
                 let func = env.func(fnid);
+
+                // 是否为DAG中关键路径上的节点
+                let flag = critical_path_nodes.contains(&func_g_i);
 
                 let mut t_sum_exec = 0.0;
                 for node in env.nodes().iter() {
@@ -131,19 +143,24 @@ impl PriorityScheduler {
                 let t_avg_trans = t_sum_trans / self.node2node_all_bw.len() as f32;
 
                 // 函数内存占用
-                let t_mem_cost = func.mem as f32 * self.mem_cost_per_unit;
+                let mem_cost = func.mem as f32 * self.mem_cost_per_unit;
 
                 // log::info!(
-                //     "t_avg_exec{} t_avg_trans{} t_mem_cost{}",
+                //     "t_avg_exec{} t_avg_trans{} mem_cost{}",
                 //     t_avg_exec,
                 //     t_avg_trans,
-                //     t_mem_cost
+                //     mem_cost
                 // );
 
-                // 总开销，用于后续定义优先级
-                let total_cost = t_avg_exec + t_avg_trans - t_mem_cost;
+                // 函数初始优先级
+                let mut initial_priority = t_avg_exec + t_avg_trans - mem_cost;
 
-                map.insert(fnid, total_cost);
+                // 考虑关键路径对优先级的影响
+                if self.mode == "b" && flag {
+                    initial_priority += 1.0;
+                }
+
+                map.insert(fnid, initial_priority);
 
                 stack.push(func_g_i);
             }
@@ -168,13 +185,13 @@ impl PriorityScheduler {
                 }
             }
 
-            let mut prio_order = map.into_iter().collect::<Vec<_>>();
+            let mut priority_order = map.into_iter().collect::<Vec<_>>();
 
             // 降序排序，优先调度优先级高的函数
-            prio_order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or_else(|| Ordering::Equal));
+            priority_order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or_else(|| Ordering::Equal));
 
             // 记录当前dag中函数的优先级序列,避免重复计算
-            self.dag_fns_priority.insert(dag.dag_i, prio_order);
+            self.dag_fns_priority.insert(dag.dag_i, priority_order);
         }
     }
 
@@ -188,64 +205,37 @@ impl PriorityScheduler {
         // 计算请求对应的DAG中函数的优先级
         self.calculate_priority_for_dag_fns(req, env);
 
-        // 获取该请求中可以被调度的函数（即前驱已被调度的函数）以及含有该函数的容器的节点
-        let mut scheduleable_fns_nodes = HashMap::new();
-
-        let dag = env.dag(req.dag_i);
-
-        let mut walker = dag.new_dag_walker();
-
-        'next_fn: while let Some(func_g_i) = walker.next(&dag.dag_inner) {
-            let fnid = dag.dag_inner[func_g_i];
-
-            // 函数已被调度，跳过
-            if req.fn_node.contains_key(&fnid) {
-                continue;
-            }
-
-            // 函数的前驱尚未被调度，跳过
-            let predecessors = env.func(fnid).parent_fns(env);
-            for p in &predecessors {
-                if !req.fn_node.contains_key(p) {
-                    continue 'next_fn;
-                }
-            }
-
-            if scheduleable_fns_nodes.contains_key(&fnid) {
-                continue;
-            }
-
-            scheduleable_fns_nodes.insert(
-                fnid,
-                env.core()
-                    .fn_2_nodes()
-                    .get(&fnid)
-                    .map(|v| v.clone())
-                    .unwrap_or(HashSet::new()),
-            );
-        }
-
         let mech_metric = || env.help().mech_metric_mut();
 
         // 该请求对应的DAG中函数的优先级
         let dag_fns_priority = self.dag_fns_priority.get(&req.dag_i).unwrap();
 
-        // 本次可调度的函数按优先级排序
+        // 可调度的函数
+        let fns = schedule_helper::collect_task_to_sche(
+            req,
+            env,
+            schedule_helper::CollectTaskConfig::PreAllSched
+        );
+
+        // 可调度的函数及已经有其容器的节点
+        let mut scheduleable_fns_nodes = schedule_helper::collect_node_to_sche_task_to(&fns, env);
+
+        // 本次可调度的函数
         let scheduleable_fns = 
+        // // 不排序直接调度
         // if self.mode == "a" {
-        //     scheduleable_fns_nodes
-        //         .clone()
-        //         .into_keys()
-        //         .collect::<Vec<usize>>()
-        // } else 
+        //     fns
+        // } 
+        // // 根据优先级排序后调度
+        // else 
         {
-            let mut temp = Vec::new();
+            let mut sorted = Vec::new();
             for (fn_id, _) in dag_fns_priority {
-                if scheduleable_fns_nodes.contains_key(fn_id) {
-                    temp.push(*fn_id);
+                if fns.contains(fn_id) {
+                    sorted.push(*fn_id);
                 }
             }
-            temp
+            sorted
         };
 
         for fnid in scheduleable_fns {
@@ -270,22 +260,24 @@ impl PriorityScheduler {
                     .insert(cmd.nid);
             }
 
-            
-
-            // 函数的可调度节点 = 含有该函数的容器的节点
-            let scheduleable_nodes = scheduleable_fns_nodes.get(&fnid).unwrap();
-
-            let mut best_score = -10.0;
-            let mut best_node_id = 999;
-
-            let node_ids = 
+            // 可调度的节点
+            let scheduleable_nodes = 
+            // // 所有节点
             // if self.mode == "a" {
-                scheduleable_nodes.iter().cloned().collect::<Vec<usize>>();
-            // } else {
             //     env.nodes().iter().map(|node| node.node_id()).collect::<Vec<usize>>()
-            // };
+            // } 
+            // // 含有该函数的容器的节点
+            // else 
+            {
+                scheduleable_fns_nodes.get(&fnid).unwrap().iter().cloned().collect::<Vec<usize>>()
+            };
 
-            for node_id in node_ids {
+            // 最适合调度的节点
+            let mut best_node_id = 999;
+            // 最适合调度的节点的分数
+            let mut best_score = -10.0;
+
+            for node_id in scheduleable_nodes {
                 let node = env.node(node_id);
 
                 // 函数的前驱列表
@@ -300,7 +292,7 @@ impl PriorityScheduler {
                     // 前驱所在节点
                     let &pred_node_id = req.fn_node.get(&pred).unwrap();
 
-                    // 前驱没有调度到当前节点，计算数据传输时间
+                    // 与前驱不在同一节点，计算数据传输时间
                     if pred_node_id != node_id {
                         not_in_the_same_node += 1;
                         
@@ -319,31 +311,23 @@ impl PriorityScheduler {
 
                 let each_running_task_cpu = node_cpu_left / node_running_task_count as f32;
 
-                // 优先调度到任务总数少, 无需数据传输(即与前驱部署到同一节点)
+                // 节点分数
                 let score_this_node = 
-                if self.mode == "a" {
+                // 不考虑节点剩余资源量
+                // if self.mode == "a" {
+                //     1.0 / (node_all_task_count as f32 + 1.0)
+                //     // + node_cpu_left / node.rsc_limit.cpu
+                //     // + node_mem_left / node.rsc_limit.mem
+                //     - transimission_time                                                                                             
+                // } 
+                // // 考虑节点剩余资源量
+                // else 
+                {
                     1.0 / (node_all_task_count as f32 + 1.0)
-                    // + 1.0 / (not_in_the_same_node as f32 + 1.0)
-                    - transimission_time                                                                                             
-                    // + func.cpu / each_running_task_cpu as f32
-                    // + node_cpu_left / node.rsc_limit.cpu
-                    // + node_mem_left / node.rsc_limit.mem
-                } else {
-                    1.0 / (node_all_task_count as f32 + 1.0)
-                    // + 1.0 / (not_in_the_same_node as f32 + 1.0)
-                    - transimission_time
-                    // + func.cpu / each_running_task_cpu as f32
                     + node_cpu_left / node.rsc_limit.cpu
                     + node_mem_left / node.rsc_limit.mem
+                    - transimission_time
                 };
-                //  else {
-                //     1.0 / (node_all_task_count as f32 + 1.0)
-                //     // + 1.0 / (not_in_the_same_node as f32 + 1.0)
-                //     // - transimission_time
-                //     // + func.cpu / each_running_task_cpu as f32
-                //     + node_cpu_left / node.rsc_limit.cpu
-                //     + node_mem_left / node.rsc_limit.mem
-                // };
 
                 // log::info!("score_this_node {}", score_this_node);
                 // log::info!("best_score {}", best_score);

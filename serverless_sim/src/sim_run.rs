@@ -22,10 +22,14 @@ pub trait Scheduler: Send {
 }
 
 pub mod schedule_helper {
+    use std::collections::{HashMap, HashSet};
+
     use crate::{
         fn_dag::{EnvFnExt, FnId},
         mechanism::SimEnvObserve,
+        node::NodeId,
         request::Request,
+        with_env_sub::WithEnvCore,
     };
     pub enum CollectTaskConfig {
         All,
@@ -79,6 +83,24 @@ pub mod schedule_helper {
             }
         }
         collect
+    }
+
+    pub fn collect_node_to_sche_task_to(
+        scheduleable_fns: &Vec<FnId>,
+        env: &SimEnvObserve,
+    ) -> HashMap<FnId, HashSet<NodeId>> {
+        let mut scheduleable_fns_nodes = HashMap::new();
+        for fnid in scheduleable_fns {
+            scheduleable_fns_nodes.insert(
+                *fnid,
+                env.core()
+                    .fn_2_nodes()
+                    .get(&fnid)
+                    .map(|v| v.clone())
+                    .unwrap_or(HashSet::new()),
+            );
+        }
+        scheduleable_fns_nodes
     }
 }
 
