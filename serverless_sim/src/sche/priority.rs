@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
 };
 
 use daggy::Walker;
@@ -10,8 +10,7 @@ use crate::{
     fn_dag::{DagId, EnvFnExt, FnId}, 
     mechanism::{MechanismImpl, ScheCmd, SimEnvObserve}, 
     mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, 
-    node::{EnvNodeExt, NodeId}, 
-    request::Request, 
+    node::{EnvNodeExt, NodeId}, request::Request, 
     sim_run::{schedule_helper, Scheduler}, 
     util, 
     with_env_sub::{WithEnvCore, WithEnvHelp}
@@ -108,6 +107,9 @@ impl PriorityScheduler {
             // DAG中关键路径上的节点
             let critical_path_nodes = util::graph::aoe_critical_path(&dag.dag_inner);
 
+            let m = self.node2node_all_bw.len();
+            let n = env.nodes().len();
+
             // 拓扑排序
             while let Some(func_g_i) = walker.next(&dag.dag_inner) {
                 let fnid = dag.dag_inner[func_g_i];
@@ -118,29 +120,21 @@ impl PriorityScheduler {
 
                 let mut t_sum_exec = 0.0;
                 for node in env.nodes().iter() {
-                    let node_cpu_left = self.node_resource_left.get(&node.node_id()).unwrap().0;
-                    t_sum_exec += 
-                    // if self.mode == "a" {
-                    //     func.cpu / node_cpu_left
-                    // } else 
-                    {
-                        let node_running_task_count =
+                    let node_running_task_count =
                             self.node_task_count.get(&node.node_id()).unwrap().1;
 
-                        let each_running_task_cpu = node_cpu_left / node_running_task_count as f32;
-
-                        func.cpu / each_running_task_cpu
-                    };
+                    let each_running_task_cpu = node.rsc_limit.cpu / node_running_task_count as f32;
+                    t_sum_exec += func.cpu / each_running_task_cpu
                 }
                 // 函数平均执行时间
-                let t_avg_exec = t_sum_exec / self.node_resource_left.len() as f32;
+                let t_avg_exec = t_sum_exec / n as f32;
 
                 let mut t_sum_trans = 0.0;
                 for bw in &self.node2node_all_bw {
                     t_sum_trans += func.out_put_size / bw * 5.0;
                 }
                 // 平均数据传输时间
-                let t_avg_trans = t_sum_trans / self.node2node_all_bw.len() as f32;
+                let t_avg_trans = t_sum_trans / m as f32;
 
                 // 函数内存占用
                 let mem_cost = func.mem as f32 * self.mem_cost_per_unit;
@@ -303,13 +297,9 @@ impl PriorityScheduler {
 
                 let node_all_task_count = self.node_task_count.get(&node_id).unwrap().0;
 
-                let node_running_task_count = self.node_task_count.get(&node_id).unwrap().1;
-
                 let node_cpu_left = self.node_resource_left.get(&node_id).unwrap().0;
 
                 let node_mem_left = self.node_resource_left.get(&node_id).unwrap().1;
-
-                let each_running_task_cpu = node_cpu_left / node_running_task_count as f32;
 
                 // 节点分数
                 let score_this_node = 

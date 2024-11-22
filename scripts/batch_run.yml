@@ -1,4 +1,4 @@
-run_time: 10
+run_time: 3
 
 params:
   request_freq:
@@ -25,9 +25,10 @@ mech_scale_sche:
     - least_task:
     sche:
     # - bp_balance:
-    - pos: greedy
+    # - pos: greedy
     # - ensure_scheduler:
     - priority: a
+    - heft: 
     - priority: b
     filter:
     # - []

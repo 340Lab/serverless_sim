@@ -15,7 +15,8 @@ use self::{
     rotate::RotateScheduler,
     ensure_scheduler::EnsureScheduler,
     load_least::LoadLeastScheduler,
-    priority::PriorityScheduler
+    priority::PriorityScheduler,
+    heft::HEFTScheduler
 };
 
 pub mod consistenthash;
@@ -31,6 +32,7 @@ pub mod rotate;
 pub mod ensure_scheduler;
 pub mod load_least;
 pub mod priority;
+pub mod heft;
 
 
 // pub mod rule_based;
@@ -81,6 +83,9 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "priority" => {
             return Some(Box::new(PriorityScheduler::new(&sche_attr)));
+        }
+        "heft" => {
+            return Some(Box::new(HEFTScheduler::new()));
         }
         _ => {
             return None;
