@@ -126,25 +126,26 @@ impl HEFTScheduler {
 
         let dag_fns_priority = self.dag_fns_priority.get(&req.dag_i).unwrap();
 
-        let fns = schedule_helper::collect_task_to_sche(
+        let scheduleable_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
             schedule_helper::CollectTaskConfig::All,
         );
 
-        let scheduleable_fns = {
+        // 可调度的而函数按优先级排序
+        let sorted_scheduleable_fns = {
             let mut sorted = Vec::new();
             for (fn_id, _) in dag_fns_priority {
-                if fns.contains(fn_id) {
+                if scheduleable_fns.contains(fn_id) {
                     sorted.push(*fn_id);
                 }
             }
             sorted
         };
 
-        let mut scheduleable_fns_nodes = schedule_helper::collect_node_to_sche_task_to(&fns, env);
+        let mut scheduleable_fns_nodes = schedule_helper::collect_node_to_sche_task_to(&sorted_scheduleable_fns, env);
 
-        for fnid in scheduleable_fns {
+        for fnid in sorted_scheduleable_fns {
             let func = env.func(fnid);
 
             let mut target_cnt = mech.scale_num(fnid);

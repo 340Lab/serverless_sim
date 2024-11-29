@@ -204,18 +204,18 @@ impl PriorityScheduler {
         // 该请求对应的DAG中函数的优先级
         let dag_fns_priority = self.dag_fns_priority.get(&req.dag_i).unwrap();
 
-        // 可调度的函数
-        let fns = schedule_helper::collect_task_to_sche(
+        // 可调度的函数（选择节点时需要考虑函数间的数据传输时间，所以每次可调度的函数是前驱函数已经完成调度的）
+        let scheduleable_fns = schedule_helper::collect_task_to_sche(
             req,
             env,
             schedule_helper::CollectTaskConfig::PreAllSched
         );
 
         // 可调度的函数及已经有其容器的节点
-        let mut scheduleable_fns_nodes = schedule_helper::collect_node_to_sche_task_to(&fns, env);
+        let mut scheduleable_fns_nodes = schedule_helper::collect_node_to_sche_task_to(&scheduleable_fns, env);
 
         // 本次可调度的函数
-        let scheduleable_fns = 
+        let sorted_scheduleable_fns = 
         // // 不排序直接调度
         // if self.mode == "a" {
         //     fns
@@ -225,14 +225,14 @@ impl PriorityScheduler {
         {
             let mut sorted = Vec::new();
             for (fn_id, _) in dag_fns_priority {
-                if fns.contains(fn_id) {
+                if scheduleable_fns.contains(fn_id) {
                     sorted.push(*fn_id);
                 }
             }
             sorted
         };
 
-        for fnid in scheduleable_fns {
+        for fnid in sorted_scheduleable_fns {
             let func = env.func(fnid);
 
             // scale_sche_joint在调度前已经更新了函数所需容器的数量，获取
