@@ -22,10 +22,14 @@ pub trait Scheduler: Send {
 }
 
 pub mod schedule_helper {
+    use std::collections::{HashMap, HashSet};
+
     use crate::{
         fn_dag::{EnvFnExt, FnId},
         mechanism::SimEnvObserve,
+        node::NodeId,
         request::Request,
+        with_env_sub::WithEnvCore,
     };
     pub enum CollectTaskConfig {
         All,
@@ -79,6 +83,24 @@ pub mod schedule_helper {
             }
         }
         collect
+    }
+
+    pub fn collect_node_to_sche_task_to(
+        scheduleable_fns: &Vec<FnId>,
+        env: &SimEnvObserve,
+    ) -> HashMap<FnId, HashSet<NodeId>> {
+        let mut scheduleable_fns_nodes = HashMap::new();
+        for fnid in scheduleable_fns {
+            scheduleable_fns_nodes.insert(
+                *fnid,
+                env.core()
+                    .fn_2_nodes()
+                    .get(&fnid)
+                    .map(|v| v.clone())
+                    .unwrap_or(HashSet::new()),
+            );
+        }
+        scheduleable_fns_nodes
     }
 }
 
@@ -262,11 +284,9 @@ impl SimEnv {
 
         let nodes_cnt = self.nodes().len();
         for x in 0..nodes_cnt {
-            for y in 0..nodes_cnt {
-                if x > y {
-                    let connection_count = node2node_trans.len();
-                    self.node_set_connection_count_between(x, y, connection_count);
-                }
+            for y in 0..x {
+                let connection_count = node2node_trans.len();
+                self.node_set_connection_count_between(x, y, connection_count);
             }
         }
 
@@ -291,11 +311,9 @@ impl SimEnv {
         //     p.1.recv_paths=new_recv_paths;
         // }
         for x in 0..nodes_cnt {
-            for y in 0..nodes_cnt {
-                if x > y {
-                    // simu transfer between node x and y
-                    self.sim_transfer_btwn_nodes(x, y, &mut node2node_trans);
-                }
+            for y in 0..x {
+                // simu transfer between node x and y
+                self.sim_transfer_btwn_nodes(x, y, &mut node2node_trans);
             }
         }
     }

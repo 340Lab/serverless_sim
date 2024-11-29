@@ -78,7 +78,7 @@ impl<S: SameTarget> CheckDup for Vec<S> {
     }
 }
 
-pub const SCHE_NAMES: [&'static str; 12] = [
+pub const SCHE_NAMES: [&'static str; 14] = [
     "rotate",
     "hash",
     "bp_balance",
@@ -91,6 +91,8 @@ pub const SCHE_NAMES: [&'static str; 12] = [
     "consistenthash", // "gofs",
     "ensure_scheduler",
     "load_least",
+    "priority",
+    "heft"
     // "load_least",
     // "random",
 ];
@@ -222,7 +224,7 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_joint" => {
-                let allow_sche = vec!["pos", "bp_balance", "ensure_scheduler"];
+                let allow_sche = vec!["pos", "bp_balance", "ensure_scheduler", "priority", "heft"];
                 let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela", "ensure_scaler"];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
