@@ -8,6 +8,7 @@ use std::collections::{ HashMap, VecDeque };
 use crate::fn_dag::EnvFnExt;
 use crate::mechanism::SimEnvObserve;
 use crate::node::EnvNodeExt;
+use crate::sim_run::schedule_helper;
 use crate::with_env_sub::{ WithEnvCore };
 use crate::{ actions::ESActionWrapper, fn_dag::FnId, CONTAINER_BASIC_MEM };
 
@@ -199,15 +200,29 @@ impl ScaleNum for TempScaleNum {
         let requests = env.core().requests();
 
         // 遍历所有请求，只看当前帧到达的请求
-        for (_, req) in requests.iter().filter(|(_, req)| req.begin_frame == current_frame) {
-            // 拿到该请求对应的DAG
-            let mut walker = env.dag(req.dag_i).new_dag_walker();
-            // 遍历DAG里面的所有图节点
-            while let Some(fngid) = walker.next(&env.dag(req.dag_i).dag_inner) {
-                // 得到该图节点对应的函数
-                let fnid_in_dag = env.dag_inner(req.dag_i)[fngid];
-                // 累加当前函数到达的次数
-                if fnid_in_dag == fnid {
+        for (_, req) in requests.iter(){
+        // for (_, req) in requests.iter().filter(|(_, req)| req.begin_frame == current_frame) {
+            // // 拿到该请求对应的DAG
+            // let mut walker = env.dag(req.dag_i).new_dag_walker();
+            // // 遍历DAG里面的所有图节点
+            // while let Some(fngid) = walker.next(&env.dag(req.dag_i).dag_inner) {
+            //     // 得到该图节点对应的函数
+            //     let fnid_in_dag = env.dag_inner(req.dag_i)[fngid];
+            //     // 累加当前函数到达的次数
+            //     if fnid_in_dag == fnid {
+            //         fn_count += 1;
+            //     }
+            // }
+
+            // 收集该请求中所有可以执行的函数
+            let schedule_able_fns = schedule_helper::collect_task_to_sche(
+                req,
+                env,
+                schedule_helper::CollectTaskConfig::PreAllDone,
+            );
+
+            for fnid_in_req in schedule_able_fns {
+                if fnid_in_req == fnid {
                     fn_count += 1;
                 }
             }
@@ -293,7 +308,8 @@ impl ScaleNum for TempScaleNum {
             if temp_change.abs() > threshold {
                 // MARK 该增率的计算方式与论文中所写的不一致，后续有时间应该进一步实验测试对比一下现计算方式和论文中所写计算方式的优劣
                 // 计算容器数量的增率
-                let container_inc_rate = temp_change.abs() / threshold;
+                // let container_inc_rate = temp_change.abs() / threshold;
+                let container_inc_rate = temp_change.abs() / temp_history_mean;
 
                 // 统计目前已有的函数实例数量
                 let mut fn_instance_cnt = 0;
@@ -322,10 +338,11 @@ impl ScaleNum for TempScaleNum {
                 if temp_change > 0.0 {
                     // MARK 该增量的计算方式与论文中所写的不一致，后续有时间应该进一步实验测试对比一下现计算方式和论文中所写计算方式的优劣
                     // 根据温度增量计算容器数量的增量
-                    let container_change = (
-                        (fn_instance_cnt as f64) *
-                        (container_inc_rate - 1.0)
-                    ).ceil() as i32;
+                    // let container_change = (
+                    //     (fn_instance_cnt as f64) *
+                    //     (container_inc_rate - 1.0)
+                    // ).ceil() as i32;
+                    let container_change = ((fn_instance_cnt as f64) * container_inc_rate).ceil() as i32;
 
                     // 如果所需要的实例数量大于空闲的实例数量，则进行扩容
                     if container_change >= idle_fn_instance_cnt {
@@ -362,7 +379,8 @@ impl ScaleNum for TempScaleNum {
 
         // 设置机制来处理 温度感知器没反应，但是函数在持续缓慢升温/降温的情况-----------------------------------------------------
         // 获取当前函数的所有容器，计算平均cpu、mem利用率
-        if !scale_sign && cur_container_cnt != 0 {
+        // MARK 修改一处，增加  && fn_count > 0
+        if !scale_sign && cur_container_cnt != 0 && fn_count > 0{
             let mut container_avg_cpu_util = 0.0;
             let mut container_avg_mem_util = 0.0;
 
@@ -397,19 +415,15 @@ impl ScaleNum for TempScaleNum {
         }
 
         // 对于容器数量为0的函数，如果最后一次调用距离现在的长度小于历史调用窗口长度，则变为一个容器
-        if desired_container_cnt == 0 && last_call_frame + self.call_history_window_len >= current_frame {
+        if fn_count > 0 && desired_container_cnt == 0 {
             desired_container_cnt = 1;
         }
         // 对于容器数量是1的函数，如果最后一次调用距离现在的长度大于历史调用窗口长度，则缩容为0个容器
-        else if desired_container_cnt == 1 && last_call_frame + self.call_history_window_len < current_frame {
+        else if desired_container_cnt == 1 && last_call_frame + self.call_history_window_len < 20 {
+            assert!(fn_count == 0);
             desired_container_cnt = 0;
         }
 
-        // log::info!("函数:{}, 在第{}帧的目标容器数量为：{}.scale_for_fn()结束", fnid, current_frame, desired_container_cnt);
-
-        // log::info!("扩缩容器决策升温 {} 次", self.decide_to_up_count);
-        // log::info!("扩缩容器决策降温 {} 次", self.decide_to_down_count);
-        // log::info!("mem决策升温 {} 次", self.mem_decide_to_up_count);
 
         desired_container_cnt
     }

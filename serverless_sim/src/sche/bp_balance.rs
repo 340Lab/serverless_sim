@@ -249,7 +249,7 @@ impl BpBalanceScheduler {
             }            
 
 
-            if self.binpack_map.get(&fnid).unwrap().len() == 0 {
+            if self.binpack_map.get(&fnid).unwrap().len() == 0 && fn_scale_up_cmds.len() != 0 {
                 panic!("fnid:{}, last_nodes_len:{}", fnid, self.latest_nodes.get(&fnid).unwrap().len());
             }
 
@@ -381,7 +381,7 @@ impl Scheduler for BpBalanceScheduler {
                 }
             }
             // 如果需要缩容
-            else if target < cur && (cur != 1 || !self.need_schedule_fn.contains(&func.fn_id)) {
+            else if target < cur && (cur > 1 || !self.need_schedule_fn.contains(&func.fn_id)) {
                 // 标记可以开始bp机制
                 if self.mech_impl_sign.get(&func.fn_id).unwrap() == &false {
                     log::info!("fn_id: {}, 在第 {} 帧触发机制", func.fn_id, env.core().current_frame());
@@ -440,14 +440,14 @@ impl Scheduler for BpBalanceScheduler {
                 let binpack = self.binpack_map.get(&func.fn_id).unwrap();
 
                 // 如果扩缩容器没有缩容，那么遍历每个容器，对binpack数组外的容器进行超时缩容------------------------------------------
-                if scale_down_sign == false {
+                if /* scale_down_sign == false */ true {
                     env.fn_containers_for_each(func.fn_id, |container| {
                     
                         // 对于不是binpack数组中的节点，进行超时缩容
                         if !binpack.contains(&container.node_id) {
                             
                             // 如果该容器最近50帧都是空闲则缩容
-                            if container.recent_frame_is_idle(50) && container.req_fn_state.len() == 0  {
+                            if container.recent_frame_is_idle(20) && container.req_fn_state.len() == 0  {
                                 
                                 // 发送缩容命令
                                 cmd_distributor

@@ -1,0 +1,95 @@
+# 如果需要一张图中画三种负载的实验结果，只需要改下面的 targets_alias 块的内容，
+# 与之前的一个负载单张图配置信息有所不同，注意自己看一下怎么写的 targets_alias 配置项
+
+avg_cnt: 1
+
+## filter with fixed value
+filter: 
+#   dag_type: single
+  cold_start: high
+#   fn_type: cpu
+#   scale_down_exec: default.
+#   # request_freq: low
+
+## each group bars
+targets_alias:
+# 整体方案绘图表
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'Ours']
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'ensure_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'ensure_scheduler.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'ENSURE']
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'faasflow.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'faasflow']
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'lass.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'LaSS+LoadLeast']
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+LoadLeast']
+- [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'pass.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+PASS']
+
+
+# 扩缩容消融实验绘图表------LoadLeast
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPTD+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'ensure_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'ensure_scheduler.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'ENSURE']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'faasflow.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'faasflow']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'LaSS+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'lass.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+LoadLeast']
+
+# 扩缩容消融实验绘图表------bp_balance
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPTD+DLO']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'ensure_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'ensure_scheduler.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'ENSURE']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'faasflow.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'faasflow']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'lass.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'LaSS+DLO']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+DLO']
+
+
+# # 调度消融实验------
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+DLO']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'pass.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+PASS']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'HPA+RoundRobin']
+
+
+# 蚂蚁实验---100 dag
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'bp_balance.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'temp+bp']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'pos.greedy', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'temp+pos']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'hash']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'load_least']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'rotate']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+hash']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'dag', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+rotate']
+
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'pos.greedy', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'temp+pos']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'hash']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'load_least']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'rotate']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+hash']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'mix', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+rotate']
+
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'temp_scaler.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'pos.greedy', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'ours']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'hash']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'load_least']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'no.', 'scale_down_exec': 'default.', 'scale_up_exec': 'no.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '', 'no_mech_latency': '1'}, 'rotate']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'hash.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+hash']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'load_least.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+LoadLeast']
+# - [{'rand_seed': '', 'dag_type': 'single', 'cold_start': 'high', 'fn_type': 'cpu', 'scale_num': 'hpa.', 'scale_down_exec': 'default.', 'scale_up_exec': 'least_task.', 'sche': 'rotate.', 'instance_cache_policy': 'no_evict.', 'filter': '(careful_down.)', 'no_mech_latency': '1'}, 'hpa+rotate']
+
+
+group on x axis:
+group: 
+  by: request_freq
+  types: [low,middle,high]
+  alias: 'Request Frequency'
+  type_alias: ['Low','Middle','High']
+
+# group: 
+#   by: cold_start
+#   types: [high]
+#   alias: ''
+#   type_alias: ['']
+
+## y axis
+values:
+# - {alias: Quality-Price Ratio, trans: '10/cost_per_req/time_per_req if cost_per_req>0 and time_per_req>0  else 0'}
+- {alias: Quality-Price Ratio, trans: '10 * rps/cost_per_req/time_per_req if cost_per_req>0 and time_per_req>0  else 0'}
+- {alias: Cost, trans: 100 * cost_per_req}
+- {alias: Latency(ms), trans: 'time_per_req'} # convert 10ms to ms
+# - {alias: Cold Start Latency(ms), trans: 'coldstart_time_per_req'} # convert 10ms to ms
+- {alias: Throuphput, trans: rps*1000}
+# - {alias: Avg Container Count, trans: fn_container_cnt}
