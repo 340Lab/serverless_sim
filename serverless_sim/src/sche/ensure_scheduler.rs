@@ -4,12 +4,7 @@ use std::{
 };
 
 use crate::{
-    fn_dag::{EnvFnExt, FnId},
-    mechanism::{DownCmd, MechType, MechanismImpl, ScheCmd, SimEnvObserve},
-    mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes},
-    node::{self, EnvNodeExt, Node, NodeId},
-    sim_run::{schedule_helper, Scheduler},
-    with_env_sub::WithEnvCore,
+    fn_dag::{EnvFnExt, FnId}, mechanism::{DownCmd, MechType, MechanismImpl, ScheCmd, SimEnvObserve}, mechanism_thread::{MechCmdDistributor, MechScheduleOnceRes}, node::{self, EnvNodeExt, Node, NodeId}, sche, sim_run::{schedule_helper, Scheduler}, with_env_sub::{WithEnvCore, WithEnvHelp}
 };
 
 struct NodeCpuResc {
@@ -88,7 +83,7 @@ impl Scheduler for EnsureScheduler {
             let schedule_able_fns = schedule_helper::collect_task_to_sche(
                 req,
                 env,
-                schedule_helper::CollectTaskConfig::PreAllSched,
+                schedule_helper::CollectTaskConfig::All,
             );
             for fnid in schedule_able_fns.iter() {
                 need_schedule_fn.insert(*fnid);
@@ -117,11 +112,23 @@ impl Scheduler for EnsureScheduler {
                     nodes.insert(cmd.nid);
                 }
             }
+            else if target == 0 && need_schedule_fn.contains(&func.fn_id) {
+                let up_cmd = mech.scale_up_exec().exec_scale_up(
+                    1,
+                    func.fn_id, env,
+                    cmd_distributor
+                );
+
+                // 实时更新函数的节点情况
+                for cmd in up_cmd.iter() {
+                    nodes.insert(cmd.nid);
+                }
+            }
 
             if !need_schedule_fn.contains(&func.fn_id) {
                 env.fn_containers_for_each(func.fn_id, |container| {
                     // 如果该容器最近50帧都是空闲则缩容
-                    if container.recent_frame_is_idle(50) && container.req_fn_state.len() == 0  {
+                    if container.recent_frame_is_idle(20) && container.req_fn_state.len() == 0  {
                         // 发送缩容命令
                         cmd_distributor
                             .send(MechScheduleOnceRes::ScaleDownCmd(DownCmd 
@@ -136,7 +143,7 @@ impl Scheduler for EnsureScheduler {
                 });
             }
             
-            log::info!("fn {}, nodes.len() = {}", func.fn_id, nodes.len());
+            // log::info!("fn {}, nodes.len() = {}", func.fn_id, nodes.len());
             self.fn_nodes.insert(func.fn_id, nodes.clone());
         }
 
@@ -149,12 +156,18 @@ impl Scheduler for EnsureScheduler {
 
             //迭代请求中的函数，选择最合适的节点进行调度
             for fnid in fns {
-                let sche_nodeid = self.select_best_node_to_fn(fnid, env);
+                let nodes = self.fn_nodes.get(&fnid).unwrap();
 
-                log::info!("schedule fn {} to node {}", fnid, sche_nodeid);
+                let mut sche_nodeid = self.select_best_node_to_fn(fnid, env);
 
-                if sche_nodeid != 9999 {
-                    cmd_distributor
+                log::info!("schedule fn {} to node {}. nodes.len() = {}", fnid, sche_nodeid, nodes.len());
+
+                if sche_nodeid == 9999 {
+                    assert!(nodes.len() == 0);
+                    sche_nodeid = env.core().current_frame() % env.core().nodes().len();
+                }
+
+                cmd_distributor
                         .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
                             nid: sche_nodeid,
                             reqid: req.req_id,
@@ -162,8 +175,8 @@ impl Scheduler for EnsureScheduler {
                             memlimit: None,
                         }))
                         .unwrap();
-                    self.node_cpu_usage.get_mut(&sche_nodeid).unwrap().all_task_cnt += 1.0;
-                }
+                self.node_cpu_usage.get_mut(&sche_nodeid).unwrap().all_task_cnt += 1.0;
+
             }
 
         }

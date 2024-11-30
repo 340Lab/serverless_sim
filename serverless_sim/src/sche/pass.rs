@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use daggy::Walker;
 use rand::Rng;
@@ -90,19 +90,44 @@ impl PassScheduler {
         env: &SimEnvObserve,
     ) {
         let func = env.func(func_id);
+
+        // let mut nodes = HashSet::new();
+
         let nodes = env.core().nodes();
+        let nodes_sche = env
+                .core()
+                .fn_2_nodes()
+                .get(&func.fn_id)
+                .map(|v| v.clone().into_iter().collect())
+                .unwrap_or_else(Vec::new);
+
+        let mut nodes_len = 0;
+
+        if nodes_sche.len() == 0 {
+            nodes_len = nodes.len();
+        }
+        else {
+            nodes_len = nodes_sche.len();
+        }
 
         let func_pres_id = func.parent_fns(env);
         log::info!("func {} pres {:?}", func_id, func_pres_id);
 
         if func_pres_id.len() == 0 {
             let mut rng = rand::thread_rng();
-            let rand = rng.gen_range(0..nodes.len());
+            let rand = rng.gen_range(0..nodes_len);
+            let mut sche_nodeid = rand;
+
+            if nodes_sche.len() != 0 {
+                sche_nodeid = nodes_sche[rand];
+            }
+
+            // let rand = rng.gen_range(0..nodes.len());
             schedule_to_map.insert(func_id, rand);
             // schedule_to.push((func_id, rand));
             cmd_distributor
                 .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
-                    nid: rand,
+                    nid: sche_nodeid,
                     reqid: req.req_id,
                     fnid: func_id,
                     memlimit: None,
