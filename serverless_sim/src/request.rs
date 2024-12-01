@@ -5,7 +5,7 @@ use daggy::petgraph::visit::Topo;
 use rand_distr::{Distribution, Normal};
 
 use crate::{
-    fn_dag::{DagId, EnvFnExt, FnId},
+    fn_dag::{DagId, EnvFnExt, FnDAG, FnId},
     node::NodeId,
     sim_env::SimEnv,
     with_env_sub::WithEnvCore,
@@ -85,43 +85,143 @@ impl Request {
         let fnmetric = self.fn_metric.get(&f).unwrap();
         fnmetric.fn_done_time.unwrap() - fnmetric.ready_sche_time.unwrap()
     }
+    // fn print_dag_dependencies(dag: &FnDAG) {
+    //     println!("DAG Node Dependencies:");
+    //     for node_idx in dag.dag_inner.graph().node_indices() {
+    //         let fn_id = dag.dag_inner[node_idx];
+    //         println!("Node {:?} - FnId: {}", node_idx, fn_id);
+    
+    //         // 获取子节点
+    //         let children: Vec<_> = dag
+    //             .dag_inner
+    //             .graph()
+    //             .neighbors_directed(node_idx, petgraph::Direction::Outgoing)
+    //             .collect();
+    //         if !children.is_empty() {
+    //             println!("  Children: {:?}", children);
+    //         }
+    
+    //         // 获取父节点
+    //         let parents: Vec<_> = dag
+    //             .dag_inner
+    //             .graph()
+    //             .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+    //             .collect();
+    //         if !parents.is_empty() {
+    //             println!("  Parents: {:?}", parents);
+    //         }
+    //     }
+    // }
+    
     fn init_metrics(&mut self, env: &SimEnv) {
         // find the final node
         // // construct latency dag
         let dag = env.dag(self.dag_i);
-        let mut walker = dag.new_dag_walker();
+
+        // 打印 DAG 的依赖关系
+        //Self::print_dag_dependencies(&dag);
+
+        let mut walker = dag.new_dag_walker();   
         let mut endtime_fn = BTreeMap::new();
         while let Some(fngi) = walker.next(&dag.dag_inner) {
             let fnid = dag.dag_inner[fngi];
-            endtime_fn.insert(
-                self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
-                (
-                    self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
-                    fnid,
-                ),
-            );
+            // endtime_fn.insert(
+            //     self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
+            //     (
+            //         self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
+            //         fnid,
+            //     ),
+            // );
+            endtime_fn.entry(self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap())
+            .or_insert_with(Vec::new)
+            .push((self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(), fnid));
         }
-        // log::info!("endtime_fn: {:?}", endtime_fn);
-        let first = endtime_fn.iter().next().unwrap().1.clone().1;
-        let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
+
+        //println!("Endtime Fn: {:?}", endtime_fn);
+
+        // 遍历 DAG 中的所有节点，判断是否有前驱节点
+        let mut first = HashSet::new();
+        let mut walker = dag.new_dag_walker();
+
+        // 遍历所有节点
+        while let Some(node_idx) = walker.next(&dag.dag_inner) {
+            let fnid = dag.dag_inner[node_idx];  // 获取当前节点的 FnId
+
+            // 获取当前节点的父节点
+            let parents: Vec<_> = dag
+                .dag_inner
+                .graph()
+                .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+                .collect();
+
+            // 如果当前节点没有父节点，则说明它没有前驱任务
+            if parents.is_empty() {
+                first.insert(fnid.clone());  // 将其加入到没有前驱节点的集合中
+            }
+        }
+
+        // 打印没有前驱节点的任务
+        //println!("Tasks with no predecessors: {:?}", first);
+
+        let last_values = endtime_fn.iter().next_back().unwrap().1; 
+        // 取到 Vec 中的第一个一个元素
+        let last = last_values.first().unwrap();
+        let mut cur: (usize, FnId) = *last;
+
         let mut recur_path = vec![cur.1];
         loop {
-            if cur.1 == first {
-                break;
+            if first.contains(&cur.1) {
+                break;  // 如果当前节点在没有前驱函数的集合中，退出循环
             }
             // use cur fn's begin time to get prev fn's end time
-            let prev: (usize, FnId) = endtime_fn
+            let prev_vec = endtime_fn
                 .get(&cur.0)
                 .unwrap_or_else(|| {
                     panic!("can't find fn end at {}", cur.0);
                 })
                 .clone();
+
+            // 获取当前节点的父节点
+            let dag_parents: HashSet<FnId> = dag
+            .dag_inner
+            .graph()
+            .node_indices() 
+            .filter_map(|node_idx| {
+                let fnid_at_node = dag.dag_inner[node_idx]; 
+
+                // 如果当前节点的 FnId 与目标的 FnId 匹配，获取该节点的父节点
+                if fnid_at_node == cur.1 { // cur.1 是当前节点的 FnId
+                    Some(
+                        dag.dag_inner
+                            .graph()
+                            .neighbors_directed(node_idx, petgraph::Direction::Incoming) 
+                            .map(|parent_idx| dag.dag_inner[parent_idx]) 
+                            .collect::<HashSet<_>>(), 
+                    )
+                } else {
+                    None
+                }
+            })
+            .flatten() 
+            .collect::<HashSet<_>>(); // 将所有父节点合并成一个 HashSet
+
+            // 在 prev_vec 中找到一个属于父节点的前驱节点
+            let prev = prev_vec
+            .iter()
+            .find(|&(_, prev_fnid)| dag_parents.contains(prev_fnid)) // 过滤，找到一个父节点
+            .unwrap_or_else(|| panic!("No valid parent found in DAG for FnId: {}", cur.1));
+
             recur_path.push(prev.1);
-            if prev.1 == first {
-                break;
+        
+            if first.contains(&cur.1) {
+                break;  // 如果当前节点在没有前驱函数的集合中，退出循环
             }
-            cur = prev;
+            cur = *prev;
         }
+
+        // 打印递归路径
+        //println!("Recur path: {:?}", recur_path);
+        
         // let mut latency_dag: Dag<(FnId, bool), f32> = Dag::new();
         // {
         //     let mut latency_dag_map = HashMap::new();

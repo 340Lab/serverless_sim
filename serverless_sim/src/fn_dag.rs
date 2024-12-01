@@ -1,15 +1,10 @@
-use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque } };
+use std::{ cell::{ Ref, RefMut }, collections::{ HashMap, HashSet, VecDeque }, io };
 
 use daggy::{ petgraph::visit::{ Topo, Visitable }, Dag, NodeIndex, Walker };
 use enum_as_inner::EnumAsInner;
 
 use crate::{
-    config::APPConfig,
-    mechanism::SimEnvObserve,
-    node::{ EnvNodeExt, NodeId },
-    request::{ ReqId, Request },
-    sim_env::SimEnv,
-    CONTAINER_BASIC_MEM,
+    config::APPConfig, dag_parsers::csv_parser::parse_dag_csv, mechanism::SimEnvObserve, node::{ EnvNodeExt, NodeId }, request::{ ReqId, Request }, sim_env::SimEnv, CONTAINER_BASIC_MEM
 };
 
 pub type FnId = usize;
@@ -90,6 +85,63 @@ impl FnDAG {
     // pub fn begin_fn(&self) -> FnId {
     //     self.dag[self.begin_fn_g_i]
     // }
+
+    // 从 CSV 文件生成 DAG 的函数
+    pub fn dag_from_csv(dag_i: DagId, env: &SimEnv) -> FnDAG {
+        // 解析 CSV 文件获取任务数据
+        let tasks = parse_dag_csv().expect("Failed to parse CSV file");
+    
+        // 初始化一个空的 FnDAG
+        let mut dag = FnDAG {
+            dag_i,
+            begin_fn_g_i: NodeIndex::new(0), 
+            dag_inner: FnDagInner::new(),
+        };
+    
+        // 存储任务名到节点索引的映射
+        let mut task_nodes = HashMap::new();
+    
+        // 添加任务节点到 DAG 中
+        for task in &tasks {
+            let fn_id = env.fn_gen_rand_fn(); // 为任务生成唯一的 FnId
+            let task_node = dag.dag_inner.add_node(fn_id); // 将任务添加为节点
+            task_nodes.insert(task.task_id, task_node); // 存储节点索引
+            // 设置任务的 DAGId 和位置
+            env.func_mut(fn_id).setup_after_insert_into_dag(dag_i, task_node);
+
+            // if task.task_id == 1 {
+            //     dag.begin_fn_g_i = task_node;
+            // }
+        }
+
+        for task in &tasks {
+            if task.dependencies.is_empty() {
+                dag.begin_fn_g_i = *task_nodes
+                    .get(&task.task_id)
+                    .expect("Task node not found for dependency-free task");
+                break; // 找到一个即可退出
+            }
+        }
+    
+        // 建立节点之间的依赖关系
+        for task in &tasks {
+            let task_node = task_nodes.get(&task.task_id).expect("Task node not found");
+    
+            for dependency_id in &task.dependencies {
+                if let Some(dep_node) = task_nodes.get(dependency_id) {
+                    let dep_fn_id = dag.dag_inner[*dep_node];
+                    // 在 DAG 中添加从依赖节点到当前任务节点的边
+                    dag.dag_inner
+                        .add_edge(*dep_node, *task_node, env.func(dep_fn_id).out_put_size) // 权重可以动态化
+                        .expect("Failed to add edge");
+                }
+            }
+        }
+        // 返回构建完成的 DAG
+        dag
+    }
+    
+    
 
     pub fn new_dag_walker(&self) -> Topo<NodeIndex, <FnDagInner as Visitable>::Map> {
         Topo::new(&self.dag_inner)
@@ -462,7 +514,8 @@ impl SimEnv {
                 let dag_i = env.core.dags().len();
 
                 // 创建一个复杂DAG实例
-                let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                // let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                let dag = FnDAG::dag_from_csv(dag_i, env);
                 // log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
                 env.core.dags_mut().push(dag);
@@ -489,7 +542,8 @@ impl SimEnv {
                     let dag_i = env.core.dags().len();
 
                     // 创建一个复杂DAG实例
-                    let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                    // let dag = FnDAG::instance_map_reduce(dag_i, env, mapcnt);
+                    let dag = FnDAG::dag_from_csv(dag_i, env);
                     // log::info!("dag {} {:?}", dag.dag_i, dag.dag_inner);
 
                     env.core.dags_mut().push(dag);
@@ -599,3 +653,75 @@ pub trait EnvFnExt: EnvNodeExt {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sim_env::SimEnv; // 假设 SimEnv 在 `sim_env` 模块下
+    use crate::fn_dag::{FnDAG, DagId}; // 假设 FnDAG 在 `dag` 模块下
+    use crate::config::Config; // 假设有 Config 配置文件
+    
+    /// 打印节点的基本信息（FnId, 父节点和子节点）
+    fn print_node_info(dag: &FnDAG, node_idx: petgraph::graph::NodeIndex) {
+        let fn_id = dag.dag_inner[node_idx];
+        println!("Node {:?} - FnId: {}", node_idx, fn_id);
+
+        // 打印子节点
+        let children: Vec<_> = dag
+            .dag_inner
+            .graph()
+            .neighbors_directed(node_idx, petgraph::Direction::Outgoing)
+            .collect();
+        if !children.is_empty() {
+            println!("  Children: {:?}", children);
+        }
+
+        // 打印父节点
+        let parents: Vec<_> = dag
+            .dag_inner
+            .graph()
+            .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+            .collect();
+        if !parents.is_empty() {
+            println!("  Parents: {:?}", parents);
+        }
+    }
+
+    #[test]
+    fn test_instance_map_reduce() {
+        let env = SimEnv::new(Config::new_test()); // 初始化 SimEnv
+        let dag_id = 1; // DAG ID
+        let map_cnt = 3; // 设置 map 节点的数量
+
+        // 调用 `instance_map_reduce` 生成 DAG
+        let dag = FnDAG::dag_from_csv(dag_id, &env);
+
+        println!("DAG Information:");
+
+        // 打印 DAG 的基本信息
+        println!("Total Nodes: {}", dag.dag_inner.node_count());
+        println!("Total Edges: {}", dag.dag_inner.edge_count());
+        println!("Begin Node Index: {:?}", dag.begin_fn_g_i);
+
+        // 打印每个节点的信息
+        println!("Nodes and Edges:");
+        for node_idx in dag.dag_inner.graph().node_indices() {
+            print_node_info(&dag, node_idx);
+        }
+
+        // 可选：添加断言，验证 DAG 是否符合预期
+        assert!(dag.dag_inner.node_count() > 0, "DAG should have at least one node");
+        assert!(dag.dag_inner.edge_count() > 0, "DAG should have at least one edge");
+
+        // 可选：确保开始节点的索引正确
+        // assert_eq!(dag.begin_fn_g_i.index(), 0, "Begin node index should be 0");
+
+        // 可选：检查生成的 map 节点数是否匹配
+        // assert_eq!(
+        //     dag.dag_inner.node_count() - 2,  // -2 for begin and end nodes
+        //     map_cnt,
+        //     "The number of map nodes should match the input map_cnt"
+        // );
+    }
+}
+
