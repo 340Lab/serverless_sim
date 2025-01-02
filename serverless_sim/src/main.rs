@@ -25,6 +25,7 @@ mod state;
 mod util;
 mod with_env_sub;
 mod rl_target;
+mod dag_parsers;
 
 use env_logger::{ Builder };
 use log::LevelFilter;
