@@ -5,7 +5,7 @@ use daggy::petgraph::visit::Topo;
 use rand_distr::{Distribution, Normal};
 
 use crate::{
-    fn_dag::{DagId, EnvFnExt, FnId},
+    fn_dag::{DagId, EnvFnExt, FnDAG, FnId},
     node::NodeId,
     sim_env::SimEnv,
     with_env_sub::WithEnvCore,
@@ -85,43 +85,118 @@ impl Request {
         let fnmetric = self.fn_metric.get(&f).unwrap();
         fnmetric.fn_done_time.unwrap() - fnmetric.ready_sche_time.unwrap()
     }
+    
     fn init_metrics(&mut self, env: &SimEnv) {
         // find the final node
         // // construct latency dag
         let dag = env.dag(self.dag_i);
-        let mut walker = dag.new_dag_walker();
+
+        // 打印 DAG 的依赖关系
+        // Self::print_dag_dependencies(&dag);
+
+        let mut walker = dag.new_dag_walker();   
         let mut endtime_fn = BTreeMap::new();
+        
         while let Some(fngi) = walker.next(&dag.dag_inner) {
             let fnid = dag.dag_inner[fngi];
-            endtime_fn.insert(
-                self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
-                (
-                    self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
-                    fnid,
-                ),
-            );
+            // endtime_fn.insert(
+            //     self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap(),
+            //     (
+            //         self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(),
+            //         fnid,
+            //     ),
+            // );
+            endtime_fn.entry(self.fn_metric.get(&fnid).unwrap().fn_done_time.unwrap())
+            .or_insert_with(Vec::new)
+            .push((self.fn_metric.get(&fnid).unwrap().ready_sche_time.unwrap(), fnid));
         }
-        // log::info!("endtime_fn: {:?}", endtime_fn);
-        let first = endtime_fn.iter().next().unwrap().1.clone().1;
-        let mut cur: (usize, FnId) = endtime_fn.iter().next_back().unwrap().1.clone();
+
+        //println!("Endtime Fn: {:?}", endtime_fn);
+
+        // 遍历 DAG 中的所有节点，判断是否有前驱节点
+        let mut first = HashSet::new();
+        let mut walker = dag.new_dag_walker();
+
+        // 遍历所有节点
+        while let Some(node_idx) = walker.next(&dag.dag_inner) {
+            let fnid = dag.dag_inner[node_idx];  // 获取当前节点的 FnId
+
+            // 获取当前节点的父节点
+            let parents: Vec<_> = dag
+                .dag_inner
+                .graph()
+                .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+                .collect();
+
+            // 如果当前节点没有父节点，则说明它没有前驱任务
+            if parents.is_empty() {
+                first.insert(fnid.clone());  // 将其加入到没有前驱节点的集合中
+            }
+        }
+
+
+        // 打印没有前驱节点的任务
+        // println!("Tasks with no predecessors: {:?}", first);
+
+        let last_values = endtime_fn.iter().next_back().unwrap().1; 
+        // 取到 Vec 中的第一个一个元素
+        let last = last_values.first().unwrap();
+        let mut cur: (usize, FnId) = *last;
+
         let mut recur_path = vec![cur.1];
         loop {
-            if cur.1 == first {
-                break;
+            if first.contains(&cur.1) {
+                break;  // 如果当前节点在没有前驱函数的集合中，退出循环
             }
             // use cur fn's begin time to get prev fn's end time
-            let prev: (usize, FnId) = endtime_fn
+            let prev_vec = endtime_fn
                 .get(&cur.0)
                 .unwrap_or_else(|| {
                     panic!("can't find fn end at {}", cur.0);
                 })
                 .clone();
+
+            // 获取当前节点的父节点
+            let dag_parents: HashSet<FnId> = dag
+            .dag_inner
+            .graph()
+            .node_indices() 
+            .filter_map(|node_idx| {
+                let fnid_at_node = dag.dag_inner[node_idx]; 
+
+                // 如果当前节点的 FnId 与目标的 FnId 匹配，获取该节点的父节点
+                if fnid_at_node == cur.1 { // cur.1 是当前节点的 FnId
+                    Some(
+                        dag.dag_inner
+                            .graph()
+                            .neighbors_directed(node_idx, petgraph::Direction::Incoming) 
+                            .map(|parent_idx| dag.dag_inner[parent_idx]) 
+                            .collect::<HashSet<_>>(), 
+                    )
+                } else {
+                    None
+                }
+            })
+            .flatten() 
+            .collect::<HashSet<_>>(); // 将所有父节点合并成一个 HashSet
+
+            // 在 prev_vec 中找到一个属于父节点的前驱节点
+            let prev = prev_vec
+            .iter()
+            .find(|&(_, prev_fnid)| dag_parents.contains(prev_fnid)) // 过滤，找到一个父节点
+            .unwrap_or_else(|| panic!("No valid parent found in DAG for FnId: {}", cur.1));
+
             recur_path.push(prev.1);
-            if prev.1 == first {
-                break;
+        
+            if first.contains(&cur.1) {
+                break;  // 如果当前节点在没有前驱函数的集合中，退出循环
             }
-            cur = prev;
+            cur = *prev;
         }
+
+        // 打印递归路径
+        //println!("Recur path: {:?}", recur_path);
+        
         // let mut latency_dag: Dag<(FnId, bool), f32> = Dag::new();
         // {
         //     let mut latency_dag_map = HashMap::new();
@@ -462,15 +537,17 @@ impl SimEnv {
 
 #[cfg(test)]
 mod tests {
-    use std::env::set_var;
+    use std::{collections::HashMap, env::set_var};
 
+    use daggy::NodeIndex;
+    use petgraph::graph::DiGraph;
     use rand_seeder::rand_core::le;
 
     use crate::{
         actions::ESActionWrapper,
         config::Config,
-        fn_dag::{EnvFnExt, FnDAG},
-        request::Request,
+        fn_dag::{EnvFnExt, FnDAG, FnDagInner},
+        request::{ReqFnMetric, Request},
         sim_env::SimEnv,
         util,
     };
@@ -581,4 +658,117 @@ mod tests {
             }
         }
     }
+
+
+    #[test]
+    fn test_init_metrics() {
+        // 创建测试配置和模拟环境
+        let config = Config::new_test();
+        let mut env = SimEnv::new(config);
+    
+        let dag_i = 0;
+        
+        let mut dag = FnDAG {
+            dag_i,
+            begin_fn_g_i: NodeIndex::new(0),
+            dag_inner: FnDagInner::new(),
+        };
+    
+        env
+            .core
+            .requests_mut()
+            .insert(0, Request::new(&env, 0, 0));
+        let mut req = env.request_mut(0);
+    
+        let fn_36 = dag.dag_inner.add_node(36);
+        let fn_37 = dag.dag_inner.add_node(37);
+        let fn_38 = dag.dag_inner.add_node(38);
+        let fn_39 = dag.dag_inner.add_node(39);
+        let fn_40 = dag.dag_inner.add_node(40);
+    
+        // 设置 DAG 中的开始节点
+        dag.begin_fn_g_i = fn_36;
+    
+        let _ = dag.dag_inner.add_edge(fn_36, fn_37, 1.0);
+        let _ = dag.dag_inner.add_edge(fn_36, fn_39, 1.0);
+        let _ = dag.dag_inner.add_edge(fn_37, fn_38, 1.0);
+        let _ = dag.dag_inner.add_edge(fn_38, fn_40, 1.0);
+        let _ = dag.dag_inner.add_edge(fn_39, fn_40, 1.0);
+    
+        // 手动设置每个函数的时间指标
+        req.fn_metric.insert(
+            36,
+            ReqFnMetric {
+                ready_sche_time: Some(0),
+                sche_time: Some(1),
+                data_recv_done_time: Some(4),
+                cold_start_done_time: Some(3),
+                fn_done_time: Some(5),
+            },
+        );
+        req.fn_metric.insert(
+            37,
+            ReqFnMetric {
+                ready_sche_time: Some(5),  // 与前驱函数 36 的 fn_done_time 相等
+                sche_time: Some(6),
+                data_recv_done_time: Some(9),
+                cold_start_done_time: Some(8),
+                fn_done_time: Some(10),
+            },
+        );
+        req.fn_metric.insert(
+            38,
+            ReqFnMetric {
+                ready_sche_time: Some(10),  // 与前驱函数 37 的 fn_done_time 相等
+                sche_time: Some(11),
+                data_recv_done_time: Some(14),
+                cold_start_done_time: Some(13),
+                fn_done_time: Some(15),
+            },
+        );
+        req.fn_metric.insert(
+            39,
+            ReqFnMetric {
+                ready_sche_time: Some(5),  // 与前驱函数 36 的 fn_done_time 相等
+                sche_time: Some(6),
+                data_recv_done_time: Some(9),
+                cold_start_done_time: Some(8),
+                fn_done_time: Some(10),
+            },
+        );
+        req.fn_metric.insert(
+            40,
+            ReqFnMetric {
+                ready_sche_time: Some(15),  // 与前驱函数 38 的 fn_done_time 相等
+                sche_time: Some(16),
+                data_recv_done_time: Some(19),
+                cold_start_done_time: Some(18),
+                fn_done_time: Some(20),
+            },
+        );
+    
+        env.core.dags_mut()[0] = dag;
+    
+        // 调用 init_metrics 函数来计算请求的度量指标
+        req.init_metrics(&env);
+        
+        // 检查计算出的度量指标是否与预期相符
+        assert!(req.exe_time.is_some(), "exe_time should be computed");
+        assert!(req.wait_sche_time.is_some(), "wait_sche_time should be computed");
+        assert!(req.wait_cold_start_time.is_some(), "wait_cold_start_time should be computed");
+        assert!(req.data_recv_time.is_some(), "data_recv_time should be computed");
+        
+        // 计算期望的结果：根据 `done_time` 和其他时间点进行推算
+        let expected_exe_time = 4; // 由 fn_done_time - data_recv_done_time 
+        let expected_wait_sche_time = 4; // 由 sche_time - ready_sche_time 
+        let expected_wait_cold_start_time = 8; // 由 cold_start_done_time - sche_time 
+        let expected_data_recv_time = 4; // 由 data_recv_done_time - cold_start_done_time 
+        
+        // 校验计算结果
+        assert_eq!(req.exe_time.unwrap(), expected_exe_time);
+        assert_eq!(req.wait_sche_time.unwrap(), expected_wait_sche_time);
+        assert_eq!(req.wait_cold_start_time.unwrap(), expected_wait_cold_start_time);
+        assert_eq!(req.data_recv_time.unwrap(), expected_data_recv_time);
+    }
+    
 }

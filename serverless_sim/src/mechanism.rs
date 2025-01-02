@@ -47,7 +47,7 @@ pub trait SameTarget: Sized {
 
 impl SameTarget for UpCmd {
     fn same_target(&self, other: &Self) -> bool {
-        self.fnid == other.fnid && self.nid == other.fnid
+        self.fnid == other.fnid && self.nid == other.nid
     }
 }
 impl SameTarget for DownCmd {
