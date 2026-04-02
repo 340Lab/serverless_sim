@@ -434,12 +434,15 @@ impl SimEnv {
 
             for (dag_i, &(mut avg_frequency, cv)) in env.help.fn_call_frequency().iter() {
                 if env.help.config().request_freq_low() {
+                    // avg_frequency *= 0.4;
                     avg_frequency *= 0.1;
                 }
                 else if env.help.config().request_freq_middle() {
+                    // avg_frequency *= 1.2;
                     avg_frequency *= 0.2;
                 }
                 else {
+                    // avg_frequency *= 1.8;
                     avg_frequency *= 0.3;
                 }
                 // avg_frequency *= 100.0;
@@ -460,7 +463,7 @@ impl SimEnv {
                 }
             }
 
-            // log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
+            log::info!("Gen requests {total_req_cnt} at frame {}", env.current_frame());
         }
 
         //let env = self;

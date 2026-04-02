@@ -3,6 +3,7 @@ use bp_balance::BpBalanceScheduler;
 use crate::{ config::Config, sim_run::Scheduler };
 
 use self::{
+    bcws::BCWSScheduler,
     consistenthash::ConsistentHashScheduler, // rule_based::{RuleBasedScheduler, ScheduleRule},
     // time_aware::TimeScheduler,
     faasflow::FaasFlowScheduler,
@@ -25,6 +26,7 @@ pub mod pass;
 pub mod pos;
 pub mod random;
 pub mod bp_balance;
+pub mod bcws;
 pub mod hash;
 pub mod rotate;
 pub mod ensure_scheduler;
@@ -60,6 +62,9 @@ pub fn prepare_spec_scheduler(config: &Config) -> Option<Box<dyn Scheduler + Sen
         }
         "bp_balance" => {
             return Some(Box::new(BpBalanceScheduler::new()));
+        }
+        "bcws" => {
+            return Some(Box::new(BCWSScheduler::new()));
         }
         "consistenthash" => {
             return Some(Box::new(ConsistentHashScheduler::new()));

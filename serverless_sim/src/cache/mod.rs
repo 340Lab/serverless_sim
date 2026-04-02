@@ -1,6 +1,10 @@
+pub mod faascache;
 pub mod fifo;
+pub mod flame;
 pub mod lru;
 pub mod no_evict;
+pub mod rbuc;
+pub mod scache;
 
 use std::{cell::RefCell, cmp::Eq, fmt::Debug, hash::Hash, rc::Rc};
 

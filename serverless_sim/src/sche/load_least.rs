@@ -79,12 +79,15 @@ impl Scheduler for LoadLeastScheduler {
 
             //迭代请求中的函数，选择最合适的节点进行调度
             for fnid in fns {
-                let sche_nodeid = self.select_best_node_to_fn(fnid, env);
+                let mut sche_nodeid = self.select_best_node_to_fn(fnid, env);
 
                 log::info!("schedule fn {} to node {}", fnid, sche_nodeid);
 
-                if sche_nodeid != 9999 {
-                    cmd_distributor
+                if sche_nodeid == 9999 {
+                    assert!(self.fn_nodes.get(&fnid).unwrap().len() == 0);
+                    sche_nodeid = env.core().current_frame() % env.core().nodes().len();
+                }
+                cmd_distributor
                         .send(MechScheduleOnceRes::ScheCmd(ScheCmd {
                             nid: sche_nodeid,
                             reqid: req.req_id,
@@ -93,9 +96,8 @@ impl Scheduler for LoadLeastScheduler {
                         }))
                         .unwrap();
 
-                    let tasks_cnt = self.node_cpu_usage.get(&sche_nodeid).unwrap();
-                    self.node_cpu_usage.insert(sche_nodeid, tasks_cnt + 1);
-                }
+                let tasks_cnt = self.node_cpu_usage.get(&sche_nodeid).unwrap();
+                self.node_cpu_usage.insert(sche_nodeid, tasks_cnt + 1);
             }
 
         }

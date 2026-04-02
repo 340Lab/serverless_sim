@@ -4,4 +4,6 @@ records*
 log
 module_conf_es.json
 cache
+!src/cache/
+!src/cache/*.rs
 azure-trace

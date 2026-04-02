@@ -1,4 +1,6 @@
 use crate::cache::no_evict::NoEvict;
+use crate::cache::faascache::register_fn_profile;
+use crate::cache::scache::register_fn_profile as register_scache_profile;
 use crate::cache::InstanceCachePolicy;
 use crate::config::Config;
 use crate::with_env_sub::WithEnvHelp;
@@ -256,6 +258,10 @@ impl Node {
             // log::info!("已经添加了{}", fnid);
             return;
         }
+        let func = env.func(fnid);
+        register_fn_profile(fnid, func.cold_start_time as f32, func.container_mem());
+        register_scache_profile(fnid, func.cold_start_time as f32, func.container_mem());
+        drop(func);
 
         let (old, flag) = unsafe {
             let node = NonNull::new_unchecked(self as *const Node as *mut Node);
@@ -270,7 +276,7 @@ impl Node {
                     node.container(*to_replace).unwrap().is_idle()
                 }),
             );
-            log::info!("old{:?}", old);
+            // log::info!("old{:?}", old);
             (old, flag)
         };
 
@@ -305,7 +311,7 @@ impl Node {
                 // but we need to add mem to node in this frame because it's new container
                 *self.mem.borrow_mut() += con_mem_take;
             } else {
-                log::info!("内存不够，取消缓存标记{}", fnid);
+                // log::info!("内存不够，取消缓存标记{}", fnid);
                 let mut node_cache = self.instance_cache_policy.borrow_mut();
                 assert!(node_cache.remove_all(&fnid));
             }

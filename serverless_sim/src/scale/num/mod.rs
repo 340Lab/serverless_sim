@@ -7,6 +7,8 @@ pub mod temp_scaler;
 pub mod full_placement;
 pub mod rela;
 pub mod ensure_scaler;
+pub mod Q_learning_hpa;
+pub mod knee_scaler;
 
 use crate::{
     actions::ESActionWrapper,
@@ -24,6 +26,8 @@ use self::{
     full_placement::FpScaleNum,
     rela::RelaScaleNum,
     ensure_scaler::EnsureScaleNum,
+    Q_learning_hpa::QLearningHpaScaleNum,
+    knee_scaler::KneeScaleNum,
 };
 
 pub trait ScaleNum: Send {
@@ -62,6 +66,19 @@ pub fn new_scale_num(c: &Config) -> Option<Box<dyn ScaleNum + Send>> {
         }
         "ensure_scaler" => {
             return Some(Box::new(EnsureScaleNum::new()));
+        }
+        "Q_learning_hpa" => {
+            let mut target_latency = 15.0;
+            if c.request_freq_middle() {
+                target_latency = 23.0;
+            }
+            else if c.request_freq_high() {
+                target_latency = 31.0;
+            }
+            return Some(Box::new(QLearningHpaScaleNum::new(target_latency)));
+        }
+        "knee_scaler" => {
+            return Some(Box::new(KneeScaleNum::new()));
         }
         _ => {
             return None;

@@ -1,6 +1,7 @@
-use std::{ cell::{ RefCell, RefMut }, collections::HashMap };
-
+use std::{ cell::{ RefCell, RefMut }, collections::HashMap, fs::{File, OpenOptions}, io::Write, path::Path, sync::{Arc, Mutex}, thread, time::{Duration, Instant}};
+use sysinfo::{Pid, PidExt, ProcessExt, System, SystemExt};
 use enum_as_inner::EnumAsInner;
+use threadpool::ThreadPool;
 
 use crate::{
     actions::ESActionWrapper,
@@ -78,10 +79,11 @@ impl<S: SameTarget> CheckDup for Vec<S> {
     }
 }
 
-pub const SCHE_NAMES: [&'static str; 12] = [
+pub const SCHE_NAMES: [&'static str; 13] = [
     "rotate",
     "hash",
     "bp_balance",
+    "bcws",
     "faasflow",
     "pass",
     "pos",
@@ -94,7 +96,7 @@ pub const SCHE_NAMES: [&'static str; 12] = [
     // "load_least",
     // "random",
 ];
-pub const SCALE_NUM_NAMES: [&'static str; 7] = [
+pub const SCALE_NUM_NAMES: [&'static str; 9] = [
     "no",
     "hpa",
     "lass",
@@ -102,12 +104,22 @@ pub const SCALE_NUM_NAMES: [&'static str; 7] = [
     "full_placement",
     "rela",
     "ensure_scaler",
+    "Q_learning_hpa",
+    "knee_scaler",
 ];
 pub const SCALE_DOWN_EXEC_NAMES: [&'static str; 1] = ["default"];
 pub const SCALE_UP_EXEC_NAMES: [&'static str; 2] = ["least_task", "no"];
 pub const MECH_NAMES: [&'static str; 3] = ["no_scale", "scale_sche_separated", "scale_sche_joint"];
 pub const FILTER_NAMES: [&'static str; 1] = ["careful_down"];
-pub const INSTANCE_LIVE_NAMES: [&'static str; 3] = ["no_evict", "lru", "fifo"];
+pub const INSTANCE_LIVE_NAMES: [&'static str; 7] = [
+    "no_evict",
+    "lru",
+    "fifo",
+    "flame",
+    "rbuc",
+    "faascache",
+    "scache",
+];
 
 pub trait Mechanism: Send {
     fn step(
@@ -179,6 +191,7 @@ impl ConfigNewMec for Config {
                 let allow_sche = vec![
                     "faasflow",
                     "pass",
+                    "bcws",
                     "fnsche",
                     "random",
                     "greedy",
@@ -204,8 +217,24 @@ impl ConfigNewMec for Config {
                 }
             }
             "scale_sche_separated" => {
-                let allow_sche = vec!["random", "greedy", "hash", "rotate","load_least","pass"];
-                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela"];
+                let allow_sche = vec![
+                    "random",
+                    "greedy",
+                    "hash",
+                    "rotate",
+                    "load_least",
+                    "pass",
+                    "bcws",
+                ];
+                let allow_scale_num = vec![
+                    "hpa",
+                    "lass",
+                    "temp_scaler",
+                    "full_placement",
+                    "rela",
+                    "Q_learning_hpa",
+                    "knee_scaler",
+                ];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
 
@@ -223,7 +252,16 @@ impl ConfigNewMec for Config {
             }
             "scale_sche_joint" => {
                 let allow_sche = vec!["pos", "bp_balance", "ensure_scheduler"];
-                let allow_scale_num = vec!["hpa", "lass", "temp_scaler", "full_placement", "rela", "ensure_scaler"];
+                let allow_scale_num = vec![
+                    "hpa",
+                    "lass",
+                    "temp_scaler",
+                    "full_placement",
+                    "rela",
+                    "ensure_scaler",
+                    "Q_learning_hpa",
+                    "knee_scaler",
+                ];
                 let allow_scale_down_exec = vec!["default"];
                 let allow_scale_up_exec = vec!["least_task"];
                 if
@@ -301,6 +339,21 @@ impl SimEnvObserve {
     pub fn new(core: SimEnvCoreState, help: SimEnvHelperState) -> Self {
         Self { core, help }
     }
+
+    /// req_done_avg 平均每个请求处理完的时间 越低越好
+    pub fn req_done_time_avg(&self) -> f32 {
+        if self.core.done_requests().len() == 0 {
+            return 0.0;
+        }
+
+        let sum = self.core
+            .done_requests()
+            .iter()
+            .map(|req| (req.end_frame - req.begin_frame) as f32)
+            .sum::<f32>();
+
+        sum / (self.core.done_requests().len() as f32)
+    }
 }
 
 impl WithEnvHelp for SimEnvObserve {
@@ -314,6 +367,11 @@ impl WithEnvCore for SimEnvObserve {
     }
 }
 
+// 4 个线程的线程池
+lazy_static::lazy_static! {
+    static ref THREAD_POOL: Arc<Mutex<ThreadPool>> = Arc::new(Mutex::new(ThreadPool::new(4))); 
+}
+
 impl Mechanism for MechanismImpl {
     // 执行步进操作前的准备，根据配置选择调度、扩缩容模式
     fn step(
@@ -323,6 +381,12 @@ impl Mechanism for MechanismImpl {
         cmd_distributor: &MechCmdDistributor
     ) {
         *self.step_begin.borrow_mut() = util::now_ms();
+        let pid = Pid::from_u32(std::process::id());
+        let mut sys = System::new();
+        sys.refresh_process(pid);
+        let process = sys.process(pid).unwrap();
+        let start_memory = process.memory();
+        let start_time = Instant::now();
         match &*self.config.mech.mech_type().0 {
             "no_scale" => self.step_no_scaler(env, self, cmd_distributor, raw_action),
             "scale_sche_separated" => {
@@ -333,6 +397,45 @@ impl Mechanism for MechanismImpl {
             "scale_sche_joint" => self.step_scale_sche_joint(env, cmd_distributor, raw_action),
             _ => { panic!("mech_type not supported {}", env.help.config().mech.mech_type().0) }
         }
+        let scale_name = env.help().config().mech.scale_num_conf().0.to_string();
+        let sche_name = env.help().config().mech.sche_conf().0.to_string();
+        let request_freq = env.help().config().request_freq.to_string();
+        // 利用线程池的线程来写文件
+        THREAD_POOL.lock().unwrap().execute(move || {
+            let elapsed_time = start_time.elapsed();
+            sys.refresh_process(pid);
+            let process = sys.process(pid).unwrap();
+            let memory_use = (process.memory() + start_memory) / 2 / 1024;
+            // 将该时间写入到外部 txt 文件里，文件路径为：D:\Desktop\paper_publish\experimental_results\algorithm_cost\cpu.txt
+            let file_path_cpu = format!(
+                "D:\\Desktop\\paper_publish\\experimental_results\\algorithm_cost\\{}_{}_cpu.txt",
+                scale_name, sche_name
+            );
+            // 如果文件不存在则创建该文件
+            if !Path::new(&file_path_cpu).exists() {
+                File::create(file_path_cpu.clone()).expect("Failed to create file");
+            }
+            let mut file = OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(file_path_cpu)
+                .unwrap();
+            writeln!(file, "{}", elapsed_time.as_millis()).expect("Failed to write to file");
+            let file_path_mem = format!(
+                "D:\\Desktop\\paper_publish\\experimental_results\\algorithm_cost\\{}_{}_mem.txt",
+                scale_name, sche_name
+            );
+            // 如果文件不存在则创建该文件
+            if !Path::new(&file_path_mem).exists() {
+                File::create(file_path_mem.clone()).expect("Failed to create file");
+            }
+            let mut file = OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(file_path_mem)
+                .unwrap();
+            writeln!(file, "{}", memory_use).expect("Failed to write to file");
+        });
     }
 }
 

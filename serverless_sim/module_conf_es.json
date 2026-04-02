@@ -6,40 +6,47 @@
   },
   "scale_num": {
     "no": null,
-    "full_placement": null,
-    "rela": null,
-    "ensure_scaler": null,
+    "Q_learning_hpa": null,
     "hpa": null,
     "lass": null,
-    "temp_scaler": null
+    "rela": null,
+    "temp_scaler": null,
+    "knee_scaler": null,
+    "full_placement": null,
+    "ensure_scaler": null
   },
   "scale_down_exec": {
     "default": null
   },
   "scale_up_exec": {
-    "no": null,
-    "least_task": null
+    "least_task": null,
+    "no": null
   },
   "sche": {
-    "random": null,
+    "load_least": null,
+    "faasflow": null,
     "greedy": null,
     "ensure_scheduler": null,
-    "pos": null,
-    "consistenthash": null,
-    "faasflow": null,
-    "load_least": null,
-    "hash": null,
-    "pass": null,
+    "bcws": null,
     "rotate": null,
+    "pass": null,
+    "consistenthash": null,
+    "hash": null,
+    "pos": null,
+    "fnsche": null,
     "bp_balance": null,
-    "fnsche": null
+    "random": null
   },
   "filter": {
     "careful_down": null
   },
   "instance_cache_policy": {
-    "fifo": null,
+    "faascache": null,
+    "scache": null,
     "no_evict": null,
-    "lru": null
+    "flame": null,
+    "fifo": null,
+    "lru": null,
+    "rbuc": null
   }
 }

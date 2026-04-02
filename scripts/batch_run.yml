@@ -1,41 +1,44 @@
-run_time: 4
+run_time: 1
 
 params:
   request_freq:
-  - low:
+  # - low:
   - middle:
-  - high:
+  # - high:
   dag_type:
   # - single:
-  # - mix:
-  - dag:
+  - mix:
+  # - dag:
   no_mech_latency:
   - true:
   # - false:
 
 mech_scale_sche:
-  scale_sche_joint:
-    scale_num:
-    # - hpa:
-    # - temp_scaler:
-    - ensure_scaler:
-    scale_down_exec:
-    - default:
-    scale_up_exec:
-    - least_task:
-    sche:
-    # - bp_balance:
-    # - pos: greedy
-    - ensure_scheduler:
-    filter:
-    # - []
-    - [{'careful_down':''}]
+  # scale_sche_joint:
+  #   scale_num:
+  #   - hpa:
+  #   - lass:
+  #   # - temp_scaler:
+  #   # - ensure_scaler:
+  #   - Q_learning_hpa:
+  #   scale_down_exec:
+  #   - default:
+  #   scale_up_exec:
+  #   - least_task:
+  #   sche:
+  #   - bp_balance:
+  #   # - pos: greedy
+  #   # - ensure_scheduler:
+  #   filter:
+  #   # - []
+  #   - [{'careful_down':''}]
 
   scale_sche_separated:
     scale_num:
-    - temp_scaler:
+    # - temp_scaler:
     - hpa:
-    - lass:
+    # - Q_learning_hpa:
+    # - lass:
     scale_down_exec:
     - default:
     scale_up_exec:
@@ -44,9 +47,9 @@ mech_scale_sche:
     # - greedy:
     # - hash:
     # - random:
-    - load_least:
-    # - rotate:
-    - pass:
+    # - load_least:
+    - rotate:
+    # - pass:
     filter:
     # - []
     - [{'careful_down':''}]
@@ -63,7 +66,7 @@ mech_scale_sche:
   #   # - hash:
   #   # - random:
   #   # - rotate:
-  #   # - faasflow:
+  #   - faasflow:
   #   filter:
   #   - []
 

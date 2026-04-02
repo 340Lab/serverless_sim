@@ -35,6 +35,13 @@ impl HpaScaleNum {
     pub fn set_target(&mut self, tar: Target) {
         self.target = tar;
     }
+    // TODO:检查是否正确获取
+    pub fn get_target(&self) -> f32{
+        let target = match self.target {
+            Target::MemUseRate(rate) => rate,
+        };
+        target
+    }
 }
 
 impl ScaleNum for HpaScaleNum {

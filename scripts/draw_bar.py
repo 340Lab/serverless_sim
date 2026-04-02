@@ -8,6 +8,8 @@ import requests
 from pprint import pprint
 import yaml
 import re
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -449,6 +451,7 @@ def draw_with_draw_meta(drawmeta,conf):
     
 
     
+    # plt.savefig('./ex_results/result.png', dpi=300, bbox_inches='tight')
     plt.show()
     
     

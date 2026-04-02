@@ -124,11 +124,11 @@ impl PosScheduler {
         //     env.func(a).cpu.partial_cmp(&env.func(b).cpu).unwrap().reverse()
         // });
 
-        log::info!(
-            "schedule_some sort fns cost {}",
-            // req.req_id,
-            util::now_ms() - *mech.step_begin.borrow()
-        );
+        // log::info!(
+        //     "schedule_some sort fns cost {}",
+        //     // req.req_id,
+        //     util::now_ms() - *mech.step_begin.borrow()
+        // );
 
         let scale_up_exec = mech.scale_up_exec();
         let mech_metric = || env.help().mech_metric_mut();
@@ -149,12 +149,12 @@ impl PosScheduler {
             for cmd in fn_scale_up_cmds.iter() {
                 self.record_new_scale_up_node(cmd.fnid, cmd.nid);
             }
-            log::info!(
-                "schedule_some schduling fn {} {}",
-                fnid,
-                // req.req_id,
-                util::now_ms() - *mech.step_begin.borrow()
-            );
+            // log::info!(
+            //     "schedule_some schduling fn {} {}",
+            //     fnid,
+            //     // req.req_id,
+            //     util::now_ms() - *mech.step_begin.borrow()
+            // );
 
             // 选择节点算法，首先选出包含当前函数容器的节点
             let mut nodes2select = self.new_scale_up_nodes(fnid);
@@ -245,10 +245,10 @@ impl Scheduler for PosScheduler {
         for (_req_id, req) in env.core().requests().iter() {
             self.collect_scheable_fns_for_req(env, req);
         }
-        log::info!(
-            "schedule_some collect_scheable_fns_for_req cost {}",
-            util::now_ms() - *mech.step_begin.borrow()
-        );
+        // log::info!(
+        //     "schedule_some collect_scheable_fns_for_req cost {}",
+        //     util::now_ms() - *mech.step_begin.borrow()
+        // );
         // log::info!("try put fn");
         // let nodes_taskcnt = env
         //     .nodes()
@@ -267,21 +267,21 @@ impl Scheduler for PosScheduler {
                     cur - target,
                     cmd_distributor
                 );
-                log::info!(
-                    "schedule_some scale_down_exec {} cost {}",
-                    func.fn_id,
-                    util::now_ms() - *mech.step_begin.borrow()
-                );
+                // log::info!(
+                //     "schedule_some scale_down_exec {} cost {}",
+                //     func.fn_id,
+                //     util::now_ms() - *mech.step_begin.borrow()
+                // );
             }
         }
 
         for r in &self.sche_queue {
             self.schedule_one_req_fns(env, mech, r, cmd_distributor);
-            log::info!(
-                "schedule_some schedule_one_req_fns {} cost {}",
-                r.0,
-                util::now_ms() - *mech.step_begin.borrow()
-            );
+            // log::info!(
+            //     "schedule_some schedule_one_req_fns {} cost {}",
+            //     r.0,
+            //     util::now_ms() - *mech.step_begin.borrow()
+            // );
         }
     }
 }
